@@ -1,0 +1,52 @@
+Description: Fix format problems in manpages
+ This patch fixes minor format problems in manpages that lintian
+ complains about.
+Author: Manuel Prinz <manuel@debian.org>
+Forwarded: https://svn.open-mpi.org/trac/ompi/ticket/2496
+Applied-Upstream: https://svn.open-mpi.org/trac/ompi/changeset/23445
+Last-Update: 2010-07-20
+
+--- a/opal/tools/opal-checkpoint/opal-checkpoint.1in
++++ b/opal/tools/opal-checkpoint/opal-checkpoint.1in
+@@ -27,7 +27,7 @@
+ .SH SYNOPSIS
+ .
+ .B opal-checkpoint
+-.R [ options ]
++.B [ options ]
+ .B <PID>
+ .
+ .\" **************************
+--- a/opal/tools/opal-restart/opal-restart.1in
++++ b/opal/tools/opal-restart/opal-restart.1in
+@@ -27,7 +27,7 @@
+ .SH SYNOPSIS
+ .
+ .B opal-restart
+-.R [ options ]
++.B [ options ]
+ .B <SNAPSHOT HANDLE>
+ .
+ .\" **************************
+--- a/orte/tools/orte-checkpoint/orte-checkpoint.1in
++++ b/orte/tools/orte-checkpoint/orte-checkpoint.1in
+@@ -28,7 +28,7 @@
+ .SH SYNOPSIS
+ .
+ .B ompi-checkpoint
+-.R [ options ]
++.B [ options ]
+ .B <PID_OF_MPIRUN>
+ .
+ .\" **************************
+--- a/orte/tools/orte-restart/orte-restart.1in
++++ b/orte/tools/orte-restart/orte-restart.1in
+@@ -28,7 +28,7 @@
+ .SH SYNOPSIS
+ .
+ .B ompi-restart
+-.R [ options ]
++.B [ options ]
+ .B <GLOBAL SNAPSHOT HANDLE>
+ .
+ .\" **************************
