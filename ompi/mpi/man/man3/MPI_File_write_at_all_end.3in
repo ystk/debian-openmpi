@@ -1,4 +1,4 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_File_write_at_all_end 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
@@ -12,12 +12,15 @@ C Syntax
     int MPI_File_write_at_all_end(MPI_File \fIfh\fP, void *buf, 
     	      MPI_Status *status)
 
-Fortran Syntax
+.fi
+.SH Fortran Syntax
+.nf
     INCLUDE 'mpif.h'
     MPI_FILE_WRITE_AT_ALL_END(\fIFH\fP, \fIBUF\fP, \fISTATUS\fP,\fI IERROR\fP)
 		<type>		BUF(*)
         	INTEGER		FH, STATUS(MPI_STATUS_SIZE), IERROR
 
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
@@ -25,6 +28,7 @@ void MPI::File::Write_at_all_end(const void* \fIbuf\fP, MPI::Status& \fIstatus\f
 
 void MPI::File::Write_at_all_end(const void* \fIbuf\fP)
 
+.fi
 .SH INPUT/OUTPUT PARAMETER
 .ft R
 .TP 1i

@@ -1,7 +1,6 @@
-manpage-errors-checkpoint
-manpage-errors-whatis
-manpage-errors-macro
 build_hurd
-manpage-spelling-errors
-build_kfreebsd
-var-copy
+#manpage_macros
+arm_support
+missinglib.diff
+
+manpage_macros

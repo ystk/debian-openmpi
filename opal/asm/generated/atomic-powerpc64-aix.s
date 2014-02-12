@@ -188,8 +188,7 @@ opal_atomic_add_32:
 	     stwcx.   0, 0, 3              
 	     bne-  L5
 	
-	lwz 3,0(3)
-	extsw 3,3
+	mr 3,0
 	blr
 
 
@@ -206,8 +205,7 @@ opal_atomic_sub_32:
 	     stwcx.   0,0,3              
 	     bne-  L6
 	
-	lwz 3,0(3)
-	extsw 3,3
+	mr 3,0
 	blr
 
 	.globl opal_sys_timer_get_cycles

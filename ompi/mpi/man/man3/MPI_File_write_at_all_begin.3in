@@ -1,4 +1,4 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_File_write_at_all_begin 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
@@ -12,13 +12,16 @@ C Syntax
     int MPI_File_write_at_all_begin(MPI_File \fIfh\fP, MPI_Offset \fIoffset\fP, 
     	      void \fI*buf\fP, int \fIcount\fP, MPI_Datatype \fIdatatype\fP)
 
-Fortran Syntax (see FORTRAN 77 NOTES)
+.fi
+.SH Fortran Syntax (see FORTRAN 77 NOTES)
+.nf
     INCLUDE 'mpif.h'
     MPI_FILE_WRITE_AT_ALL_BEGIN(\fIFH\fP, \fIOFFSET\fP, \fIBUF\fP, \fICOUNT\fP, \fIDATATYPE\fP,\fI IERROR\fP)
 		<TYPE> \fIBUF\fP(*)
         	INTEGER	\fIFH, COUNT, DATATYPE, IERROR\fP 
 		INTEGER(KIND=MPI_OFFSET_KIND) \fIOFFSET\fP 
 
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
@@ -26,6 +29,7 @@ void MPI::File::Write_at_all_begin(MPI::Offset \fIoffset\fP,
 	const void* \fIbuf\fP, int \fIcount\fP, 
 	const MPI::Datatype& \fIdatatype\fP)
 
+.fi
 .SH INPUT/OUTPUT PARAMETER
 .ft R
 .TP 1i

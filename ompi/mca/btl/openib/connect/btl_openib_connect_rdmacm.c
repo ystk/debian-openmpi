@@ -153,7 +153,7 @@ static struct rdma_event_channel *event_channel = NULL;
 static int rdmacm_priority = 30;
 static uint16_t rdmacm_port = 0;
 static uint32_t rdmacm_addr = 0;
-static int rdmacm_resolve_timeout = 1000;
+static int rdmacm_resolve_timeout = 30000;
 static int rdmacm_resolve_max_retry_count = 20;
 static bool rdmacm_reject_causes_connect_error = false;
 static volatile int disconnect_callbacks = 0;
@@ -1903,7 +1903,11 @@ static int rdmacm_component_query(mca_btl_openib_module_t *openib_btl, ompi_btl_
     return OMPI_SUCCESS;
 
 out5:
-    rdma_destroy_id(context->id);
+    /*
+     * Since rdma_create_id() succeeded, we need "rdma_destroy_id(context->id)".
+     * But don't do it here since it's part of out4:OBJ_RELEASE(context),
+     * and we don't want to do it twice.
+     */
 out4:
     opal_list_remove_first(&(server->ids));
     OBJ_RELEASE(context);

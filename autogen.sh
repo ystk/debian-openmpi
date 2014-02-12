@@ -11,6 +11,8 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2010      Oracle and/or its affilitates.  All rights 
+#                         reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -282,9 +284,11 @@ find_and_delete() {
 
     if test -f $fad_file; then
 	rm -f $fad_file
-    elif test -d config/$fad_file; then
+    elif test -f config/$fad_file; then
 	rm -f config/$fad_file
-    elif test -d dist/$fad_file; then
+    elif test -f config/m4/$fad_file; then
+	rm -f config/m4/$fad_file
+    elif test -f dist/$fad_file; then
 	rm -f dist/$fad_file
     else
 
@@ -382,9 +386,16 @@ EOF
     find_and_delete install-sh
     find_and_delete ltconfig
     find_and_delete ltmain.sh
+    find_and_delete libtool.m4
+    find_and_delete ltdl.m4
+    find_and_delete ltoptions.m4
+    find_and_delete ltsugar.m4
+    find_and_delete ltversion.m4
+    find_and_delete lt~obsolete.m4
     find_and_delete missing
     find_and_delete mkinstalldirs
     find_and_delete libtool
+    find_and_delete aclocal.m4
 
     # Run the GNU tools
 
@@ -431,6 +442,19 @@ EOF
         fi
 
 	echo "** Adjusting libltdl for OMPI :-("
+
+       echo "   ++ patching PGI -tp bug in ltmain.sh"
+       # Patch ltmain.sh error for PGI -tp flag.  Redirect stderr to
+       # /dev/null because this patch is only necessary for some versions of
+       # Libtool (e.g., 2.2.6b); it'll [rightfully] fail if you have a new
+       # enough Libtool that dosn't need this patch.  But don't alarm the
+       # user and make them think that autogen failed if this patch fails --
+       # make the errors be silent.
+       patch -N -p0 < config/ltmain_pgi_tp.diff >/dev/null 2>&1
+       if test ! $? -eq 0 ; then
+           echo "      -- your libtool doesn't need this! yay!"
+       fi
+       rm -f config/ltmain.sh.rej
 
 	echo "   ++ patching for argz bugfix in libtool 1.5"
 	cd opal/libltdl
@@ -555,6 +579,27 @@ EOF
             echo "     -- your libltdl doesn't need this! yay!"
         fi
 
+        # See http://git.savannah.gnu.org/cgit/libtool.git/commit/?id=v2.2.6-201-g519bf91
+        # 
+        # Note that this issue was fixed in LT 2.2.8, so don't patch if
+        # you have a version after that
+        echo "   ++ patching for IBM xlf (LT < 2.2.8)"
+        patched=0
+        if check_version "2.1.9999" $ompi_libtoolize_found_version; then
+            if ! check_version "2.2.8" $ompi_libtoolize_found_version; then
+                cd config
+                patch -N -p0 < libtool-ibm-xlf.diff > /dev/null 2>&1
+                rm -f libtool.m4.orig
+                rm -f libtool.m4.rej
+                # We'll touch aclocal.m4 below (see comment below).
+                cd ..
+                patched=1
+            fi
+        fi
+        if test "$patched" != "1"; then
+            echo "     -- your libtool doesn't need this! yay!"
+        fi
+
         # Libtool 1.5.2x and 2.1x automatically link in the "Cstd" STL library
         # when using the Sun compilers on Linux or Solaris, even if the
         # application does not use the STL (as of Feb 2008, Open MPI does not
@@ -617,6 +662,9 @@ EOF
     sed -e 's/\*pgCC\\ \[1-5\]\* | \*pgcpp\\ \[1-5\]\*/*pgCC\\ [1-5]\.* | *pgcpp\\ [1-5]\.*/' configure > configure.patched
     cp configure.patched configure
     rm -f configure.patched
+
+    echo "  ++ Modifying configure for Sun Studio Fortran compilers"
+    config/modify-configure-for-sun-fortran.pl
 }
 
 

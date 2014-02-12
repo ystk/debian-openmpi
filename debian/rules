@@ -175,6 +175,7 @@ binary-arch: install-arch
 	dh_installdocs --all AUTHORS NEWS README
 	dh_installexamples -a
 	dh_installman -a
+	dh_lintian
 	dh_link -a
 	dh_strip -a --dbg-package=libopenmpi-dbg
 	dh_compress  -a

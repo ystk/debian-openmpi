@@ -50,7 +50,7 @@ const char *ibv_get_sysfs_path(void);
 #include "opal/include/opal/align.h"
 #include "opal/util/if.h"
 #include "opal/util/argv.h"
-#include "opal/sys/timer.h"
+#include "opal/mca/timer/base/base.h"
 #include "opal/sys/atomic.h"
 #include "opal/util/argv.h"
 #include "opal/memoryhooks/memory.h"
@@ -582,7 +582,7 @@ static int init_one_port(opal_list_t *btl_list, mca_btl_openib_device_t *device,
        that member, then we're < OFED v1.2, and it can only be IB. */
 #if defined(HAVE_STRUCT_IBV_DEVICE_TRANSPORT_TYPE)
     if (IBV_TRANSPORT_IWARP == device->ib_dev->transport_type) {
-        subnet_id = mca_btl_openib_get_iwarp_subnet_id(device->ib_dev);
+        subnet_id = mca_btl_openib_get_iwarp_subnet_id(device->ib_dev, port_num);
         BTL_VERBOSE(("my iWARP subnet_id is %016" PRIx64, subnet_id));
     } else {
         memset(&gid, 0, sizeof(gid));
@@ -591,7 +591,18 @@ static int init_one_port(opal_list_t *btl_list, mca_btl_openib_device_t *device,
                        ibv_get_device_name(device->ib_dev), port_num));
             return OMPI_ERR_NOT_FOUND;
         }
+
+#ifdef OMPI_HAVE_RDMAOE
+        if (IBV_LINK_LAYER_ETHERNET == ib_port_attr->link_layer) {
+            subnet_id = mca_btl_openib_get_iwarp_subnet_id(device->ib_dev, 
+                                                           port_num);
+        } else {
+            subnet_id = ntoh64(gid.global.subnet_prefix);
+        }
+#else
         subnet_id = ntoh64(gid.global.subnet_prefix);
+#endif
+
         BTL_VERBOSE(("my IB subnet_id for HCA %s port %d is %016" PRIx64, 
                      ibv_get_device_name(device->ib_dev), port_num, subnet_id));
     }
@@ -2326,8 +2337,8 @@ btl_openib_component_init(int *num_btl_modules,
     }
 
     seedv[0] = ORTE_PROC_MY_NAME->vpid;
-    seedv[1] = opal_sys_timer_get_cycles();
-    seedv[2] = opal_sys_timer_get_cycles();
+    seedv[1] = opal_timer_base_get_cycles();
+    seedv[2] = opal_timer_base_get_cycles();
     seed48(seedv);
 
     /* Read in INI files with device-specific parameters */

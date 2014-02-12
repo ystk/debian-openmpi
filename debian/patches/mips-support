@@ -5,8 +5,8 @@ Description: Fix build issues on MIPS
  to be updated and tested, so it's currently not applied.
 Forwarded: https://svn.open-mpi.org/trac/ompi/ticket/2494
 Debian-Bug: http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=489173
-Author: Thiemo Seufer
-Last-Update: 2010-07-20
+Author: George Bosilca
+Last-Update: 2011-03-10
 
 --- a/opal/asm/asm-data.txt
 +++ b/opal/asm/asm-data.txt
@@ -41,7 +41,7 @@ Last-Update: 2010-07-20
 +	sync
 +#ifdef __linux__
 +	.set mips0
-+#endif
++#endif	
  	j	ra
  END(opal_atomic_mb)
  
@@ -72,7 +72,7 @@ Last-Update: 2010-07-20
  	j	ra
  END(opal_atomic_wmb)
  
-@@ -28,7 +50,13 @@
+@@ -28,11 +50,23 @@
  LEAF(opal_atomic_cmpset_32)
  	.set noreorder        
  retry1:                
@@ -85,8 +85,19 @@ Last-Update: 2010-07-20
 +#endif
  	bne    $3, $5, done1   
  	or     $2, $6, 0      
++#ifdef __linux__
++	.set mips2
++#endif
  	sc     $2, 0($4)         
-@@ -45,13 +73,31 @@
+-	bne    $2, 1, retry1
++#ifdef __linux__
++	.set mips0
++#endif
++	beqz   $2, retry1
+ done1:                 
+ 	.set reorder          
+ 
+@@ -45,13 +79,31 @@
  LEAF(opal_atomic_cmpset_acq_32)
  	.set noreorder        
  retry2:                
@@ -103,10 +114,11 @@ Last-Update: 2010-07-20
 +	.set mips2
 +#endif
  	sc     $2, 0($4)         
+-	bne    $2, 1, retry2   
 +#ifdef __linux__
 +	.set mips0
 +#endif
- 	bne    $2, 1, retry2   
++	beqz   $2, retry2   
  done2:                 
 -	sync
 +#ifdef __linux__
@@ -119,7 +131,7 @@ Last-Update: 2010-07-20
  	.set reorder          
  
  	xor	$3,$3,$5
-@@ -62,12 +108,30 @@
+@@ -62,13 +114,31 @@
  	
  LEAF(opal_atomic_cmpset_rel_32)
  	.set noreorder        
@@ -145,22 +157,51 @@ Last-Update: 2010-07-20
 +	.set mips2
 +#endif
  	sc     $2, 0($4)         
+-	bne    $2, 1, retry3   
 +#ifdef __linux__
 +	.set mips0
 +#endif
- 	bne    $2, 1, retry3   
++	beqz   $2, retry3   
  done3:                 
  	.set reorder          
-@@ -77,7 +141,7 @@
+ 
+@@ -77,7 +147,7 @@
  	sltu	$2,$3,1
  END(opal_atomic_cmpset_rel_32)
  	
 -	
-+#ifdef __mips64
++#ifdef __mips64	
  LEAF(opal_atomic_cmpset_64)
  		.set noreorder        
  retry4:                
-@@ -128,3 +192,4 @@
+@@ -85,7 +155,7 @@
+ 	bne    $3, $5, done4   
+ 	or     $2, $6, 0      
+ 	scd    $2, 0($4)         
+-	bne    $2, 1, retry4   
++	beqz   $2, retry4   
+ done4:                 
+ 	.set reorder          
+ 
+@@ -102,7 +172,7 @@
+ 	bne    $3, $5, done5   
+ 	or     $2, $6, 0      
+ 	scd    $2, 0($4)         
+-	bne    $2, 1, retry5   
++	beqz   $2, retry5   
+ done5:                 
+ 	.set reorder          
+ 	sync
+@@ -120,7 +190,7 @@
+ 	bne    $3, $5, done6   
+ 	or     $2, $6, 0      
+ 	scd    $2, 0($4)         
+-	bne    $2, 1, retry6   
++	beqz   $2, retry6   
+ done6:                 
+ 	.set reorder          
+ 
+@@ -128,3 +198,4 @@
  	j	ra
  	sltu	$3,$4,1
  END(opal_atomic_cmpset_rel_64)

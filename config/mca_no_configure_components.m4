@@ -43,7 +43,7 @@ m4_define([mca_odls_m4_config_component_list], [default, process])
 m4_define([mca_oob_no_config_component_list], [])
 m4_define([mca_oob_m4_config_component_list], [tcp])
 m4_define([mca_plm_no_config_component_list], [])
-m4_define([mca_plm_m4_config_component_list], [alps, ccp, lsf, process, rsh, slurm, tm, xgrid])
+m4_define([mca_plm_m4_config_component_list], [alps, ccp, lsf, process, rsh, slurm, tm])
 m4_define([mca_ras_no_config_component_list], [])
 m4_define([mca_ras_m4_config_component_list], [alps, ccp, gridengine, loadleveler, lsf, slurm, tm])
 m4_define([mca_rmaps_no_config_component_list], [load_balance, rank_file, round_robin, seq])
@@ -462,12 +462,6 @@ dnl m4-configure component:
 dnl    orte/mca/plm/tm
 
 AC_CONFIG_FILES([orte/mca/plm/tm/Makefile])
-dnl ----------------------------------------------------------------
-
-dnl m4-configure component: 
-dnl    orte/mca/plm/xgrid
-
-AC_CONFIG_FILES([orte/mca/plm/xgrid/Makefile])
 AC_CONFIG_FILES(orte/mca/ras/Makefile)
 dnl ----------------------------------------------------------------
 

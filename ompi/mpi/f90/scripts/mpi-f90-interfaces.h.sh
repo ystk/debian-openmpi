@@ -5,7 +5,7 @@
 #                         Corporation.  All rights reserved.
 # Copyright (c) 2004-2006 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2011 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -118,7 +118,7 @@ output_2() {
 
 subroutine ${proc}(origin_addr, origin_count, origin_datatype, target_rank, target_disp, &
         target_count, target_datatype, op, win, ierr)
-  include 'mpif-common.h'
+  include 'mpif-config.h'
   ${type}, intent(in) :: origin_addr
   integer, intent(in) :: origin_count
   integer, intent(in) :: origin_datatype
@@ -1362,10 +1362,11 @@ output_36() {
     cat <<EOF
 
 subroutine ${procedure}(comm_copy_attr_fn, comm_delete_attr_fn, comm_keyval, extra_state, ierr)
+  include 'mpif-config.h'
   external :: comm_copy_attr_fn
   external :: comm_delete_attr_fn
   integer, intent(out) :: comm_keyval
-  integer, intent(in) :: extra_state
+  integer(kind=MPI_ADDRESS_KIND), intent(in) :: extra_state
   integer, intent(out) :: ierr
 end subroutine ${procedure}
 
@@ -1667,7 +1668,7 @@ output_49() {
     cat <<EOF
 
 subroutine ${procedure}(comm, errhandler, ierr)
-  integer, intent(inout) :: comm
+  integer, intent(in) :: comm
   integer, intent(in) :: errhandler
   integer, intent(out) :: ierr
 end subroutine ${procedure}
@@ -4886,10 +4887,11 @@ output_135() {
 
 subroutine ${procedure}(query_fn, free_fn, cancel_fn, extra_state, request&
         , ierr)
+  include 'mpif-config.h'
   external :: query_fn
   external :: free_fn
   external :: cancel_fn
-  integer, intent(in) :: extra_state
+  integer(kind=MPI_ADDRESS_KIND), intent(in) :: extra_state
   integer, intent(out) :: request
   integer, intent(out) :: ierr
 end subroutine ${procedure}
@@ -6498,11 +6500,12 @@ output_185() {
 
 subroutine ${procedure}(datarep, read_conversion_fn, write_conversion_fn, dtype_file_extent_fn, extra_state&
         , ierr)
+  include 'mpif-config.h'
   character(len=*), intent(in) :: datarep
   external :: read_conversion_fn
   external :: write_conversion_fn
   external :: dtype_file_extent_fn
-  integer, intent(in) :: extra_state
+  integer(kind=MPI_ADDRESS_KIND), intent(in) :: extra_state
   integer, intent(out) :: ierr
 end subroutine ${procedure}
 
@@ -6804,6 +6807,8 @@ output_192() {
     proc="$1$2D$3"
     cat <<EOF
 
+! Because we can't break ABI in the middle of the 1.5 series, also
+! provide the old/bad/incorrect MPI_Scatterv binding
 subroutine ${proc}(sendbuf, sendcounts, displs, sendtype, recvbuf, &
         recvcount, recvtype, root, comm, ierr)
   ${type}, intent(in) :: sendbuf
@@ -6817,6 +6822,20 @@ subroutine ${proc}(sendbuf, sendcounts, displs, sendtype, recvbuf, &
   integer, intent(in) :: comm
   integer, intent(out) :: ierr
 end subroutine ${proc}
+
+subroutine ${proc}_correct(sendbuf, sendcounts, displs, sendtype, recvbuf, &
+        recvcount, recvtype, root, comm, ierr)
+  ${type}, intent(in) :: sendbuf
+  integer, dimension(*), intent(in) :: sendcounts
+  integer, dimension(*), intent(in) :: displs
+  integer, intent(in) :: sendtype
+  ${type}, intent(out) :: recvbuf
+  integer, intent(in) :: recvcount
+  integer, intent(in) :: recvtype
+  integer, intent(in) :: root
+  integer, intent(in) :: comm
+  integer, intent(out) :: ierr
+end subroutine ${proc}_correct
 
 EOF
 }
@@ -7753,10 +7772,11 @@ output_219() {
     cat <<EOF
 
 subroutine ${procedure}(type_copy_attr_fn, type_delete_attr_fn, type_keyval, extra_state, ierr)
+  include 'mpif-config.h'
   external :: type_copy_attr_fn
   external :: type_delete_attr_fn
   integer, intent(out) :: type_keyval
-  integer, intent(in) :: extra_state
+  integer(kind=MPI_ADDRESS_KIND), intent(in) :: extra_state
   integer, intent(out) :: ierr
 end subroutine ${procedure}
 
@@ -8757,10 +8777,11 @@ output_255() {
     cat <<EOF
 
 subroutine ${procedure}(win_copy_attr_fn, win_delete_attr_fn, win_keyval, extra_state, ierr)
+  include 'mpif-config.h'
   external :: win_copy_attr_fn
   external :: win_delete_attr_fn
   integer, intent(out) :: win_keyval
-  integer, intent(in) :: extra_state
+  integer(kind=MPI_ADDRESS_KIND), intent(in) :: extra_state
   integer, intent(out) :: ierr
 end subroutine ${procedure}
 
@@ -9042,7 +9063,7 @@ output_267() {
     cat <<EOF
 
 subroutine ${procedure}(win, errhandler, ierr)
-  integer, intent(inout) :: win
+  integer, intent(in) :: win
   integer, intent(in) :: errhandler
   integer, intent(out) :: ierr
 end subroutine ${procedure}

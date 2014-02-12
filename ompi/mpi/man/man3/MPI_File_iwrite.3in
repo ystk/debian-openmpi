@@ -1,4 +1,4 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_File_iwrite 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
@@ -12,18 +12,22 @@ C Syntax
     int MPI_File_iwrite(MPI_File \fIfh\fP, void \fI*buf\fP, int \fIcount\fP, 
     	      MPI_Datatype \fIdatatype\fP, MPI_Request \fI*request\fP)
 
-Fortran Syntax
+.fi
+.SH Fortran Syntax
+.nf
     INCLUDE 'mpif.h'
     MPI_FILE_IWRITE(\fIFH\fP, \fIBUF\fP, \fICOUNT\fP, \fIDATATYPE\fP, \fIREQUEST\fP,\fI IERROR\fP)
 		<TYPE>		BUF(*)
         	INTEGER		FH, COUNT, DATATYPE, REQUEST, IERROR
 
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
 MPI::Request MPI::File::Iwrite(const void* \fIbuf\fP, int \fIcount\fP,
 	const MPI::Datatype& \fIdatatype\fP)
 
+.fi
 .SH INPUT/OUTPUT PARAMETER
 .ft R
 .TP 1i
@@ -73,7 +77,7 @@ All other fields of
 .I status 
 are undefined.
 .sp
-It is erroneous to call this function if MPI_MODE_SEQENTIAL mode was specified when the file was open. 
+It is erroneous to call this function if MPI_MODE_SEQUENTIAL mode was specified when the file was open. 
 
 .SH ERRORS
 Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI:Exception object.

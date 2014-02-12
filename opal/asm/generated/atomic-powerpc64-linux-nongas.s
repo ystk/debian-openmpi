@@ -145,8 +145,7 @@
 	     stwcx.   0, 0, 3              
 	     bne-  .L5
 	
-	lwz 3,0(3)
-	extsw 3,3
+	mr 3,0
 	blr
 	.size .opal_atomic_add_32, .-.opal_atomic_add_32
 
@@ -159,8 +158,7 @@
 	     stwcx.   0,0,3              
 	     bne-  .L6
 	
-	lwz 3,0(3)
-	extsw 3,3
+	mr 3,0
 	blr
 	.size .opal_atomic_sub_32, .-.opal_atomic_sub_32
 

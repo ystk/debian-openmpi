@@ -1,4 +1,4 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_File_delete 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
@@ -11,18 +11,22 @@ C Syntax
     #include <mpi.h>
     int MPI_File_delete(char \fI*filename\fP, MPI_Info \fIinfo\fP)
 
-Fortran Syntax
+.fi
+.SH Fortran Syntax
+.nf
     INCLUDE 'mpif.h'
     MPI_FILE_DELETE(\fIFILENAME\fP, \fIINFO\fP, \fIIERROR\fP)
    	 CHARACTER*(*) \fIFILENAME\fP
     	 INTEGER \fIINFO, IERROR\fP
 
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
 static void MPI::File::Delete(const char* \fIfilename\fP, const 
 	MPI::Info& \fIinfo\fP)
 
+.fi
 .SH INPUT PARAMETERS
 .ft R
 .TP 1i

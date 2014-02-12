@@ -1,4 +1,4 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_File_read_shared 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
@@ -12,7 +12,9 @@ C Syntax
     int MPI_File_read_shared(MPI_File \fIfh\fP, void \fI*buf\fP, int \fIcount\fP, 
 MPI_Datatype \fIdatatype\fP, MPI_Status \fI*status\fP)
 
-Fortran Syntax
+.fi
+.SH Fortran Syntax
+.nf
     INCLUDE 'mpif.h'
     MPI_FILE_READ_SHARED(\fIFH\fP, \fIBUF\fP, \fICOUNT\fP, \fIDATATYPE\fP, \fISTATUS\fP, 
 	\fIIERROR\fP)
@@ -20,6 +22,7 @@ Fortran Syntax
         	INTEGER		FH, COUNT, DATATYPE, 
 				STATUS(MPI_STATUS_SIZE), IERROR
 
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
@@ -29,6 +32,7 @@ void MPI::File::Read_shared(void* \fIbuf\fP, int \fIcount\fP,
 void MPI::File::Read_shared(void* \fIbuf\fP, int \fIcount\fP,
 	const MPI::Datatype& \fIdatatype\fP)
 
+.fi
 .SH INPUT/OUTPUT PARAMETER
 .ft R
 .TP 1i

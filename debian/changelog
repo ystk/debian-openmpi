@@ -1,3 +1,58 @@
+openmpi (1.4.5-1) unstable; urgency=low
+
+  * New upstream release
+  * ACK NMUs
+  * Switch to dpkg-source 3.0 (quilt) format
+  * Refresh of the patches
+  * Standards-Version updated to version 3.9.3
+
+ -- Sylvestre Ledru <sylvestre@debian.org>  Fri, 18 May 2012 11:26:16 +0200
+  
+openmpi (1.4.3-2.2) unstable; urgency=low
+
+  * Non-maintainer upload
+  * debian/patches/arm_support: fix ARM timer code, by Leif Lindholm. 
+    Closes: #666110.
+  * debian/libopenmpi1.3.lintian-overrides: New file, override
+    "embedded-library" lintian error, see #671621.
+  * debian/rules: Add dh_lintian.
+
+ -- Michael Banck <mbanck@debian.org>  Sat, 05 May 2012 17:02:38 +0200
+
+openmpi (1.4.3-2.1) unstable; urgency=low
+
+  * Non-maintainer upload
+  * Add openmpi link fix, closes: #621978
+    - Thanks to Daniel Schepler <dschepler@gmail.com>
+  * Add arm support from ubuntu, closes: #617779
+    - Thanks to Jani Monoses <jani@ubuntu.com>
+
+ -- Riku Voipio <riku.voipio@iki.fi>  Wed, 20 Apr 2011 19:53:03 +0300
+
+openmpi (1.4.3-2) unstable; urgency=low
+
+  * Fixed symlinks for shared libraries. Thanks to Matthias Klose
+    for the patch! Closes: #608717, #609830.
+  * Fixed symlink loop in openmpi-checkpoint. Closes: #611454.
+
+ -- Manuel Prinz <manuel@debian.org>  Fri, 11 Mar 2011 14:45:20 +0100
+
+openmpi (1.4.3-1) unstable; urgency=low
+
+  * New upstream release.
+  * Removed the following patches, all applied upstream:
+    - build_kfreebsd
+    - manpage-errors-checkpoint
+    - manpage-errors-macro
+    - manpage-errors-whatis
+    - manpage-spelling-errors
+    - var-copy
+  * Added a patch that fixes man page issues.
+  * Added sparc64 to Architecture list. Thanks to Aurelien Jarno for
+    the patch! Closes: #596134.
+
+ -- Manuel Prinz <manuel@debian.org>  Wed, 15 Dec 2010 18:50:16 +0100
+
 openmpi (1.4.2-4) unstable; urgency=low
 
   * Added patch to remove use of AS_VAR_GET. Closes: #592892.
