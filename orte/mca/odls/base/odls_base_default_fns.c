@@ -74,7 +74,6 @@
 #include "orte/mca/odls/base/base.h"
 #include "orte/mca/odls/base/odls_private.h"
 
-static int8_t *app_idx;
 
 /* IT IS CRITICAL THAT ANY CHANGE IN THE ORDER OF THE INFO PACKED IN
  * THIS FUNCTION BE REFLECTED IN THE CONSTRUCT_CHILD_LIST PARSER BELOW
@@ -207,7 +206,7 @@ int orte_odls_base_default_get_add_procs_data(opal_buffer_t *data,
     }
     
     /* pack the number of app_contexts for this job */
-    if (ORTE_SUCCESS != (rc = opal_dss.pack(data, &jdata->num_apps, 1, ORTE_STD_CNTR))) {
+    if (ORTE_SUCCESS != (rc = opal_dss.pack(data, &jdata->num_apps, 1, OPAL_INT32))) {
         ORTE_ERROR_LOG(rc);
         return rc;
     }
@@ -346,6 +345,7 @@ int orte_odls_base_default_construct_child_list(opal_buffer_t *data,
     char **slot_str=NULL;
     orte_namelist_t *nm;
     opal_list_t daemon_tree;
+    int32_t *app_idx=NULL;
 
     OPAL_OUTPUT_VERBOSE((5, orte_odls_globals.output,
                          "%s odls:constructing child list",
@@ -440,7 +440,7 @@ int orte_odls_base_default_construct_child_list(opal_buffer_t *data,
     }
     /* unpack the number of app_contexts for this job */
     cnt=1;
-    if (ORTE_SUCCESS != (rc = opal_dss.unpack(data, &jobdat->num_apps, &cnt, ORTE_STD_CNTR))) {
+    if (ORTE_SUCCESS != (rc = opal_dss.unpack(data, &jobdat->num_apps, &cnt, OPAL_INT32))) {
         ORTE_ERROR_LOG(rc);
         goto REPORT_ERROR;
     }
@@ -1533,7 +1533,6 @@ static void setup_singleton_jobdat(orte_jobid_t jobid)
     orte_odls_job_t *jobdat;
     orte_pmap_t pmap;
     int32_t one32;
-    int8_t one8;
     orte_local_rank_t lrank;
     orte_node_rank_t nrank;
     opal_buffer_t buffer;
@@ -1556,8 +1555,8 @@ static void setup_singleton_jobdat(orte_jobid_t jobid)
     opal_dss.pack(&buffer, &lrank, 1, ORTE_LOCAL_RANK);  /* local rank */
     nrank = 0;
     opal_dss.pack(&buffer, &nrank, 1, ORTE_NODE_RANK);  /* node rank */
-    one8 = 0;
-    opal_dss.pack(&buffer, &one8, 1, OPAL_INT8);  /* app_idx */
+    one32 = 0;
+    opal_dss.pack(&buffer, &one32, 1, OPAL_INT32);  /* app_idx */
     jobdat->pmap = (opal_byte_object_t*)malloc(sizeof(opal_byte_object_t));
     opal_dss.unload(&buffer, (void**)&jobdat->pmap->bytes, &jobdat->pmap->size);
     OBJ_DESTRUCT(&buffer);
@@ -1612,6 +1611,10 @@ int orte_odls_base_default_require_sync(orte_process_name_t *proc,
      * come from a singleton
      */
     if (!found) {
+        OPAL_OUTPUT_VERBOSE((5, orte_odls_globals.output,
+                             "%s odls: registering sync on singleton %s",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ORTE_NAME_PRINT(proc)));
         child = OBJ_NEW(orte_odls_child_t);
         if (ORTE_SUCCESS != (rc = opal_dss.copy((void**)&child->name, proc, ORTE_NAME))) {
             ORTE_ERROR_LOG(rc);
@@ -1684,7 +1687,8 @@ int orte_odls_base_default_require_sync(orte_process_name_t *proc,
     OBJ_DESTRUCT(&buffer);
     
     /* now check to see if everyone in this job has registered */
-    if (all_children_registered(proc->jobid)) {
+    if (ORTE_JOB_FAMILY(proc->jobid) == ORTE_JOB_FAMILY(ORTE_PROC_MY_NAME->jobid) &&
+        all_children_registered(proc->jobid)) {
         /* once everyone registers, send their contact info to
          * the HNP so it is available to debuggers and anyone
          * else that needs it
@@ -2111,7 +2115,9 @@ MOVEON:
     child->waitpid_recvd = true;
     
     /* check for everything complete */
-    check_proc_complete(child);
+    if (ORTE_JOB_FAMILY(child->name->jobid) == ORTE_JOB_FAMILY(ORTE_PROC_MY_NAME->jobid)) {
+        check_proc_complete(child);
+    }
     
     /* done */
     opal_condition_signal(&orte_odls_globals.cond);

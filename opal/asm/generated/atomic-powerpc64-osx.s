@@ -126,8 +126,7 @@ _opal_atomic_add_32:
 	     stwcx.   r0, 0, r3              
 	     bne-  L5
 	
-	lwz r3,0(r3)
-	extsw r3,r3
+	mr r3,r0
 	blr
 
 
@@ -138,8 +137,7 @@ _opal_atomic_sub_32:
 	     stwcx.   r0,0,r3              
 	     bne-  L6
 	
-	lwz r3,0(r3)
-	extsw r3,r3
+	mr r3,r0
 	blr
 
 	.globl _opal_sys_timer_get_cycles

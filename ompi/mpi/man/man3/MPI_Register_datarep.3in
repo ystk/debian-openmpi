@@ -1,10 +1,8 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_Register_datarep 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
 \fBMPI_Register_datarep\fP \- Defines data representation. 
-
-
 
 .SH SYNTAX
 .ft R
@@ -16,8 +14,9 @@ C Syntax
     	      MPI_Datarep_conversion_function \fI*write_conversion_fn\fP, 
     	      MPI_Datarep_extent_function \fI*dtype_file_extent_fn\fP, 
     	      void \fI*extra_state\fP)
-
-Fortran Syntax
+.fi
+.SH Fortran Syntax
+.nf
     INCLUDE 'mpif.h'
     MPI_REGISTER_DATAREP(\fIDATAREP\fP, \fIREAD_CONVERSION_FN\fP, 
 	\fIWRITE_CONVERSION_FN\fP, \fIDTYPE_FILE_EXTENT_FN\fP, 
@@ -27,7 +26,7 @@ Fortran Syntax
 		         DTYPE_FILE_EXTENT_FN\fP
         	INTEGER	\fIIERROR\fP
 		INTEGER(KIND=MPI_ADDRESS_KIND) \fIEXTRA_STATE\fP
-
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
@@ -37,6 +36,7 @@ void MPI::Register_datarep(const char* \fIdatarep\fP,
 	MPI::Datarep_extent_function* \fIdtype_file_extent_fn\fP,
 	void* \fIextra_state\fP)
 
+.fi
 .SH INPUT PARAMETERS
 .ft R
 .TP 1i

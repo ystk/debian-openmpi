@@ -72,8 +72,7 @@ _opal_atomic_add_32:
 	     add  r0, r4, r0                
 	     stwcx.   r0, 0, r3              
 	     bne-  L13
-	
-	lwz r3,0(r3)
+	mr	r3,r0
 	blr
 
 
@@ -83,8 +82,7 @@ _opal_atomic_sub_32:
 	     subf  r0,r4,r0                
 	     stwcx.   r0,0,r3              
 	     bne-  L14             
-	
-	lwz r3,0(r3)
+	mr	r3,r0
 	blr
 
 	.globl _opal_sys_timer_get_cycles
@@ -94,7 +92,7 @@ _opal_sys_timer_get_cycles:
 	mftb r11
 	mftbu r2
 	cmpw cr7,r2,r0
-	bne+ cr7,L14
+	bne+ cr7,L15
 	li r4,0
 	li r9,0
 	or r3,r2,r9

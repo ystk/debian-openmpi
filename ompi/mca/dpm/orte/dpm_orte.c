@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2009 University of Houston.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
  * $COPYRIGHT$
@@ -641,7 +641,7 @@ static int spawn(int count, char **array_of_commands,
              * "slave" process, typically to support an attached co-processor
              */
             ompi_info_get_bool(array_of_info[i], "ompi_local_slave", &local_spawn, &flag);
-            if ( local_spawn ) {
+            if ( flag && local_spawn ) {
                 jdata->controls |= ORTE_JOB_CONTROL_LOCAL_SPAWN;
             }
          
@@ -649,7 +649,7 @@ static int spawn(int count, char **array_of_commands,
              * knows what to do
              */
             ompi_info_get_bool(array_of_info[i], "ompi_non_mpi", &non_mpi, &flag);
-            if (non_mpi) {
+            if (flag && non_mpi) {
                 jdata->controls |= ORTE_JOB_CONTROL_NON_ORTE_JOB;
             }
             
@@ -929,10 +929,6 @@ static int dyn_init(void)
     int root=0, rc;
     bool send_first = true;
     ompi_communicator_t *newcomm=NULL;
-    ompi_group_t *group = NULL;
-    ompi_errhandler_t *errhandler = NULL;
-    
-    ompi_communicator_t *oldcomm;
     
     /* if env-variable is set, we are a dynamically spawned
         * child - parse port and call comm_connect_accept */
@@ -951,21 +947,17 @@ static int dyn_init(void)
         return rc;
     }
     
-    /* Set the parent communicator */
-    ompi_mpi_comm_parent = newcomm;
-    
     /* originally, we set comm_parent to comm_null (in comm_init),
      * now we have to decrease the reference counters to the according
      * objects
      */
-    
-    oldcomm = &ompi_mpi_comm_null.comm;
-    OBJ_RELEASE(oldcomm);
-    group = &ompi_mpi_group_null.group;
-    OBJ_RELEASE(group);
-    errhandler = &ompi_mpi_errors_are_fatal.eh;
-    OBJ_RELEASE(errhandler);
-    
+    OBJ_RELEASE(ompi_mpi_comm_parent->c_local_group);
+    OBJ_RELEASE(ompi_mpi_comm_parent->error_handler);
+    OBJ_RELEASE(ompi_mpi_comm_parent);
+
+    /* Set the parent communicator */
+    ompi_mpi_comm_parent = newcomm;
+
     /* Set name for debugging purposes */
     snprintf(newcomm->c_name, MPI_MAX_OBJECT_NAME, "MPI_COMM_PARENT");
     newcomm->c_flags |= OMPI_COMM_NAMEISSET;

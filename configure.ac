@@ -6,7 +6,7 @@
 # Copyright (c) 2004-2005 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
-# Copyright (c) 2004-2007 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2004-2010 High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
@@ -50,6 +50,11 @@ AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects no-define 1.10 tar-ustar])
 
 m4_pattern_allow([m4_ifval])
 
+# Do we have AS_VAR_COPY? 
+m4_ifndef([AS_VAR_COPY], 
+   [m4_define([AS_VAR_COPY], 
+              [AS_LITERAL_IF([$1[]$2], [$1=$$2], [eval $1=\$$2])])]) 
+
 # Make configure depend on the VERSION file, since it's used in AC_INIT
 AC_SUBST([CONFIGURE_DEPENDENCIES], ['$(top_srcdir)/VERSION'])
 
@@ -91,6 +96,15 @@ AC_SUBST(libmca_common_mx_so_version)
 AC_SUBST(libmca_common_portals_so_version)
 AC_SUBST(libopen_rte_so_version)
 AC_SUBST(libopen_pal_so_version)
+
+#
+# Hardwire OPAL progress threads to be off
+#
+OMPI_ENABLE_PROGRESS_THREADS=0
+enable_progress_threads="no"
+AC_DEFINE_UNQUOTED([OMPI_ENABLE_PROGRESS_THREADS], [$OMPI_ENABLE_PROGRESS_THREADS],
+                   [Hardcode the OPAL progress thread to be off])
+
 
 # List header files to generate
 
@@ -196,6 +210,25 @@ AM_DISABLE_STATIC
 
 OMPI_SETUP_WRAPPER_INIT
 
+
+##################################
+# Check for known incompatibility
+##################################
+
+# Do *not* print a message that we're checking the OS because this
+# test is *not* meant to be an all-inclusive "if it passes this test,
+# then configure must succeed" test.  This test is *only* mean to
+# screen out the versions of OS X where we know OMPI will cause kernel
+# panics because of bad implementations of pty's.  See
+# https://svn.open-mpi.org/trac/ompi/ticket/1637 for details.
+
+# We do not support OS X before version 10.4 (Tiger)
+case $host_os in
+# Corresponds to OS X 10.0 - 10.3 (additional [] quoting for m4)
+darwin[[4567]]*)
+    AC_MSG_WARN([Open MPI does not support OS X prior to version 10.4 (Tiger)])
+    AC_MSG_ERROR([Cannot continue])
+esac
 
 ############################################################################
 # Check for compilers and preprocessors
@@ -646,12 +679,12 @@ ompi_show_title "Header file tests"
 AC_CHECK_HEADERS([alloca.h aio.h arpa/inet.h dirent.h \
     dlfcn.h execinfo.h err.h fcntl.h grp.h inttypes.h libgen.h \
     libutil.h netdb.h netinet/in.h netinet/tcp.h \
-    poll.h pthread.h pty.h pwd.h sched.h stdint.h \
+    poll.h pthread.h pty.h pwd.h sched.h stdint.h stddef.h \
     string.h strings.h stropts.h sys/fcntl.h sys/ipc.h \
-    sys/ioctl.h sys/mman.h  sys/param.h sys/queue.h \
+    sys/ioctl.h sys/mman.h sys/mount.h sys/param.h sys/queue.h \
     sys/resource.h sys/select.h sys/socket.h sys/sockio.h \
-    stdarg.h sys/stat.h sys/statvfs.h sys/time.h sys/tree.h \
-    sys/types.h sys/uio.h net/uio.h sys/utsname.h sys/wait.h syslog.h \
+    stdarg.h sys/stat.h sys/statfs.h sys/statvfs.h sys/time.h sys/tree.h \
+    sys/types.h sys/uio.h net/uio.h sys/utsname.h sys/vfs.h sys/wait.h syslog.h \
     time.h termios.h ulimit.h unistd.h util.h utmp.h malloc.h \
     ifaddrs.h sys/sysctl.h crt_externs.h regex.h \
     ioLib.h sockLib.h hostLib.h shlwapi.h sys/synch.h])
@@ -1413,5 +1446,6 @@ AC_CONFIG_FILES([
     test/threads/Makefile
     test/peruse/Makefile
     test/datatype/Makefile
+    test/util/Makefile
 ])
 AC_OUTPUT

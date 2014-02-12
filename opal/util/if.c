@@ -39,6 +39,9 @@
 #endif
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
+#if defined(__DragonFly__)
+#define IN_LINKLOCAL(i)        (((uint32_t)(i) & 0xffff0000) == 0xa9fe0000)
+#endif
 #endif
 #ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
@@ -148,13 +151,7 @@ static int prefix (uint32_t netmask)
 static int opal_ifinit(void) 
 {
 #ifndef __WINDOWS__
-
-    int sd;
-    int lastlen, num, rem;
-    char *ptr;
-    struct ifconf ifconf;
-    int ifc_len;
-    bool successful_locate = false;
+    int flag;
 
     if (already_done) {
         return OPAL_SUCCESS;
@@ -163,197 +160,325 @@ static int opal_ifinit(void)
 
     mca_base_param_reg_int_name("opal", "if_do_not_resolve",
                                 "If nonzero, do not attempt to resolve interfaces",
-                                false, false, (int)false, &sd);
-    do_not_resolve = OPAL_INT_TO_BOOL(sd);
+                                false, false, (int)false, &flag);
+    do_not_resolve = OPAL_INT_TO_BOOL(flag);
 
-    /* create the internet socket to test off */
-/*
-   Change AF_INET to AF_UNSPEC (or AF_INET6) and everything will fail.
+#if defined(__NetBSD__) || defined(__FreeBSD__) || \
+    defined(__OpenBSD__) || defined(__DragonFly__)
+    /* configure using getifaddrs(3) */
+    {
+        OBJ_CONSTRUCT(&opal_if_list, opal_list_t);
 
-   Note that Linux does not support AF_INET6 here, but *BSD (and OSX)
-   probably would.
+        struct ifaddrs **ifadd_list;
+        struct ifaddrs *cur_ifaddrs;
+        struct sockaddr_in* sin_addr;
 
-   ifconf would be replaced by lifconf, SIOCG* by SIOCGL*.
-*/
-    if((sd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-        opal_output(0, "opal_ifinit: socket() failed with errno=%d\n", errno);
-        return OPAL_ERROR;
-    }
+        /* 
+         * the manpage claims that getifaddrs() allocates the memory,
+         * and freeifaddrs() is later used to release the allocated memory.
+         * however, without this malloc the call to getifaddrs() segfaults
+         */
+        ifadd_list = (struct ifaddrs **) malloc(sizeof(struct ifaddrs*));
 
-    /*
-     * Get Network Interface configuration 
-     *
-     * Some notes on the behavior of ioctl(..., SIOCGIFCONF,...)
-     * when not enough space is allocated for all the entries.
-     *
-     * - Solaris returns -1, errno EINVAL if there is not enough
-     *   space 
-     * - OS X returns 0, sets .ifc_len to the space used by the
-     *   by the entries that did fit.
-     * - Linux returns 0, sets .ifc_len to the space required to
-     *   hold all the entries (although it only writes what will
-     *   fit in the buffer of .ifc_len passed to the function).
-     * - FreeBSD returns 0, sets .ifc_len to 0.
-     *
-     * Everyone else seems to do one of the four.
-     */
-    lastlen = 0;
-    ifc_len = sizeof(struct ifreq) * DEFAULT_NUMBER_INTERFACES;
-    do {
-        ifconf.ifc_len = ifc_len;
-        ifconf.ifc_req = malloc(ifc_len);
-        if (NULL == ifconf.ifc_req) {
-            close(sd);
+        /* create the linked list of ifaddrs structs */
+        if(getifaddrs(ifadd_list) < 0) {
+            opal_output(0, "opal_ifinit: getifaddrs() failed with error=%d\n",
+                    errno);
             return OPAL_ERROR;
         }
 
-        /* initialize the memory so valgrind and purify won't
-         * complain.  Since this isn't performance critical, just
-         * always memset.
+        for(cur_ifaddrs = *ifadd_list; NULL != cur_ifaddrs; 
+                cur_ifaddrs = cur_ifaddrs->ifa_next) {
+
+            opal_if_t intf;
+            opal_if_t *intf_ptr;
+            struct in_addr a4;
+
+            /* skip non- af_inet interface addresses */
+            if(AF_INET != cur_ifaddrs->ifa_addr->sa_family) {
+		continue;
+	    }
+
+            /* skip interface if it is down (IFF_UP not set) */
+            if(0 == (cur_ifaddrs->ifa_flags & IFF_UP)) {
+                continue;
+            }
+
+            /* skip interface if it is a loopback device (IFF_LOOPBACK set) */
+            /* or if it is a point-to-point interface */
+            /* TODO: do we really skip p2p? */
+            if(0 != (cur_ifaddrs->ifa_flags & IFF_LOOPBACK)
+                    || 0!= (cur_ifaddrs->ifa_flags & IFF_POINTOPOINT)) {
+                continue;
+            }
+
+            sin_addr = (struct sockaddr_in *) cur_ifaddrs->ifa_addr;
+
+	    /* Do we really need to skip link-local addresses? */
+#if 0
+            /* skip link local address: */
+            if(IN_LINKLOCAL (htonl(((struct sockaddr_in*)cur_ifaddrs->ifa_addr)->sin_addr.s_addr))) {
+#if 0
+                opal_output(0, "opal_ifinit: skipping link-local ip address on interface %s.\n",
+                        cur_ifaddrs->ifa_name);
+#endif
+                continue;
+            }
+#endif
+
+            memset(&intf, 0, sizeof(intf));
+            OBJ_CONSTRUCT(&intf, opal_list_item_t);
+#if 0 
+            char *addr_name = (char *) malloc(48*sizeof(char));
+            inet_ntop(AF_INET, &sin_addr->sin_addr, addr_name, 48*sizeof(char));
+            opal_output(0, "inet capable interface %s discovered, address %s.\n", 
+                    cur_ifaddrs->ifa_name, addr_name);
+            free(addr_name);
+#endif
+
+            /* fill values into the opal_if_t */
+            memcpy(&a4, &(sin_addr->sin_addr), sizeof(struct in_addr));
+            
+            strncpy(intf.if_name, cur_ifaddrs->ifa_name, IF_NAMESIZE);
+            intf.if_index = opal_list_get_size(&opal_if_list) + 1;
+            ((struct sockaddr_in*) &intf.if_addr)->sin_addr = a4;
+            ((struct sockaddr_in*) &intf.if_addr)->sin_family = AF_INET;
+            ((struct sockaddr_in*) &intf.if_addr)->sin_len =  cur_ifaddrs->ifa_addr->sa_len;
+
+            /* since every scope != 0 is ignored, we just set the scope to 0 */
+            /* There's no scope_id in the non-ipv6 stuff 
+	    ((struct sockaddr_in6*) &intf.if_addr)->sin6_scope_id = 0; 
+	    */
+
+            /*
+             * hardcoded netmask, adrian says that's ok
+             */
+	    /* Non-NetBSD uses intf.if_mask = prefix(((struct sockaddr_in*) &ifr->ifr_addr)->sin_addr.s_addr); */
+            /* intf.if_mask = 64; */
+	    intf.if_mask = prefix( sin_addr->sin_addr.s_addr);
+            intf.if_flags = cur_ifaddrs->ifa_flags;
+
+            /*
+             * FIXME: figure out how to gain access to the kernel index
+             * (or create our own), getifaddrs() does not contain such
+             * data
+             */
+
+            intf.if_kernel_index = (uint16_t) if_nametoindex(cur_ifaddrs->ifa_name);
+
+            intf_ptr = (opal_if_t*) calloc(1, sizeof(opal_if_t));
+            if(NULL == intf_ptr) {
+                opal_output(0, "opal_ifinit: unable to allocate %lu bytes\n",
+                            sizeof(opal_if_t));
+                OBJ_DESTRUCT(&intf);
+                return OPAL_ERR_OUT_OF_RESOURCE;
+            }
+            memcpy(intf_ptr, &intf, sizeof(intf));
+
+	    /* opal_list_append(&opal_if_list, &intf_ptr->super); */
+            opal_list_append(&opal_if_list, (opal_list_item_t*) intf_ptr);
+
+            OBJ_DESTRUCT(&intf);
+        }   /*  of for loop over ifaddrs list */
+
+    }
+    /* End of various flavors of BSD */
+#else
+    /* Beginning of !(various flavors of BSD) */
+    {
+        int sd;
+        int lastlen, num, rem;
+        char *ptr;
+        struct ifconf ifconf;
+        int ifc_len;
+        bool successful_locate = false;
+
+        /* Create the internet socket to test with.  Must use AF_INET;
+           using AF_UNSPEC or AF_INET6 will cause everything to
+           fail. */
+        if((sd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+            opal_output(0, "opal_ifinit: socket() failed with errno=%d\n", errno);
+            return OPAL_ERROR;
+        }
+
+        /*
+         * Get Network Interface configuration 
+         *
+         * Some notes on the behavior of ioctl(..., SIOCGIFCONF,...)
+         * when not enough space is allocated for all the entries.
+         *
+         * - Solaris returns -1, errno EINVAL if there is not enough
+         *   space 
+         * - OS X returns 0, sets .ifc_len to the space used by the
+         *   by the entries that did fit.
+         * - Linux returns 0, sets .ifc_len to the space required to
+         *   hold all the entries (although it only writes what will
+         *   fit in the buffer of .ifc_len passed to the function).
+         * - FreeBSD returns 0, sets .ifc_len to 0.
+         *
+         * Everyone else seems to do one of the four.
          */
-        memset(ifconf.ifc_req, 0, ifconf.ifc_len);
-        
-        if(ioctl(sd, SIOCGIFCONF, &ifconf) < 0) {
-            /* if we got an einval, we probably don't have enough
-               space.  so we'll fall down and try to expand our
-               space */
-            if (errno != EINVAL && lastlen != 0) {
-                opal_output(0, "opal_ifinit: ioctl(SIOCGIFCONF) \
-                            failed with errno=%d", 
-                            errno);
-                free(ifconf.ifc_req);
+        lastlen = 0;
+        ifc_len = sizeof(struct ifreq) * DEFAULT_NUMBER_INTERFACES;
+        do {
+            ifconf.ifc_len = ifc_len;
+            ifconf.ifc_req = malloc(ifc_len);
+            if (NULL == ifconf.ifc_req) {
                 close(sd);
                 return OPAL_ERROR;
             }
-        } else {
-            /* if ifc_len is 0 or different than what we set it to at
-               call to ioctl, try again with a bigger buffer.  else stop */
-            if (ifconf.ifc_len == lastlen && ifconf.ifc_len > 0) {
-                /* we didn't expand.  we're done */
-                successful_locate = true;
-                break;
+            
+            /* initialize the memory so valgrind and purify won't
+             * complain.  Since this isn't performance critical, just
+             * always memset.
+             */
+            memset(ifconf.ifc_req, 0, ifconf.ifc_len);
+            
+            if(ioctl(sd, SIOCGIFCONF, &ifconf) < 0) {
+                /* if we got an einval, we probably don't have enough
+                   space.  so we'll fall down and try to expand our
+                   space */
+                if (errno != EINVAL && lastlen != 0) {
+                    opal_output(0, "opal_ifinit: ioctl(SIOCGIFCONF) \
+                            failed with errno=%d", 
+                                errno);
+                    free(ifconf.ifc_req);
+                    close(sd);
+                    return OPAL_ERROR;
+                }
+            } else {
+                /* if ifc_len is 0 or different than what we set it to at
+                   call to ioctl, try again with a bigger buffer.  else stop */
+                if (ifconf.ifc_len == lastlen && ifconf.ifc_len > 0) {
+                    /* we didn't expand.  we're done */
+                    successful_locate = true;
+                    break;
+                }
+                lastlen = ifconf.ifc_len;
             }
-            lastlen = ifconf.ifc_len;
-        }
-
-        /* Yes, we overflowed (or had an EINVAL on the ioctl).  Loop
-           back around and try again with a bigger buffer */
-        free(ifconf.ifc_req);
-        ifc_len = (ifc_len == 0) ? 1 : ifc_len * 2;
-    } while (ifc_len < MAX_IFCONF_SIZE);
-    if (!successful_locate) {
-        opal_output(0, "opal_ifinit: unable to find network interfaces.");
-        return OPAL_ERR_FATAL;
-    }
-
-    /* 
-     * Setup indexes 
-     */
-    OBJ_CONSTRUCT(&opal_if_list, opal_list_t);
-    ptr = (char*) ifconf.ifc_req;
-    rem = ifconf.ifc_len;
-    num = 0;
-
-    /* loop through all interfaces */
-    while (rem > 0) {
-        struct ifreq* ifr = (struct ifreq*) ptr;
-        opal_if_t *intf;
-        int length;
-
-        intf = OBJ_NEW(opal_if_t);
-        if (NULL == intf) {
-            opal_output(0, "opal_ifinit: unable to allocated %lu bytes\n", (unsigned long)sizeof(opal_if_t));
+            
+            /* Yes, we overflowed (or had an EINVAL on the ioctl).  Loop
+               back around and try again with a bigger buffer */
             free(ifconf.ifc_req);
-            close(sd);
-            return OPAL_ERR_OUT_OF_RESOURCE;
+            ifc_len = (ifc_len == 0) ? 1 : ifc_len * 2;
+        } while (ifc_len < MAX_IFCONF_SIZE);
+        if (!successful_locate) {
+            opal_output(0, "opal_ifinit: unable to find network interfaces.");
+            return OPAL_ERR_FATAL;
         }
-
-        /* compute offset for entries */
+        
+        /* 
+         * Setup indexes 
+         */
+        OBJ_CONSTRUCT(&opal_if_list, opal_list_t);
+        ptr = (char*) ifconf.ifc_req;
+        rem = ifconf.ifc_len;
+        num = 0;
+        
+        /* loop through all interfaces */
+        while (rem > 0) {
+            struct ifreq* ifr = (struct ifreq*) ptr;
+            opal_if_t *intf;
+            int length;
+            
+            intf = OBJ_NEW(opal_if_t);
+            if (NULL == intf) {
+                opal_output(0, "opal_ifinit: unable to allocated %lu bytes\n", (unsigned long)sizeof(opal_if_t));
+                free(ifconf.ifc_req);
+                close(sd);
+                return OPAL_ERR_OUT_OF_RESOURCE;
+            }
+            
+            /* compute offset for entries */
 #ifdef HAVE_STRUCT_SOCKADDR_SA_LEN
-        length = sizeof(struct sockaddr);
-
-        if (ifr->ifr_addr.sa_len > length) {
-            length = ifr->ifr_addr.sa_len;
-        }
-
-        length += sizeof(ifr->ifr_name);
+            length = sizeof(struct sockaddr);
+            
+            if (ifr->ifr_addr.sa_len > length) {
+                length = ifr->ifr_addr.sa_len;
+            }
+            
+            length += sizeof(ifr->ifr_name);
 #else
-        length = sizeof(struct ifreq);
+            length = sizeof(struct ifreq);
 #endif
-
-        rem -= length;
-        ptr += length;
-
-        /* see if we like this entry */
-        if(AF_INET != ifr->ifr_addr.sa_family) {
-            continue;
-        }
-
-        if(ioctl(sd, SIOCGIFFLAGS, ifr) < 0) {
-            opal_output(0, "opal_ifinit: ioctl(SIOCGIFFLAGS) failed with errno=%d", errno);
-            continue;
-        }
-        if ((ifr->ifr_flags & IFF_UP) == 0) 
-            continue;
+            
+            rem -= length;
+            ptr += length;
+            
+            /* see if we like this entry */
+            if(AF_INET != ifr->ifr_addr.sa_family) {
+                continue;
+            }
+            
+            if(ioctl(sd, SIOCGIFFLAGS, ifr) < 0) {
+                opal_output(0, "opal_ifinit: ioctl(SIOCGIFFLAGS) failed with errno=%d", errno);
+                continue;
+            }
+            if ((ifr->ifr_flags & IFF_UP) == 0) 
+                continue;
 #ifdef IFF_SLAVE
-        /* Is this a slave to a load balancer or bonded channel?
-           If so, don't use it -- pick up the master instead */
-        if ((ifr->ifr_flags & IFF_SLAVE) != 0)
-           continue;
+            /* Is this a slave to a load balancer or bonded channel?
+               If so, don't use it -- pick up the master instead */
+            if ((ifr->ifr_flags & IFF_SLAVE) != 0)
+                continue;
 #endif
 #if 0
-        if ((ifr->ifr_flags & IFF_LOOPBACK) != 0)
-            continue;
+            if ((ifr->ifr_flags & IFF_LOOPBACK) != 0)
+                continue;
 #endif
-
-        /* copy entry over into our data structure */
-        strcpy(intf->if_name, ifr->ifr_name);
-        intf->if_flags = ifr->ifr_flags;
-
-        /* every new address gets its own internal if_index */
-        intf->if_index = opal_list_get_size(&opal_if_list)+1;
-
-        /* assign the kernel index to distinguish different NICs */
+            
+            /* copy entry over into our data structure */
+            strcpy(intf->if_name, ifr->ifr_name);
+            intf->if_flags = ifr->ifr_flags;
+            
+            /* every new address gets its own internal if_index */
+            intf->if_index = opal_list_get_size(&opal_if_list)+1;
+            
+            /* assign the kernel index to distinguish different NICs */
 #ifndef SIOCGIFINDEX
-        intf->if_kernel_index = intf->if_index;
+            intf->if_kernel_index = intf->if_index;
 #else
-        if(ioctl(sd, SIOCGIFINDEX, ifr) < 0) {
-            opal_output(0,"opal_ifinit: ioctl(SIOCGIFINDEX) failed with errno=%d", errno);
-            continue;
-        }
+            if(ioctl(sd, SIOCGIFINDEX, ifr) < 0) {
+                opal_output(0,"opal_ifinit: ioctl(SIOCGIFINDEX) failed with errno=%d", errno);
+                continue;
+            }
 #if defined(ifr_ifindex)
-        intf->if_kernel_index = ifr->ifr_ifindex;
+            intf->if_kernel_index = ifr->ifr_ifindex;
 #elif defined(ifr_index)
-        intf->if_kernel_index = ifr->ifr_index;
+            intf->if_kernel_index = ifr->ifr_index;
 #else
-        intf->if_kernel_index = -1;
+            intf->if_kernel_index = -1;
 #endif
 #endif /* SIOCGIFINDEX */
-
-        /* This call returns IPv4 addresses only. Use SIOCGLIFADDR instead */
-        if(ioctl(sd, SIOCGIFADDR, ifr) < 0) {
-            opal_output(0, "opal_ifinit: ioctl(SIOCGIFADDR) failed with errno=%d", errno);
-            break;
+            
+            /* This call returns IPv4 addresses only. Use SIOCGLIFADDR instead */
+            if(ioctl(sd, SIOCGIFADDR, ifr) < 0) {
+                opal_output(0, "opal_ifinit: ioctl(SIOCGIFADDR) failed with errno=%d", errno);
+                break;
+            }
+            if(AF_INET != ifr->ifr_addr.sa_family) {
+                continue;
+            }
+            
+            /* based on above, we know this is an IPv4 address... */
+            memcpy(&intf->if_addr, &ifr->ifr_addr, sizeof(struct sockaddr_in));
+            
+            if(ioctl(sd, SIOCGIFNETMASK, ifr) < 0) {
+                opal_output(0, "opal_ifinit: ioctl(SIOCGIFNETMASK) failed with errno=%d", errno);
+                continue;
+            }
+            
+            /* generate CIDR and assign to netmask */
+            intf->if_mask = prefix(((struct sockaddr_in*) &ifr->ifr_addr)->sin_addr.s_addr);
+            
+            opal_list_append(&opal_if_list, &(intf->super));
         }
-        if(AF_INET != ifr->ifr_addr.sa_family) {
-            continue;
-        }
-
-        /* based on above, we know this is an IPv4 address... */
-        memcpy(&intf->if_addr, &ifr->ifr_addr, sizeof(struct sockaddr_in));
-
-        if(ioctl(sd, SIOCGIFNETMASK, ifr) < 0) {
-            opal_output(0, "opal_ifinit: ioctl(SIOCGIFNETMASK) failed with errno=%d", errno);
-            continue;
-        }
-
-        /* generate CIDR and assign to netmask */
-        intf->if_mask = prefix(((struct sockaddr_in*) &ifr->ifr_addr)->sin_addr.s_addr);
-
-        opal_list_append(&opal_if_list, &(intf->super));
+        free(ifconf.ifc_req);
+        close(sd);
     }
-    free(ifconf.ifc_req);
-    close(sd);
+#endif /* anything other than {Net,Open,Free}BSD and DragonFly */
+
+
 #if OPAL_WANT_IPV6
 #ifdef __linux__ /* Linux does not have SIOCGL*, so parse
                      /proc/net/if_inet6 instead */

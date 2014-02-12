@@ -1,4 +1,4 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_File_set_view 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
@@ -12,7 +12,9 @@ C Syntax
     	      MPI_Datatype \fIetype\fP, MPI_Datatype \fIfiletype\fP,
    	      char \fI*datarep\fP, MPI_Info \fIinfo\fP)
 
-Fortran Syntax (see FORTRAN 77 NOTES)
+.fi
+.SH Fortran Syntax (see FORTRAN 77 NOTES)
+.nf
     INCLUDE 'mpif.h'
     MPI_FILE_SET_VIEW(\fIFH\fP,\fI DISP\fP,\fI ETYPE\fP,
     	      \fI FILETYPE\fP, \fIDATAREP\fP, \fIINFO\fP,\fI IERROR\fP)
@@ -20,6 +22,7 @@ Fortran Syntax (see FORTRAN 77 NOTES)
 	 CHARACTER*(*) \fIDATAREP\fP
     	 INTEGER(KIND=MPI_OFFSET_KIND) \fIDISP\fP 
 
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
@@ -28,6 +31,7 @@ void MPI::File::Set_view(MPI::Offset \fIdisp\fP,
 	const MPI::Datatype& \fIfiletype\fP, const char* \fIdatarep\fP,
 	const MPI::Info& \fIinfo\fP)
 
+.fi
 .SH INPUT/OUTPUT PARAMETER
 .ft R
 .TP 1i
@@ -69,14 +73,15 @@ the type of data is set to
 and the distribution of data to processes is set to 
 .I filetype.
 In addition, MPI_File_set_view resets the independent file pointers and
-the shared file pointer to zero. MPI_File_set_view is collective; all
-processes in the group must pass identical values for 
-.I fh
-and 
-.I etype;
-values for 
-.I disp,
-.I filetype,
+the shared file pointer to zero. MPI_File_set_view is collective across the 
+.IR fh ; 
+all processes in the group must pass identical values for 
+.IR datarep 
+and provide an
+.I etype
+with an identical extent.  The values for
+.IR disp , 
+.IR filetype ,
 and 
 .I info
 may vary. It is erroneous to use the shared file pointer data-access

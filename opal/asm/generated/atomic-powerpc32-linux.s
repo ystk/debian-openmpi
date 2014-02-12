@@ -85,8 +85,7 @@ opal_atomic_add_32:
 	     add  0, 4, 0                
 	     stwcx.   0, 0, 3              
 	     bne-  .L13
-	
-	lwz 3,0(3)
+	mr	3,0
 	blr
 	.size opal_atomic_add_32, .-opal_atomic_add_32
 
@@ -98,8 +97,7 @@ opal_atomic_sub_32:
 	     subf  0,4,0                
 	     stwcx.   0,0,3              
 	     bne-  .L14             
-	
-	lwz 3,0(3)
+	mr	3,0
 	blr
 	.size opal_atomic_sub_32, .-opal_atomic_sub_32
 
@@ -111,7 +109,7 @@ opal_sys_timer_get_cycles:
 	mftb 11
 	mftbu 2
 	cmpw 7,2,0
-	bne+ 7,.L14
+	bne+ 7,.L15
 	li 4,0
 	li 9,0
 	or 3,2,9
