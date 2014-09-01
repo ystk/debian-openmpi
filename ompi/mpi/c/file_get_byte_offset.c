@@ -20,10 +20,11 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/file/file.h"
-#include "ompi/datatype/datatype.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_File_get_byte_offset = PMPI_File_get_byte_offset
 #endif
 

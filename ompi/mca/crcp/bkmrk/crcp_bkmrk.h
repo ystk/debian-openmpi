@@ -28,16 +28,10 @@
 
 #include "opal/mca/mca.h"
 #include "ompi/mca/crcp/crcp.h"
-#include "ompi/communicator/communicator.h"
-#include "opal/runtime/opal_cr.h"
-#include "opal/threads/mutex.h"
-#include "opal/threads/condition.h"
 #include MCA_timer_IMPLEMENTATION_HEADER
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
     /*
      * Local Component structures
@@ -63,8 +57,6 @@ extern "C" {
     int ompi_crcp_bkmrk_pml_init(void);
     int ompi_crcp_bkmrk_pml_finalize(void);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* MCA_CRCP_HOKE_EXPORT_H */

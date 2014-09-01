@@ -1,8 +1,9 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -261,11 +262,11 @@ static int mca_pml_ob1_recv_request_ack(
          * registered. 
          */
 
-        if(ompi_convertor_need_buffers(&recvreq->req_recv.req_base.req_convertor) == 0 &&
+        if(opal_convertor_need_buffers(&recvreq->req_recv.req_base.req_convertor) == 0 &&
            hdr->hdr_match.hdr_common.hdr_flags & MCA_PML_OB1_HDR_FLAGS_CONTIG &&
            rdma_num != 0) {
             unsigned char *base;
-            ompi_convertor_get_current_pointer( &recvreq->req_recv.req_base.req_convertor, (void**)&(base) );
+            opal_convertor_get_current_pointer( &recvreq->req_recv.req_base.req_convertor, (void**)&(base) );
            
             if(hdr->hdr_match.hdr_common.hdr_flags & MCA_PML_OB1_HDR_FLAGS_PIN)
                 recvreq->req_rdma_cnt = mca_pml_ob1_rdma_btls(bml_endpoint,
@@ -288,7 +289,7 @@ static int mca_pml_ob1_recv_request_ack(
 
                 /* use converter to figure out the rdma offset for this
                  * request */
-                ompi_convertor_set_position(&recvreq->req_recv.req_base.req_convertor,
+                opal_convertor_set_position(&recvreq->req_recv.req_base.req_convertor,
                         &recvreq->req_send_offset);
 
                 recvreq->req_rdma_cnt =
@@ -365,11 +366,24 @@ int mca_pml_ob1_recv_request_get_frag( mca_pml_ob1_rdma_frag_t* frag )
                               MCA_BTL_DES_FLAGS_BTL_OWNERSHIP | MCA_BTL_DES_SEND_ALWAYS_CALLBACK,
                               &descriptor );
     if( OPAL_UNLIKELY(NULL == descriptor) ) {
-        frag->rdma_length = save_size;
-        OPAL_THREAD_LOCK(&mca_pml_ob1.lock);
-        opal_list_append(&mca_pml_ob1.rdma_pending, (opal_list_item_t*)frag);
-        OPAL_THREAD_UNLOCK(&mca_pml_ob1.lock);
-        return OMPI_ERR_OUT_OF_RESOURCE;
+        if (frag->retries < mca_pml_ob1.rdma_put_retries_limit) {
+            frag->rdma_length = save_size;
+            OPAL_THREAD_LOCK(&mca_pml_ob1.lock);
+            opal_list_append(&mca_pml_ob1.rdma_pending, (opal_list_item_t*)frag);
+            OPAL_THREAD_UNLOCK(&mca_pml_ob1.lock);
+            return OMPI_ERR_OUT_OF_RESOURCE;
+        } else {
+            /* tell peer to release the rdma descriptor */
+            mca_pml_ob1_send_fin (recvreq->req_recv.req_base.req_proc, bml_btl,
+                                  frag->rdma_hdr.hdr_rget.hdr_des, MCA_BTL_NO_ORDER, 1);
+
+            /* tell peer to fall back on send */
+            rc = mca_pml_ob1_recv_request_ack_send_btl (recvreq->req_recv.req_base.req_proc, bml_btl,
+                                                        frag->rdma_hdr.hdr_rget.hdr_rndv.hdr_src_req.lval,
+                                                        recvreq, 0, true);
+            MCA_PML_OB1_RDMA_FRAG_RETURN(frag);
+            return rc;
+        }
     }
 
     descriptor->des_src = frag->rdma_segs;
@@ -414,7 +428,7 @@ void mca_pml_ob1_recv_request_progress_frag( mca_pml_ob1_recv_request_t* recvreq
                                              size_t num_segments )
 {
     size_t bytes_received = 0;
-    size_t bytes_delivered = 0;
+    size_t bytes_delivered __opal_attribute_unused__; /* is being set to zero in MCA_PML_OB1_RECV_REQUEST_UNPACK */
     size_t data_offset = 0;
     mca_pml_ob1_hdr_t* hdr = (mca_pml_ob1_hdr_t*)segments->seg_addr.pval;
 
@@ -484,7 +498,7 @@ void mca_pml_ob1_recv_request_progress_rget( mca_pml_ob1_recv_request_t* recvreq
      * fall back to copy in/out protocol. It is a pity because buffer on the
      * sender side is already registered. We need to be smarter here, perhaps
      * do couple of RDMA reads */
-    if(ompi_convertor_need_buffers(&recvreq->req_recv.req_base.req_convertor) == true) {
+    if(opal_convertor_need_buffers(&recvreq->req_recv.req_base.req_convertor) == true) {
         mca_pml_ob1_recv_request_ack(recvreq, &hdr->hdr_rndv, 0);
         return;
     }
@@ -502,7 +516,7 @@ void mca_pml_ob1_recv_request_progress_rget( mca_pml_ob1_recv_request_t* recvreq
     /* allocate/initialize a fragment */
     for(i = 0; i < hdr->hdr_seg_cnt; i++) {
         frag->rdma_segs[i] = hdr->hdr_segs[i];
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
         if ((recvreq->req_recv.req_base.req_proc->proc_arch & OPAL_ARCH_ISBIGENDIAN) !=
             (ompi_proc_local()->proc_arch & OPAL_ARCH_ISBIGENDIAN)) {
             size += opal_swap_bytes4(hdr->hdr_segs[i].seg_len);
@@ -539,7 +553,7 @@ void mca_pml_ob1_recv_request_progress_rndv( mca_pml_ob1_recv_request_t* recvreq
                                              size_t num_segments )
 {
     size_t bytes_received = 0;
-    size_t bytes_delivered = 0;
+    size_t bytes_delivered __opal_attribute_unused__; /* is being set to zero in MCA_PML_OB1_RECV_REQUEST_UNPACK */
     size_t data_offset = 0;
     mca_pml_ob1_hdr_t* hdr = (mca_pml_ob1_hdr_t*)segments->seg_addr.pval;
 
@@ -596,7 +610,8 @@ void mca_pml_ob1_recv_request_progress_match( mca_pml_ob1_recv_request_t* recvre
                                               mca_btl_base_segment_t* segments,
                                               size_t num_segments )
 {
-    size_t bytes_received = 0, bytes_delivered = 0, data_offset = 0;
+    size_t bytes_received = 0, data_offset = 0;
+    size_t bytes_delivered __opal_attribute_unused__; /* is being set to zero in MCA_PML_OB1_RECV_REQUEST_UNPACK */
     mca_pml_ob1_hdr_t* hdr = (mca_pml_ob1_hdr_t*)segments->seg_addr.pval;
 
     MCA_PML_OB1_COMPUTE_SEGMENT_LENGTH( segments, num_segments,
@@ -671,7 +686,7 @@ void mca_pml_ob1_recv_request_matched_probe( mca_pml_ob1_recv_request_t* recvreq
     recvreq->req_recv.req_base.req_ompi.req_status.MPI_TAG = hdr->hdr_match.hdr_tag;
     recvreq->req_recv.req_base.req_ompi.req_status.MPI_SOURCE = hdr->hdr_match.hdr_src;
     recvreq->req_bytes_received = bytes_packed;
-    recvreq->req_bytes_delivered = bytes_packed;
+    recvreq->req_bytes_expected = bytes_packed;
     recv_request_pml_complete(recvreq);
 }
 
@@ -749,7 +764,7 @@ int mca_pml_ob1_recv_request_schedule_once( mca_pml_ob1_recv_request_t* recvreq,
         /* take lock to protect converter against concurrent access
          * from unpack */
         OPAL_THREAD_LOCK(&recvreq->lock);
-        ompi_convertor_set_position( &recvreq->req_recv.req_base.req_convertor,
+        opal_convertor_set_position( &recvreq->req_recv.req_base.req_convertor,
                                      &recvreq->req_rdma_offset );
 
         /* prepare a descriptor for RDMA */
@@ -790,6 +805,7 @@ int mca_pml_ob1_recv_request_schedule_once( mca_pml_ob1_recv_request_t* recvreq,
         hdr->hdr_des.pval = dst;
         hdr->hdr_rdma_offset = recvreq->req_rdma_offset;
         hdr->hdr_seg_cnt = dst->des_dst_cnt;
+        hdr->hdr_recv_req.pval = recvreq;
 
         for( i = 0; i < dst->des_dst_cnt; i++ ) {
             hdr->hdr_segs[i].seg_addr.lval = ompi_ptr_ptol(dst->des_dst[i].seg_addr.pval);
@@ -929,9 +945,9 @@ void mca_pml_ob1_recv_req_start(mca_pml_ob1_recv_request_t *req)
 
     /* init/re-init the request */
     req->req_lock = 0;
-    req->req_pipeline_depth  = 0;
-    req->req_bytes_received  = 0;
-    req->req_bytes_delivered = 0;
+    req->req_pipeline_depth = 0;
+    req->req_bytes_received = 0;
+    req->req_bytes_expected = 0;
     /* What about req_rdma_cnt ? */
     req->req_rdma_idx = 0;
     req->req_pending = false;
@@ -954,7 +970,7 @@ void mca_pml_ob1_recv_req_start(mca_pml_ob1_recv_request_t *req)
     if(req->req_recv.req_base.req_peer == OMPI_ANY_SOURCE) {
         frag = recv_req_match_wild(req, &proc);
         queue = &comm->wild_receives;
-#if !OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !OPAL_ENABLE_HETEROGENEOUS_SUPPORT
         /* As we are in a homogeneous environment we know that all remote
          * architectures are exactly the same as the local one. Therefore,
          * we can safely construct the convertor based on the proc
@@ -964,7 +980,7 @@ void mca_pml_ob1_recv_req_start(mca_pml_ob1_recv_request_t *req)
             req->req_recv.req_base.req_proc = ompi_proc_local_proc;
             prepare_recv_req_converter(req);
         }
-#endif  /* !OMPI_ENABLE_HETEROGENEOUS_SUPPORT */
+#endif  /* !OPAL_ENABLE_HETEROGENEOUS_SUPPORT */
     } else {
         proc = &comm->procs[req->req_recv.req_base.req_peer];
         req->req_recv.req_base.req_proc = proc->ompi_proc;

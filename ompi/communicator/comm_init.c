@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2010 University of Houston. All rights reserved.
- * Copyright (c) 2007      Cisco, Inc. All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
@@ -32,7 +32,6 @@
 #include "ompi/runtime/params.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/attribute/attribute.h"
-#include "ompi/mca/topo/topo.h"
 #include "ompi/mca/dpm/dpm.h"
 #include "ompi/memchecker.h"
 
@@ -58,7 +57,6 @@ OBJ_CLASS_INSTANCE(ompi_communicator_t,opal_object_t,ompi_comm_construct,ompi_co
    process with more than one jobid. This counter is a usefull 
    shortcut for finalize and abort. */
 int ompi_comm_num_dyncomm=0;
-
 
 /*
  * Initialize comm world/self/null/parent.
@@ -259,13 +257,14 @@ int ompi_comm_finalize(void)
             if ( NULL != comm ) {
                 /* Still here ? */
 		if ( !OMPI_COMM_IS_EXTRA_RETAIN(comm)) {
-		    /* For communicator that have been marked as extra_retain, we do not further
-		     * enforce to decrease the reference counter once more. These extra_retain
+
+		    /* For communicator that have been marked as "extra retain", we do not further
+		     * enforce to decrease the reference counter once more. These "extra retain"
 		     * communicators created e.g. by the hierarch or inter module did increase
 		     * the reference count by one more than other communicators, on order to
-		     * allow for deallocation with the parent communicator. Note, that 
+		     * allow for deallocation with the parent communicator. Note, that
 		     * this only occurs if the cid of the local_comm is lower than of its
-		     * parent communicator. Read the comment in comm_activate for 
+		     * parent communicator. Read the comment in comm_activate for
 		     * a full explanation.
 		     */
 		    if ( ompi_debug_show_handle_leaks && !(OMPI_COMM_IS_FREED(comm)) ){
@@ -399,7 +398,6 @@ static void ompi_comm_destruct(ompi_communicator_t* comm)
     if ( MPI_COMM_NULL != comm && OMPI_COMM_IS_PML_ADDED(comm) ) {
         MCA_PML_CALL(del_comm (comm));
     }
-    
 
     /* Release topology information */
     mca_topo_base_comm_unselect(comm);
@@ -434,9 +432,6 @@ static void ompi_comm_destruct(ompi_communicator_t* comm)
         opal_pointer_array_set_item ( &ompi_mpi_communicators,
                                       comm->c_f_to_c_index, NULL);
 
-	if ( MPI_UNDEFINED != comm->c_id_start_index ) {
-	    ompi_comm_checkfor_blockreset ( comm );
-	}
     }
 
 

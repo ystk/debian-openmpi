@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * $COPYRIGHT$
@@ -21,17 +21,21 @@
 
 #include "ompi_config.h"
 
-#if HAVE_TIME_H
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+#ifdef HAVE_TIME_H
 #include <time.h>
 #endif  /* HAVE_TIME_H */
 
 #include "ompi/constants.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/runtime/mpiruntime.h"
 #include "ompi/runtime/params.h"
-#include "ompi/datatype/datatype.h"
 #include "orte/util/show_help.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/util/argv.h"
+#include "opal/util/output.h"
 
 /*
  * Global variables
@@ -56,6 +60,7 @@ int ompi_mpi_leave_pinned = -1;
 bool ompi_mpi_leave_pinned_pipeline = false;
 bool ompi_have_sparse_group_storage = OPAL_INT_TO_BOOL(OMPI_GROUP_SPARSE);
 bool ompi_use_sparse_group_storage = OPAL_INT_TO_BOOL(OMPI_GROUP_SPARSE);
+bool ompi_notify_init_finalize = true;
 
 static bool show_default_mca_params = false;
 static bool show_file_mca_params = false;
@@ -166,8 +171,7 @@ int ompi_mpi_register_params(void)
                     show_default_mca_params = true;
                 } else if (0 == strcasecmp(args[i], "file")) {
                     show_file_mca_params = true;
-                } else if (0 == strcasecmp(args[i], "enviro") || 
-                           0 == strcasecmp(args[i], "env")) {
+                } else if (0 == strncasecmp(args[i], "env", 3)) {
                     show_enviro_mca_params = true;
                 } else if (0 == strcasecmp(args[i], "api")) {
                     show_override_mca_params = true;
@@ -175,6 +179,7 @@ int ompi_mpi_register_params(void)
             }
             opal_argv_free(args);
         }
+        free(param);
     }
 
     /* File to use when dumping the parameters */
@@ -207,14 +212,14 @@ int ompi_mpi_register_params(void)
                                 /* If we do not have stack trace
                                    capability, make this a read-only
                                    MCA param */
-#if OMPI_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) && defined(HAVE_BACKTRACE)
+#if OPAL_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) && defined(HAVE_BACKTRACE)
                                 false, 
 #else
                                 true,
 #endif
                                 (int) ompi_mpi_abort_print_stack,
                                 &value);
-#if OMPI_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) && defined(HAVE_BACKTRACE)
+#if OPAL_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) && defined(HAVE_BACKTRACE)
     /* Only take the value if we have stack trace capability */
     ompi_mpi_abort_print_stack = OPAL_INT_TO_BOOL(value);
 #else
@@ -282,8 +287,15 @@ int ompi_mpi_register_params(void)
         }
     }
 
-    /* The ddt engine has a few parameters */
-    return ompi_ddt_register_params();
+    /* Do we want notifier messages upon MPI_INIT and MPI_FINALIZE? */
+
+    mca_base_param_reg_int_name("mpi", "notify_init_finalize",
+                                "If nonzero, send two notifications during MPI_INIT: one near when MPI_INIT starts, and another right before MPI_INIT finishes, and send 2 notifications during MPI_FINALIZE: one right when MPI_FINALIZE starts, and another near when MPI_FINALIZE finishes.",
+                                false, false, 
+                                (int) ompi_notify_init_finalize, &value);
+    ompi_notify_init_finalize = OPAL_INT_TO_BOOL(value);
+
+    return OMPI_SUCCESS;
 }
 
 int ompi_show_all_mca_params(int32_t rank, int requested, char *nodename) {
@@ -377,7 +389,7 @@ int ompi_show_all_mca_params(int32_t rank, int requested, char *nodename) {
                 src_string = "default value";
                 break;
             case MCA_BASE_PARAM_SOURCE_ENV:
-                src_string = "environment";
+                src_string = "environment or cmdline";
                 break;
             case MCA_BASE_PARAM_SOURCE_FILE:
                 src_string = "file";

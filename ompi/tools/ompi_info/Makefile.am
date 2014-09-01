@@ -18,7 +18,7 @@
 # $HEADER$
 #
 
-AM_CPPFLAGS = \
+AM_CFLAGS = \
             -DOMPI_CONFIGURE_USER="\"@OMPI_CONFIGURE_USER@\"" \
             -DOMPI_CONFIGURE_HOST="\"@OMPI_CONFIGURE_HOST@\"" \
             -DOMPI_CONFIGURE_DATE="\"@OMPI_CONFIGURE_DATE@\"" \
@@ -33,7 +33,7 @@ AM_CPPFLAGS = \
             -DOMPI_BUILD_FCFLAGS="\"@FCFLAGS@\"" \
             -DOMPI_BUILD_LDFLAGS="\"@LDFLAGS@\"" \
             -DOMPI_BUILD_LIBS="\"@LIBS@\"" \
-            -DOMPI_CC_ABSOLUTE="\"@OMPI_CC_ABSOLUTE@\"" \
+            -DOPAL_CC_ABSOLUTE="\"@OPAL_CC_ABSOLUTE@\"" \
             -DOMPI_CXX_ABSOLUTE="\"@OMPI_CXX_ABSOLUTE@\"" \
             -DOMPI_F77_ABSOLUTE="\"@OMPI_F77_ABSOLUTE@\"" \
             -DOMPI_F90_ABSOLUTE="\"@OMPI_F90_ABSOLUTE@\"" \
@@ -60,12 +60,13 @@ $(nodist_man_MANS): $(top_builddir)/opal/include/opal_config.h
 endif
 
 ompi_info_SOURCES = \
-        components.cc \
         ompi_info.h \
-        ompi_info.cc \
-        output.cc \
-        param.cc \
-        version.cc 
+        ompi_info.c \
+        output.c \
+        param.c \
+        components.c \
+        version.c
+
 ompi_info_LDADD = $(top_builddir)/ompi/libmpi.la
 
 clean-local:

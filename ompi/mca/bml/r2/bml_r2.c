@@ -1,8 +1,9 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -11,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2009 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -24,9 +25,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "opal/class/opal_bitmap.h"
 #include "opal/util/argv.h"
+#include "opal/util/output.h"
 #include "orte/util/show_help.h"
-#include "ompi/class/ompi_bitmap.h"
 #include "ompi/mca/bml/bml.h"
 #include "ompi/mca/bml/base/base.h"
 #include "ompi/mca/btl/btl.h"
@@ -139,7 +141,7 @@ static int btl_bandwidth_compare(const void *v1, const void *v2)
 
 static int mca_bml_r2_add_procs( size_t nprocs, 
                                  struct ompi_proc_t** procs, 
-                                 struct ompi_bitmap_t* reachable )
+                                 struct opal_bitmap_t* reachable )
 {
     size_t p, p_index, n_new_procs = 0;
     struct mca_btl_base_endpoint_t ** btl_endpoints = NULL;  
@@ -200,7 +202,7 @@ static int mca_bml_r2_add_procs( size_t nprocs,
          * and can return addressing information for each proc
          * that is passed back to the r2 on data transfer calls
          */
-        ompi_bitmap_clear_all_bits(reachable);
+        opal_bitmap_clear_all_bits(reachable);
         memset(btl_endpoints, 0, nprocs *sizeof(struct mca_btl_base_endpoint_t*)); 
 
         rc = btl->btl_add_procs(btl, n_new_procs, new_procs, btl_endpoints, reachable);
@@ -213,7 +215,7 @@ static int mca_bml_r2_add_procs( size_t nprocs,
 
         /* for each proc that is reachable */
         for( p = 0; p < n_new_procs; p++ ) {
-            if(ompi_bitmap_is_set_bit(reachable, p)) {
+            if(opal_bitmap_is_set_bit(reachable, p)) {
                 ompi_proc_t *proc = new_procs[p]; 
                 mca_bml_base_endpoint_t * bml_endpoint = (mca_bml_base_endpoint_t*) proc->proc_bml; 
                 mca_bml_base_btl_t* bml_btl; 
@@ -265,7 +267,7 @@ static int mca_bml_r2_add_procs( size_t nprocs,
                 }
                 if( (bml_btl->btl_flags & MCA_BTL_FLAGS_GET) && (NULL == btl->btl_get) ) {
                     opal_output(0, "mca_bml_r2_add_procs: The GET flag is specified for"
-                                " the %s BTL without any GET function attached. Disard the flag !",
+                                " the %s BTL without any GET function attached. Discard the flag !",
                                 bml_btl->btl->btl_component->btl_version.mca_component_name);
                     bml_btl->btl_flags ^= MCA_BTL_FLAGS_GET;
                 }
@@ -353,9 +355,9 @@ static int mca_bml_r2_add_procs( size_t nprocs,
 
             /* compute weighting factor for this r2 */
             if(btl->btl_bandwidth > 0) {
-                bml_btl->btl_weight = btl->btl_bandwidth / total_bandwidth;
+                bml_btl->btl_weight = (float)(btl->btl_bandwidth / total_bandwidth);
             } else {
-                bml_btl->btl_weight = 1.0 / n_size;
+                bml_btl->btl_weight = (float)(1.0 / n_size);
             }
 
             /* check to see if this r2 is already in the array of r2s 
@@ -552,9 +554,9 @@ static int mca_bml_r2_del_proc_btl(ompi_proc_t* proc, mca_btl_base_module_t* btl
             ep_btl = bml_btl->btl;
 
             if(ep_btl->btl_bandwidth > 0) {
-                bml_btl->btl_weight = ep_btl->btl_bandwidth / total_bandwidth;
+                bml_btl->btl_weight = (float)(ep_btl->btl_bandwidth / total_bandwidth);
             } else {
-                bml_btl->btl_weight = 1.0 / mca_bml_base_btl_array_get_size(&ep->btl_send);
+                bml_btl->btl_weight = (float)(1.0 / mca_bml_base_btl_array_get_size(&ep->btl_send));
             }
         }
     }
@@ -584,9 +586,9 @@ static int mca_bml_r2_del_proc_btl(ompi_proc_t* proc, mca_btl_base_module_t* btl
             ep_btl = bml_btl->btl;
 
             if(ep_btl->btl_bandwidth > 0) {
-                bml_btl->btl_weight = ep_btl->btl_bandwidth / total_bandwidth;
+                bml_btl->btl_weight = (float)(ep_btl->btl_bandwidth / total_bandwidth);
             } else {
-                bml_btl->btl_weight = 1.0 / mca_bml_base_btl_array_get_size(&ep->btl_rdma);
+                bml_btl->btl_weight = (float)(1.0 / mca_bml_base_btl_array_get_size(&ep->btl_rdma));
             }
         }
     }
@@ -620,11 +622,16 @@ int mca_bml_r2_finalize( void )
         bml_r2_remove_btl_progress(btl);
 
         /* dont use this btl for any peers */
-        for(p=0; p<num_procs; p++) {
+        for( p = 0; p < num_procs; p++ ) {
             ompi_proc_t* proc = procs[p];
             mca_bml_r2_del_proc_btl(proc, sm->btl_module);
         }
     }
+    /* Release the procs as the ompi_proc_all increase their ref_count */
+    for( p = 0; p < num_procs; p++ ) {
+        OBJ_RELEASE(procs[p]);
+    }
+    free(procs);
 
  CLEANUP:
     mca_bml_r2.num_btl_modules = 0;
@@ -632,12 +639,15 @@ int mca_bml_r2_finalize( void )
 
     if( NULL != mca_bml_r2.btl_modules) {
         free( mca_bml_r2.btl_modules);
+        mca_bml_r2.btl_modules = NULL;
     }
     if( NULL != mca_bml_r2.btl_progress ) {
         free( mca_bml_r2.btl_progress);
+        mca_bml_r2.btl_progress = NULL;
     }
 
-    mca_btl_base_close();
+    /* Do not close the BTL base here; the BML upper layer will take
+       care of that. */
 
     return OMPI_SUCCESS;
 } 
@@ -656,14 +666,14 @@ static int mca_bml_r2_del_btl(mca_btl_base_module_t* btl)
     mca_btl_base_module_t** modules;
     bool found = false;
     
+    if(opal_list_get_size(&mca_btl_base_modules_initialized) == 2) { 
+        opal_output(0, "only one BTL left, can't failover");
+        return OMPI_SUCCESS;
+    }
+    
     procs = ompi_proc_all(&num_procs);
     if(NULL == procs)
         return OMPI_SUCCESS;
-    
-    if(opal_list_get_size(&mca_btl_base_modules_initialized) == 2) { 
-        opal_output(0, "only one BTL left, can't failover");
-        goto CLEANUP; 
-    }
     
     /* Get rid of the associated progress function */
     bml_r2_remove_btl_progress(btl);
@@ -704,6 +714,10 @@ static int mca_bml_r2_del_btl(mca_btl_base_module_t* btl)
     /* cleanup */
     btl->btl_finalize(btl);
 CLEANUP:
+    /* Decrease the ref_count increased by the call to ompi_proc_all */
+    for( p = 0; p < num_procs; p++ ) {
+        OBJ_RELEASE(procs[p]);
+    }
     free(procs);
     return OMPI_SUCCESS;
 }

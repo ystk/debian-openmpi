@@ -41,37 +41,26 @@
 #include <sys/stat.h>  /* for mkfifo */
 #endif  /* HAVE_SYS_STAT_H */
 
-#include "orte/util/show_help.h"
 #include "opal/util/opal_environ.h"
+#include "opal/util/output.h"
 #include "opal/event/event.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
 #include "opal/runtime/opal_cr.h"
 
 #include "orte/runtime/orte_cr.h"
-#include "orte/runtime/runtime.h"
 #include "orte/util/proc_info.h"
-#include "orte/util/session_dir.h"
-#include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
-#include "orte/util/show_help.h"
 
-#include "orte/mca/plm/plm.h"
 #include "orte/mca/plm/base/base.h"
 #include "orte/mca/ess/ess.h"
 #include "orte/mca/ess/base/base.h"
 #include "orte/mca/routed/base/base.h"
 #include "orte/mca/routed/routed.h"
-#include "orte/mca/rml/rml.h"
 #include "orte/mca/rml/base/base.h"
-#include "orte/mca/iof/iof.h"
 #include "orte/mca/iof/base/base.h"
-#include "orte/mca/odls/odls.h"
-#include "orte/mca/odls/base/base.h"
-#include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/snapc/snapc.h"
 #include "orte/mca/snapc/base/base.h"
-#include "orte/mca/filem/filem.h"
 #include "orte/mca/filem/base/base.h"
 
 /*************
@@ -303,6 +292,7 @@ static int orte_cr_coord_post_ckpt(void) {
 
 static int orte_cr_coord_post_restart(void) {
     int ret, exit_status = ORTE_SUCCESS;
+    orte_proc_type_t prev_type = ORTE_PROC_TYPE_NONE;
 
     opal_output_verbose(10, orte_cr_output,
                         "orte_cr: coord_post_restart: orte_cr_coord_post_restart()");
@@ -310,6 +300,7 @@ static int orte_cr_coord_post_restart(void) {
     /*
      * Refresh System information
      */
+    prev_type = orte_process_info.proc_type;
     if( ORTE_SUCCESS != (ret = orte_proc_info_finalize()) ) {
         exit_status = ret;
     }
@@ -327,6 +318,8 @@ static int orte_cr_coord_post_restart(void) {
     if( ORTE_SUCCESS != (ret = orte_proc_info()) ) {
         exit_status = ret;
     }
+
+    orte_process_info.proc_type = prev_type;
     orte_process_info.my_name = *ORTE_NAME_INVALID;
 
     /*

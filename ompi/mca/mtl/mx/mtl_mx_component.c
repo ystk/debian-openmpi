@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,8 +21,6 @@
 
 #include "opal/event/event.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "orte/util/show_help.h"
-#include "ompi/datatype/convertor.h"
 #include "ompi/mca/mtl/base/base.h"
 #include "ompi/mca/common/mx/common_mx.h"
 
@@ -34,6 +33,7 @@
 #define  MCA_MTL_MX_QUEUE_LENGTH_MAX 2*1024*1024
 static int ompi_mtl_mx_component_open(void);
 static int ompi_mtl_mx_component_close(void);
+static int ompi_mtl_mx_component_initialized = 0;
 
 static mca_mtl_base_module_t* ompi_mtl_mx_component_init( bool enable_progress_threads, 
                                                           bool enable_mpi_threads );
@@ -92,14 +92,28 @@ ompi_mtl_mx_component_open(void)
     if(ompi_mtl_mx.mx_unexp_queue_max >  MCA_MTL_MX_QUEUE_LENGTH_MAX) { 
         ompi_mtl_mx.mx_unexp_queue_max =  MCA_MTL_MX_QUEUE_LENGTH_MAX; 
     }
-    return OMPI_SUCCESS;
+
+    mca_base_param_reg_int(&mca_mtl_mx_component.super.mtl_version, "board",
+                           "Which MX board number to use (<0 = any)",
+                           false, false, -1, &ompi_mtl_mx.mx_board_num);
+    mca_base_param_reg_int(&mca_mtl_mx_component.super.mtl_version, "endpoint",
+                           "Which MX endpoint number to use (<0 = any)",
+                           false, false, -1, &ompi_mtl_mx.mx_endpoint_num);
     
+    return OMPI_SUCCESS;
 }
 
 
 static int
 ompi_mtl_mx_component_close(void)
 {
+    --ompi_mtl_mx_component_initialized;
+    if( 0 == ompi_mtl_mx_component_initialized ) {
+        int ret = ompi_common_mx_finalize();
+        if(OMPI_SUCCESS != ret) { 
+            return NULL;
+        }
+     }
     return OMPI_SUCCESS;
 }
 
@@ -114,7 +128,8 @@ ompi_mtl_mx_component_init(bool enable_progress_threads,
     if(OMPI_SUCCESS != ret) { 
         return NULL;
     }
-        
+    ompi_mtl_mx_component_initialized++;
+
     ret = ompi_mtl_mx_module_init();
     if (OMPI_SUCCESS != ret) {
         return NULL;

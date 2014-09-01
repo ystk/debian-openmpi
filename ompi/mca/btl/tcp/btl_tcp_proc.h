@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -26,9 +27,7 @@
 #include "btl_tcp_addr.h"
 #include "btl_tcp_endpoint.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /**
  * Represents the state of a remote process and the set of addresses
@@ -42,9 +41,6 @@ struct mca_btl_tcp_proc_t {
 
     ompi_proc_t *proc_ompi;                  
     /**< pointer to corresponding ompi_proc_t */
-
-    orte_process_name_t proc_name;           
-    /**< globally unique identifier for the process */
 
     struct mca_btl_tcp_addr_t* proc_addrs;
     /**< array of addresses exported by peer */
@@ -69,6 +65,12 @@ OBJ_CLASS_DECLARATION(mca_btl_tcp_proc_t);
 
 /*	the maximum number of kernel interfaces we can handle */
 #define MAX_KERNEL_INTERFACES 8
+
+/* The maximum number of interfaces that we can have and use the
+ * recursion code for determining the best set of connections.  When
+ * the number is greater than this, we switch to a simpler algorithm
+ * to speed things up. */
+#define MAX_PERMUTATION_INTERFACES 8
 
 /*
  * FIXME: this should probably be part of an ompi list, so we need the
@@ -121,7 +123,5 @@ static inline mca_btl_tcp_proc_t* mca_btl_tcp_proc_local(void)
     return mca_btl_tcp_component.tcp_local;
 }
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif

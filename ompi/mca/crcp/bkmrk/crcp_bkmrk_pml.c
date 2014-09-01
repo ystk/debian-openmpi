@@ -1,6 +1,10 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2009 The Trustees of Indiana University.
  *                         All rights reserved.
+ * Copyright (c) 2010      The University of Tennessee and The University
+ *                         of Tennessee Research Foundation.  All rights
+ *                         reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,9 +26,7 @@
 #include "opal/event/event.h"
 #include "opal/util/output.h"
 
-#include "opal/util/argv.h"
 #include "opal/util/opal_environ.h"
-#include "opal/util/arch.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
@@ -32,6 +34,7 @@
 #include "orte/runtime/orte_globals.h"
 #include "orte/util/name_fns.h"
 #include "orte/mca/grpcomm/grpcomm.h"
+#include "orte/mca/rml/rml.h"
 
 #include "ompi/request/request.h"
 #include "ompi/mca/dpm/dpm.h"
@@ -556,7 +559,7 @@ char * timer_label[CRCP_TIMER_MAX];
 /************************************
  * Additional Debuging dumps
  ************************************/
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 static void traffic_message_dump_peer(ompi_crcp_bkmrk_pml_peer_ref_t *peer_ref, char * msg, bool root_only);
 static void traffic_message_dump_msg_list(opal_list_t *msg_list, bool is_drain);
 static void traffic_message_dump_msg_indv(ompi_crcp_bkmrk_pml_traffic_message_ref_t * msg_ref, char * msg, bool vshort);
@@ -1102,9 +1105,9 @@ int ompi_crcp_bkmrk_pml_init(void) {
     OBJ_CONSTRUCT(&coord_state_free_list, ompi_free_list_t);
     ompi_free_list_init_new( &coord_state_free_list,
                              sizeof(ompi_crcp_bkmrk_pml_state_t),
-                             CACHE_LINE_SIZE,
+                             opal_cache_line_size,
                              OBJ_CLASS(ompi_crcp_bkmrk_pml_state_t),
-                             0,CACHE_LINE_SIZE,
+                             0,opal_cache_line_size,
                              4,  /* Initial number */
                              -1, /* Max = Unlimited */
                              4,  /* Increment by */
@@ -1113,9 +1116,9 @@ int ompi_crcp_bkmrk_pml_init(void) {
     OBJ_CONSTRUCT(&content_ref_free_list, ompi_free_list_t);
     ompi_free_list_init_new( &content_ref_free_list,
                              sizeof(ompi_crcp_bkmrk_pml_message_content_ref_t),
-                             CACHE_LINE_SIZE,
+                             opal_cache_line_size,
                              OBJ_CLASS(ompi_crcp_bkmrk_pml_message_content_ref_t),
-                             0,CACHE_LINE_SIZE,
+                             0,opal_cache_line_size,
                              80, /* Initial number */
                              -1, /* Max = Unlimited */
                              32, /* Increment by */
@@ -1124,9 +1127,9 @@ int ompi_crcp_bkmrk_pml_init(void) {
     OBJ_CONSTRUCT(&peer_ref_free_list, ompi_free_list_t);
     ompi_free_list_init_new( &peer_ref_free_list,
                              sizeof(ompi_crcp_bkmrk_pml_peer_ref_t),
-                             CACHE_LINE_SIZE,
+                             opal_cache_line_size,
                              OBJ_CLASS(ompi_crcp_bkmrk_pml_peer_ref_t),
-                             0,CACHE_LINE_SIZE,
+                             0,opal_cache_line_size,
                              16, /* Initial number */
                              -1, /* Max = Unlimited */
                              16, /* Increment by */
@@ -1135,9 +1138,9 @@ int ompi_crcp_bkmrk_pml_init(void) {
     OBJ_CONSTRUCT(&traffic_msg_ref_free_list, ompi_free_list_t);
     ompi_free_list_init_new( &traffic_msg_ref_free_list,
                              sizeof(ompi_crcp_bkmrk_pml_traffic_message_ref_t),
-                             CACHE_LINE_SIZE,
+                             opal_cache_line_size,
                              OBJ_CLASS(ompi_crcp_bkmrk_pml_traffic_message_ref_t),
-                             0,CACHE_LINE_SIZE,
+                             0,opal_cache_line_size,
                              32, /* Initial number */
                              -1, /* Max = Unlimited */
                              64, /* Increment by */
@@ -1146,9 +1149,9 @@ int ompi_crcp_bkmrk_pml_init(void) {
     OBJ_CONSTRUCT(&drain_msg_ref_free_list, ompi_free_list_t);
     ompi_free_list_init_new( &drain_msg_ref_free_list,
                              sizeof(ompi_crcp_bkmrk_pml_drain_message_ref_t),
-                             CACHE_LINE_SIZE,
+                             opal_cache_line_size,
                              OBJ_CLASS(ompi_crcp_bkmrk_pml_drain_message_ref_t),
-                             0,CACHE_LINE_SIZE,
+                             0,opal_cache_line_size,
                              32, /* Initial number */
                              -1, /* Max = Unlimited */
                              64, /* Increment by */
@@ -1157,9 +1160,9 @@ int ompi_crcp_bkmrk_pml_init(void) {
     OBJ_CONSTRUCT(&drain_ack_msg_ref_free_list, ompi_free_list_t);
     ompi_free_list_init_new( &drain_ack_msg_ref_free_list,
                              sizeof(ompi_crcp_bkmrk_pml_drain_message_ack_ref_t),
-                             CACHE_LINE_SIZE,
+                             opal_cache_line_size,
                              OBJ_CLASS(ompi_crcp_bkmrk_pml_drain_message_ack_ref_t),
-                             0,CACHE_LINE_SIZE,
+                             0,opal_cache_line_size,
                              16, /* Initial number */
                              -1, /* Max = Unlimited */
                              16, /* Increment by */
@@ -1229,6 +1232,7 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_enable(
                                   bool enable,
                                   ompi_crcp_base_pml_state_t* pml_state )
 {
+    /* Note: This function is not used. Set to NULL in crcp_bkmrk_module.c */
     OPAL_OUTPUT_VERBOSE((30, mca_crcp_bkmrk_component.super.output_handle,
                         "crcp:bkmrk: pml_enable()"));
 
@@ -1240,6 +1244,8 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_enable(
 ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_progress(
                                   ompi_crcp_base_pml_state_t* pml_state)
 {
+    /* Note: This function is not used. Set to NULL in crcp_bkmrk_module.c */
+
     OPAL_OUTPUT_VERBOSE((35, mca_crcp_bkmrk_component.super.output_handle,
                         "crcp:bkmrk: pml_progress()"));
 
@@ -1396,6 +1402,8 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_add_comm(
                                   struct ompi_communicator_t* comm, 
                                   ompi_crcp_base_pml_state_t* pml_state )
 {
+    /* Note: This function is not used. Set to NULL in crcp_bkmrk_module.c */
+
     OPAL_OUTPUT_VERBOSE((30, mca_crcp_bkmrk_component.super.output_handle,
                         "crcp:bkmrk: pml_add_comm()"));
 
@@ -1407,6 +1415,8 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_del_comm(
                                   struct ompi_communicator_t* comm, 
                                   ompi_crcp_base_pml_state_t* pml_state )
 {
+    /* Note: This function is not used. Set to NULL in crcp_bkmrk_module.c */
+
     OPAL_OUTPUT_VERBOSE((30, mca_crcp_bkmrk_component.super.output_handle,
                         "crcp:bkmrk: pml_del_comm()"));
 
@@ -1585,7 +1595,7 @@ static int ompi_crcp_bkmrk_pml_start_isend_init(ompi_request_t **request)
     size_t tmp_ddt_size  = 0;
 
     breq = (mca_pml_base_request_t *)(*request);
-    tmp_ddt_size = (breq->req_datatype)->size;
+    ompi_datatype_type_size(breq->req_datatype, &tmp_ddt_size);
 
     /*
      * Find the peer reference
@@ -2065,7 +2075,7 @@ static int ompi_crcp_bkmrk_pml_start_drain_irecv_init(ompi_request_t **request, 
     *found_drain = false;
 
     breq = (mca_pml_base_request_t *)(*request);
-    tmp_ddt_size = (breq->req_datatype)->size;
+    ompi_datatype_type_size(breq->req_datatype, &tmp_ddt_size);
 
     /*
      * If peer rank is given then find the peer reference
@@ -2183,7 +2193,7 @@ static int ompi_crcp_bkmrk_pml_start_irecv_init(ompi_request_t **request)
     size_t tmp_ddt_size  = 0;
 
     breq = (mca_pml_base_request_t *)(*request);
-    tmp_ddt_size = (breq->req_datatype)->size;
+    ompi_datatype_type_size(breq->req_datatype, &tmp_ddt_size);
 
     /*
      * If peer rank is given then find the peer reference
@@ -2813,7 +2823,7 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_start(
 
         for(iter_req = 0; iter_req < count; iter_req++) {
             breq = (mca_pml_base_request_t *)requests[iter_req];
-            tmp_ddt_size = (breq->req_datatype)->size;
+            ompi_datatype_type_size(breq->req_datatype, &tmp_ddt_size);
 
             if( breq->req_type == MCA_PML_REQUEST_RECV ) {
                 found_drain = false;
@@ -2834,7 +2844,7 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_start(
     else if( OMPI_CRCP_PML_POST == pml_state->state) {
         for(iter_req = 0; iter_req < count; iter_req++) {
             breq = (mca_pml_base_request_t *)requests[iter_req];
-            tmp_ddt_size = (breq->req_datatype)->size;
+            ompi_datatype_type_size(breq->req_datatype, &tmp_ddt_size);
 
             if (breq->req_type == MCA_PML_REQUEST_RECV) {
                 /*
@@ -2899,7 +2909,7 @@ int ompi_crcp_bkmrk_request_complete(struct ompi_request_t *request)
     /* Extract source/tag/ddt_size */
     src = breq->req_peer;
     tag = breq->req_tag;
-    tmp_ddt_size = (breq->req_datatype)->size;
+    ompi_datatype_type_size(breq->req_datatype, &tmp_ddt_size);
 
     /*
      * Find the peer reference
@@ -3159,7 +3169,7 @@ static int traffic_message_append(ompi_crcp_bkmrk_pml_peer_ref_t *peer_ref,
     size_t ddt_size = 0;
 
     if( NULL != datatype ) {
-        ompi_ddt_type_size(datatype,
+        ompi_datatype_type_size(datatype,
                            &ddt_size);
     } else {
         ddt_size = in_ddt_size;
@@ -3552,7 +3562,7 @@ static int traffic_message_create_drain_message(bool post_drain,
              * The post_drained() will properly handle the packed datatype
              * by changing the count to (count * ddt_size).
              */
-            ompi_ddt_duplicate(&(ompi_mpi_packed.dt), &(drain_msg_ref->datatype));
+            ompi_datatype_duplicate(&(ompi_mpi_packed.dt), &(drain_msg_ref->datatype));
 
             /* Create a buffer of the necessary type/size */
             if(drain_msg_ref->count > 0 ) {
@@ -3681,7 +3691,7 @@ static int traffic_message_find(opal_list_t * search_list,
 
     *found_msg_ref = NULL;
 
-#if OMPI_ENABLE_DEBUG == 1
+#if OPAL_ENABLE_DEBUG == 1
     /*
      * Dummy checks:
      */
@@ -3814,14 +3824,17 @@ static int drain_message_check_recv(void **buf, size_t count,
     ompi_crcp_bkmrk_pml_peer_ref_t    *peer_ref      = NULL;
     ompi_crcp_bkmrk_pml_drain_message_ref_t   *drain_msg_ref = NULL;
     ompi_crcp_bkmrk_pml_message_content_ref_t *content_ref = NULL;
+    size_t tmp_ddt_size  = 0;
 
     *found_drain = false;
+
+    ompi_datatype_type_size(datatype, &tmp_ddt_size);
 
     /*
      * Check to see if this message is in the drained message list
      */
     if( OMPI_SUCCESS != (ret = drain_message_find_any(count, *tag, *src,
-                                                      comm, datatype->size,
+                                                      comm, tmp_ddt_size,
                                                       &drain_msg_ref,
                                                       &content_ref,
                                                       &peer_ref) ) ) {
@@ -4036,7 +4049,7 @@ static int drain_message_copy_remove_persistent(ompi_crcp_bkmrk_pml_drain_messag
 
     memcpy(&(content_ref->status), &drain_content_ref->status, sizeof(ompi_status_public_t)); 
 
-    if( 0 != (ret = ompi_ddt_copy_content_same_ddt(drain_msg_ref->datatype,
+    if( 0 != (ret = ompi_datatype_copy_content_same_ddt(drain_msg_ref->datatype,
                                                    drain_msg_ref->count,
                                                    content_ref->buffer,
                                                    drain_content_ref->buffer) ) ) {
@@ -4082,7 +4095,7 @@ static int drain_message_copy_remove(ompi_crcp_bkmrk_pml_drain_message_ref_t *dr
 
     /* The buffer could be NULL - More likely when doing a count=0 type of message (e.g., Barrier) */
     if( OPAL_LIKELY(NULL != buf) ) {
-        if( 0 != (ret = ompi_ddt_copy_content_same_ddt(datatype, count,
+        if( 0 != (ret = ompi_datatype_copy_content_same_ddt(datatype, count,
                                                        (void*)buf, drain_content_ref->buffer) ) ) {
             opal_output( mca_crcp_bkmrk_component.super.output_handle,
                          "crcp:bkmrk: drain_message_copy_remove(): Datatype copy failed (%d)",
@@ -4408,11 +4421,10 @@ static int ft_event_exchange_bookmarks(void)
                 send_bookmarks(peer_idx);
             }
         }
-    
+
     /* Wait for all bookmarks to arrive */
     START_TIMER(CRCP_TIMER_CKPT_EX_WAIT);
     while( total_recv_bookmarks > 0 ) {
-        opal_progress();
         opal_event_loop(OPAL_EVLOOP_NONBLOCK);
     }
     total_recv_bookmarks = 0;
@@ -5166,8 +5178,8 @@ static int coord_request_wait( ompi_request_t * req,
     if( MPI_STATUS_IGNORE != status ) {
         status->MPI_TAG    = req->req_status.MPI_TAG;
         status->MPI_SOURCE = req->req_status.MPI_SOURCE;
-        status->_count     = req->req_status._count;
         status->_cancelled = req->req_status._cancelled;
+        OMPI_STATUS_SET_COUNT(&status->_ucount, &req->req_status._ucount);
     }
 
     return OMPI_SUCCESS;
@@ -5208,7 +5220,6 @@ static int wait_quiesce_drain_ack(void)
             }
         }
 
-        opal_progress();
         opal_event_loop(OPAL_EVLOOP_NONBLOCK);
     }
         
@@ -5313,9 +5324,8 @@ static int recv_bookmarks(int peer_idx)
 
  cleanup:
     END_TIMER(CRCP_TIMER_CKPT_EX_PEER_R);
-    /* JJH Doesn't make much sense to print this. The real bottleneck is always the send_bookmarks()
-     * DISPLAY_INDV_TIMER(CRCP_TIMER_CKPT_EX_PEER_R, peer_idx, 1);
-     */
+    /* JJH Doesn't make much sense to print this. The real bottleneck is always the send_bookmarks() */
+    /*DISPLAY_INDV_TIMER(CRCP_TIMER_CKPT_EX_PEER_R, peer_idx, 1);*/
 
     return exit_status;
 }
@@ -6311,7 +6321,7 @@ static void display_indv_timer_core(int idx, int proc, int msgs, bool direct) {
 }
 
 /**************** Message Dump functionality ********************/
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 static void traffic_message_dump_msg_content_indv(ompi_crcp_bkmrk_pml_message_content_ref_t * content_ref)
 {
     OPAL_OUTPUT_VERBOSE((10, mca_crcp_bkmrk_component.super.output_handle,

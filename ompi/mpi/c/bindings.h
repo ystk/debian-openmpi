@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,18 +22,14 @@
 
 #include "ompi_config.h"
 #include "mpi.h"
-#include "ompi/communicator/communicator.h"
-#include "ompi/datatype/datatype.h"
-#include "ompi/runtime/params.h"
+#include "ompi/datatype/ompi_datatype.h"
 
 /* This library needs to be here so that we can define
  * the OPAL_CR_* checks
  */
 #include "opal/runtime/opal_cr.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /* If compiling in the profile directory, then we don't have weak
    symbols and therefore we need the defines to map from MPI->PMPI.
@@ -50,8 +47,8 @@ extern "C" {
         /* (RC) = MPI_SUCCESS; */                                       \
         if( NULL == (DDT) || MPI_DATATYPE_NULL == (DDT) ) (RC) = MPI_ERR_TYPE; \
         else if( (COUNT) < 0 ) (RC) = MPI_ERR_COUNT;                    \
-        else if( !ompi_ddt_is_committed((DDT)) ) (RC) = MPI_ERR_TYPE;   \
-        else if( !ompi_ddt_is_valid((DDT)) ) (RC) = MPI_ERR_TYPE;       \
+        else if( !opal_datatype_is_committed(&((DDT)->super)) ) (RC) = MPI_ERR_TYPE; \
+        else if( !opal_datatype_is_valid(&((DDT)->super)) ) (RC) = MPI_ERR_TYPE;       \
     } while (0)
 
 #define OMPI_CHECK_DATATYPE_FOR_RECV( RC, DDT, COUNT )                  \
@@ -59,20 +56,19 @@ extern "C" {
         /* (RC) = MPI_SUCCESS; */                                        \
         if( NULL == (DDT) || MPI_DATATYPE_NULL == (DDT) ) (RC) = MPI_ERR_TYPE; \
         else if( (COUNT) < 0 ) (RC) = MPI_ERR_COUNT;                    \
-        else if( !ompi_ddt_is_committed((DDT)) ) (RC) = MPI_ERR_TYPE;   \
-        /* XXX Fix flags else if( ompi_ddt_is_overlapped((DDT)) ) (RC) = MPI_ERR_TYPE; */ \
-        else if( !ompi_ddt_is_valid((DDT)) ) (RC) = MPI_ERR_TYPE;       \
+        else if( !opal_datatype_is_committed(&((DDT)->super)) ) (RC) = MPI_ERR_TYPE;   \
+        /* XXX Fix flags else if( ompi_datatype_is_overlapped((DDT)) ) (RC) = MPI_ERR_TYPE; */ \
+        else if( !opal_datatype_is_valid(&((DDT)->super)) ) (RC) = MPI_ERR_TYPE;       \
     } while (0)
     
-#define OMPI_CHECK_DATATYPE_FOR_ONE_SIDED( RC, DDT, COUNT )             \
-    do {                                                                \
-        /*(RC) = MPI_SUCCESS; */                                        \
-        if( NULL == (DDT) || MPI_DATATYPE_NULL == (DDT) ) (RC) = MPI_ERR_TYPE; \
-        else if( (COUNT) < 0 ) (RC) = MPI_ERR_COUNT;                    \
-        else if( !ompi_ddt_is_committed((DDT)) ) (RC) = MPI_ERR_TYPE;   \
-        else if( ompi_ddt_is_overlapped((DDT)) ) (RC) = MPI_ERR_TYPE;   \
-        else if( !ompi_ddt_is_acceptable_for_one_sided((DDT)) ) (RC) = MPI_ERR_TYPE; \
-        else if( !ompi_ddt_is_valid((DDT)) ) (RC) = MPI_ERR_TYPE;       \
+#define OMPI_CHECK_DATATYPE_FOR_ONE_SIDED( RC, DDT, COUNT )                          \
+    do {                                                                             \
+        /*(RC) = MPI_SUCCESS; */                                                     \
+        if( NULL == (DDT) || MPI_DATATYPE_NULL == (DDT) ) (RC) = MPI_ERR_TYPE;       \
+        else if( (COUNT) < 0 ) (RC) = MPI_ERR_COUNT;                                 \
+        else if( !opal_datatype_is_committed(&((DDT)->super)) ) (RC) = MPI_ERR_TYPE; \
+        else if( opal_datatype_is_overlapped(&((DDT)->super)) ) (RC) = MPI_ERR_TYPE; \
+        else if( !opal_datatype_is_valid(&((DDT)->super)) ) (RC) = MPI_ERR_TYPE;     \
     } while(0)
 
 
@@ -82,14 +78,14 @@ extern "C" {
 #define OMPI_CHECK_USER_BUFFER(RC, BUFFER, DDT, COUNT)                  \
     do {                                                                \
         if ( NULL == (BUFFER) && 0 < (COUNT) && MPI_SUCCESS == (RC) ) { \
-            if ( (DDT)->flags & DT_FLAG_PREDEFINED ) {                  \
+            if ( (DDT)->super.flags & OPAL_DATATYPE_FLAG_PREDEFINED ) { \
                 (RC) = MPI_ERR_BUFFER;                                  \
             } else {                                                    \
                 size_t size = 0;                                        \
                 ptrdiff_t true_lb       = 0;                            \
                 ptrdiff_t true_extended = 0;                            \
-                ompi_ddt_type_size((DDT), &size);                       \
-                ompi_ddt_get_true_extent((DDT), &true_lb, &true_extended); \
+                ompi_datatype_type_size((DDT), &size);                       \
+                ompi_datatype_get_true_extent((DDT), &true_lb, &true_extended); \
                 if ( 0 < size && 0 == true_lb ) {                       \
                     (RC) = MPI_ERR_BUFFER;                              \
                 }                                                       \
@@ -97,8 +93,6 @@ extern "C" {
         }                                                               \
     } while (0)
     
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OMPI_C_BINDINGS_H */

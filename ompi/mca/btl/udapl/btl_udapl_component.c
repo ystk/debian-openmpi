@@ -26,15 +26,10 @@
 #include "ompi_config.h"
 #include "ompi/constants.h"
 #include "opal/event/event.h"
-#include "opal/util/if.h"
 #include "opal/util/argv.h"
-#include "orte/util/show_help.h"
-#include "ompi/mca/pml/pml.h"
 #include "ompi/mca/btl/btl.h"
-#include "ompi/runtime/params.h"
 
 #include "opal/mca/base/mca_base_param.h"
-#include "orte/mca/errmgr/errmgr.h"
 #include "ompi/mca/mpool/base/base.h" 
 #include "ompi/mca/mpool/rdma/mpool_rdma.h"
 #include "btl_udapl.h"
@@ -44,7 +39,6 @@
 #include "btl_udapl_proc.h" 
 #include "ompi/mca/btl/base/base.h" 
 #include "ompi/mca/btl/base/btl_base_error.h"
-#include "ompi/datatype/convertor.h" 
 #include "btl_udapl_endpoint.h"
 #include "orte/util/proc_info.h"
 #include "ompi/runtime/ompi_module_exchange.h"
@@ -164,7 +158,7 @@ mca_btl_udapl_dat_event_to_string(DAT_EVENT_NUMBER event_number)
   * Report a uDAPL error - for debugging
   */
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 void
 mca_btl_udapl_error(DAT_RETURN ret, char* str)
 {

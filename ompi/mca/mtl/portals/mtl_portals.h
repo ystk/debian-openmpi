@@ -19,23 +19,17 @@
 #ifndef MTL_PORTALS_H_HAS_BEEN_INCLUDED
 #define MTL_PORTALS_H_HAS_BEEN_INCLUDED
 
-#include "opal/threads/threads.h"
-#include "opal/threads/condition.h"
+#include "ompi_config.h"
 #include "opal/class/opal_list.h"
 #include "ompi/class/ompi_free_list.h"
-#include "opal/util/cmd_line.h"
-#include "ompi/request/request.h"
 #include "ompi/mca/mtl/mtl.h"
 #include "ompi/mca/mtl/base/base.h"
-#include "ompi/datatype/datatype.h"
-#include "ompi/datatype/convertor.h"
+#include "opal/datatype/opal_convertor.h"
 
 #include "ompi/mca/common/portals/common_portals.h"
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 struct mca_mtl_portals_module_t {
     mca_mtl_base_module_t base;
@@ -78,7 +72,7 @@ struct mca_mtl_portals_module_t {
     ptl_handle_md_t ptl_short_md_h;
 
     int ptl_num_copy_blocks;
-    int ptl_copy_block_len;
+    ptl_size_t ptl_copy_block_len;
 
     int *ptl_copy_block_free_list;
     int ptl_copy_block_first_free;
@@ -198,14 +192,14 @@ extern int ompi_mtl_portals_send(struct mca_mtl_base_module_t* mtl,
                           struct ompi_communicator_t* comm,
                           int dest,
                           int tag,
-                          struct ompi_convertor_t *convertor,
+                          struct opal_convertor_t *convertor,
                           mca_pml_base_send_mode_t mode);
 
 extern int ompi_mtl_portals_isend(struct mca_mtl_base_module_t* mtl,
                           struct ompi_communicator_t* comm,
                           int dest,
                           int tag,
-                          struct ompi_convertor_t *convertor,
+                          struct opal_convertor_t *convertor,
                           mca_pml_base_send_mode_t mode,
                           bool blocking,
                           mca_mtl_request_t *mtl_request);
@@ -214,7 +208,7 @@ extern int ompi_mtl_portals_irecv(struct mca_mtl_base_module_t* mtl,
                           struct ompi_communicator_t *comm,
                           int src,
                           int tag,
-                          struct ompi_convertor_t *convertor,
+                          struct opal_convertor_t *convertor,
                           mca_mtl_request_t *mtl_request);
 
 extern int ompi_mtl_portals_iprobe(struct mca_mtl_base_module_t* mtl,
@@ -231,8 +225,6 @@ extern int ompi_mtl_portals_cancel(struct mca_mtl_base_module_t* mtl,
 extern int ompi_mtl_portals_progress(void);
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif  /* MTL_PORTALS_H_HAS_BEEN_INCLUDED */

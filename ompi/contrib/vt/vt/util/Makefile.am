@@ -1,12 +1,14 @@
-noinst_PROGRAMS = dummy
+noinst_LTLIBRARIES = libvt_util.la
 
-dummy_SOURCES = \
+libvt_util_la_CFLAGS = -static -prefer-pic
+libvt_util_la_LDFLAGS = -static
+libvt_util_la_SOURCES = \
+	hash.h \
 	installdirs.h \
 	util.h \
-	dummy.c \
 	installdirs.c \
 	util.c
 
-nodist_dummy_SOURCES = \
+nodist_libvt_util_la_SOURCES = \
 	installdirs_conf.h
 

@@ -1,4 +1,3 @@
-#
 # Copyright (c) 2007-2010 High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 # $COPYRIGHT$
@@ -8,23 +7,7 @@
 # $HEADER$
 #
 
-# list the sub directories of current directories
-# save the list of subdirs in OUTPUT_VARIABLE
-
-MACRO(CHECK_SUBDIRS CURRENT_DIR OUTPUT_VARIABLE)
-
-  EXECUTE_PROCESS (COMMAND cmd /C dir /AD /B
-                   WORKING_DIRECTORY  ${CURRENT_DIR}
-                   OUTPUT_VARIABLE    OUTPUT
-                   RESULT_VARIABLE    RESULT
-                   ERROR_VARIABLE     ERROR)
-
-  IF(NOT "${OUTPUT}" STREQUAL "")
-    STRING (REGEX MATCHALL "[a-zA-Z1-9_]+" ${OUTPUT_VARIABLE} ${OUTPUT})
-  ENDIF(NOT "${OUTPUT}" STREQUAL "")
-
-ENDMACRO(CHECK_SUBDIRS CURRENT_DIR OUTPUT_VARIABLE)
-
+INCLUDE(list_subdirs)
 
 # there are several steps and issues for checking mca components:
 #
@@ -53,13 +36,17 @@ ENDMACRO(CHECK_SUBDIRS CURRENT_DIR OUTPUT_VARIABLE)
 #       exclude_list:       files that need to be excluded from the solution.
 #
 #       required_check:     a CMake module has to be run to check the libraries/headers
-#                           that needed by this component.
+#                           that needed by this component. The check might return two 
+#                           variables: RESULT_INCLUDE_PATH, RESULT_LINK_LIBRARIES and RESULT_SOURCE_FILES. 
+#                           RESULT_INCLUDE_PATH is handled in this macro, and RESULT_LINK_LIBRARIES
+#                           is handled in upper layer.
 #
 #       not_single_shared_lib:   this component should not be built separately, it's not 
 #                                a single mca shared library.
 #
-#       mca_link_libraries: this component has to be linked with other targets or external libraries,
+#       mca_link_libraries: this component has to be linked with other targets or libraries,
 #                           e.g. Ws2_32.lib
+#       mca_priority:       priority of the mca component.
 
 
 SET(MCA_FRAMEWORK_LIST "")
@@ -89,8 +76,8 @@ FOREACH (MCA_FRAMEWORK ${MCA_FRAMEWORK_LIST})
     SET(COMPONENT_LIST "")
     CHECK_SUBDIRS("${PROJECT_SOURCE_DIR}/mca/${MCA_FRAMEWORK}" COMPONENT_LIST)
 
-    SET(CURRENT_COMPONENT_PRIORITY 0)
-    SET(BEST_COMPONENT_PRIORITY 0)
+    SET(CURRENT_COMPONENT_PRIORITY "")
+    SET(MCA_PRIORITY_LIST "")
 
     # parse each component subdir of current mca framework
     FOREACH (MCA_COMPONENT ${COMPONENT_LIST})
@@ -128,14 +115,16 @@ FOREACH (MCA_FRAMEWORK ${MCA_FRAMEWORK_LIST})
 
         # Install help files if they are here.
         INSTALL(DIRECTORY ${CURRENT_PATH}/ DESTINATION share/openmpi/
-          FILES_MATCHING PATTERN "*.txt" PATTERN ".svn" EXCLUDE)
+          FILES_MATCHING PATTERN "*.txt"
+          PATTERN ".svn" EXCLUDE
+          PATTERN ".hg" EXCLUDE)
 
       ELSEIF(EXISTS "${PROJECT_SOURCE_DIR}/mca/${MCA_FRAMEWORK}/${MCA_COMPONENT}/.windows")
 
-        SET(COMPONENT_FILES "")
+        UNSET(COMPONENT_FILES)
+        UNSET(APPEND_FILES)
+
         SET(CURRENT_PATH ${PROJECT_SOURCE_DIR}/mca/${MCA_FRAMEWORK}/${MCA_COMPONENT})
-        FILE(GLOB COMPONENT_FILES "${CURRENT_PATH}/*.C" "${CURRENT_PATH}/*.h"
-          "${CURRENT_PATH}/*.cc" "${CURRENT_PATH}/*.cpp")
 
         # by default, build this component.
         SET(BUILD_COMPONENT TRUE)
@@ -143,13 +132,21 @@ FOREACH (MCA_FRAMEWORK ${MCA_FRAMEWORK_LIST})
         # do we have to run a check module first?
         SET(REQUIRED_CHECK "")
         FILE(STRINGS ${CURRENT_PATH}/.windows REQUIRED_CHECK REGEX "^required_check=")
-        
+
         SET(EXTRA_INCLUDE_PATH "")
         IF(NOT REQUIRED_CHECK STREQUAL "")
           STRING(REPLACE "required_check=" "" REQUIRED_CHECK ${REQUIRED_CHECK})
+          UNSET(RESULT_APPEND_FILES)
+          UNSET(RESULT_COMPONENT_FILES)
+          UNSET(RESULT_INCLUDE_PATH)
+          UNSET(RESULT_LINK_LIBRARIES)
           INCLUDE(${REQUIRED_CHECK})
           IF(RESULT)
+            SET(COMPONENT_FILES ${COMPONENT_FILES} ${RESULT_COMPONENT_FILES})
+            SET(APPEND_FILES ${RESULT_APPEND_FILES})
             SET(EXTRA_INCLUDE_PATH ${RESULT_INCLUDE_PATH})
+            # these extra libraries will be set up in up layer, e.g. ompi
+            SET(EXTRA_LINK_LIBRARIES ${EXTRA_LINK_LIBRARIES} ${RESULT_LINK_LIBRARIES})
           ELSE(RESULT)
             # Required check failed, don't build this component.
             SET(BUILD_COMPONENT FALSE)
@@ -158,6 +155,28 @@ FOREACH (MCA_FRAMEWORK ${MCA_FRAMEWORK_LIST})
 
         IF(BUILD_COMPONENT)
 
+          IF(NOT COMPONENT_FILES)
+            FILE(GLOB_RECURSE COMPONENT_FILES "${CURRENT_PATH}/*.C" "${CURRENT_PATH}/*.h"
+              "${CURRENT_PATH}/*.cc" "${CURRENT_PATH}/*.cpp")
+
+            #check exclude list
+            SET(EXCLUDE_LIST "")
+            FILE(STRINGS ${CURRENT_PATH}/.windows EXCLUDE_LIST REGEX "^exclude_list=")
+
+            IF(NOT EXCLUDE_LIST STREQUAL "")
+              STRING(REPLACE "exclude_list=" "" EXCLUDE_LIST ${EXCLUDE_LIST})
+            ENDIF(NOT EXCLUDE_LIST STREQUAL "")
+
+            # remove the files in the exclude list
+            FOREACH(FILE ${EXCLUDE_LIST})
+              LIST(REMOVE_ITEM COMPONENT_FILES "${CURRENT_PATH}/${FILE}")
+            ENDFOREACH(FILE)
+          ENDIF(NOT COMPONENT_FILES)
+
+          IF(APPEND_FILES)
+            SET(COMPONENT_FILES ${COMPONENT_FILES} ${APPEND_FILES})
+          ENDIF(APPEND_FILES)
+
           # check the library build type
           FILE(STRINGS ${CURRENT_PATH}/.windows
                 VALUE REGEX "^not_single_shared_lib=")
@@ -165,20 +184,7 @@ FOREACH (MCA_FRAMEWORK ${MCA_FRAMEWORK_LIST})
             STRING(REPLACE "not_single_shared_lib=" "" NOT_SINGLE_SHARED_LIB ${VALUE})
           ENDIF(NOT VALUE STREQUAL "")
 
-          # check out if we have to exclude some source files.
-          SET(EXCLUDE_LIST "")
-          FILE(STRINGS ${CURRENT_PATH}/.windows EXCLUDE_LIST REGEX "^exclude_list=")
-        
-          IF(NOT EXCLUDE_LIST STREQUAL "")
-            STRING(REPLACE "exclude_list=" "" EXCLUDE_LIST ${EXCLUDE_LIST})
-          ENDIF(NOT EXCLUDE_LIST STREQUAL "")
-        
-          # remove the files in the exclude list
-          FOREACH(FILE ${EXCLUDE_LIST})
-            LIST(REMOVE_ITEM COMPONENT_FILES "${CURRENT_PATH}/${FILE}")
-          ENDFOREACH(FILE)
-
-          IF(NOT OMPI_WANT_LIBLTDL OR NOT_SINGLE_SHARED_LIB STREQUAL "1")
+          IF(NOT OPAL_WANT_LIBLTDL OR NOT_SINGLE_SHARED_LIB STREQUAL "1")
             SET(NOT_SINGLE_SHARED_LIB "")
             # add sources for static build or for the shared build when this is not a stand along library.
             SET(MCA_FILES ${MCA_FILES} ${COMPONENT_FILES})
@@ -187,31 +193,20 @@ FOREACH (MCA_FRAMEWORK ${MCA_FRAMEWORK_LIST})
             INCLUDE_DIRECTORIES(${EXTRA_INCLUDE_PATH})
 
             IF(EXISTS "${CURRENT_PATH}/configure.params")
-              FILE(STRINGS "${CURRENT_PATH}/configure.params" 
+              FILE(STRINGS ${CURRENT_PATH}/configure.params
                 CURRENT_COMPONENT_PRIORITY REGEX "PRIORITY")
-              IF(NOT CURRENT_COMPONENT_PRIORITY STREQUAL "")
-                STRING(REGEX REPLACE "[A-Z_]+=" "" CURRENT_COMPONENT_PRIORITY ${CURRENT_COMPONENT_PRIORITY})
-              ENDIF(NOT CURRENT_COMPONENT_PRIORITY STREQUAL "")
+            ELSE(EXISTS "${CURRENT_PATH}/configure.params")
+              FILE(STRINGS ${CURRENT_PATH}/.windows 
+                CURRENT_COMPONENT_PRIORITY REGEX "^mca_priority=")
             ENDIF(EXISTS "${CURRENT_PATH}/configure.params")
 
-            IF(CURRENT_COMPONENT_PRIORITY GREATER BEST_COMPONENT_PRIORITY)
-              # I have a higher priority for this mca, put me at the very beginning.
-              SET (OUTFILE_EXTERN
-                "extern const mca_base_component_t mca_${MCA_FRAMEWORK}_${MCA_COMPONENT}_component"  
-                "\n${OUTFILE_EXTERN}")
-              SET(FRAMEWORK_STRUCT_DEF
-                "&mca_${MCA_FRAMEWORK}_${MCA_COMPONENT}_component,\n"  
-                ${FRAMEWORK_STRUCT_DEF})
-              SET(BEST_COMPONENT_PRIORITY ${CURRENT_COMPONENT_PRIORITY})
-            ELSE(CURRENT_COMPONENT_PRIORITY GREATER BEST_COMPONENT_PRIORITY)
-              SET (OUTFILE_EXTERN ${OUTFILE_EXTERN}
-                "\nextern const mca_base_component_t mca_${MCA_FRAMEWORK}_${MCA_COMPONENT}_component;")
-              SET(FRAMEWORK_STRUCT_DEF ${FRAMEWORK_STRUCT_DEF}
-                "&mca_${MCA_FRAMEWORK}_${MCA_COMPONENT}_component,\n")
-            ENDIF(CURRENT_COMPONENT_PRIORITY GREATER BEST_COMPONENT_PRIORITY)
+            IF(NOT CURRENT_COMPONENT_PRIORITY STREQUAL "")
+              STRING(REGEX REPLACE "[A-Z_a-z]+=" "" CURRENT_COMPONENT_PRIORITY ${CURRENT_COMPONENT_PRIORITY})
+            ENDIF(NOT CURRENT_COMPONENT_PRIORITY STREQUAL "")
 
+            SET(MCA_PRIORITY_LIST ${MCA_PRIORITY_LIST} "${CURRENT_COMPONENT_PRIORITY}:${MCA_COMPONENT}")
 
-          ELSE(NOT OMPI_WANT_LIBLTDL OR NOT_SINGLE_SHARED_LIB STREQUAL "1")
+          ELSE(NOT OPAL_WANT_LIBLTDL OR NOT_SINGLE_SHARED_LIB STREQUAL "1")
 
             # get the libraries required for this component.
             SET(MCA_LINK_LIBRARIES "")
@@ -267,7 +262,7 @@ SET_TARGET_PROPERTIES(${LIB_NAME_PREFIX}mca_${MCA_FRAMEWORK}_${MCA_COMPONENT}
                       PROPERTIES COMPILE_FLAGS \"-D_USRDLL -DOPAL_IMPORTS -DOMPI_IMPORTS -DORTE_IMPORTS /TP\")
 
 TARGET_LINK_LIBRARIES (${LIB_NAME_PREFIX}mca_${MCA_FRAMEWORK}_${MCA_COMPONENT}
-  libopen-pal ${MCA_LINK_LIBRARIES})
+  libopen-pal ${MCA_LINK_LIBRARIES} ${EXTRA_LINK_LIBRARIES})
 
 INSTALL(TARGETS ${LIB_NAME_PREFIX}mca_${MCA_FRAMEWORK}_${MCA_COMPONENT} ${INSTALL_DEST})
 IF (OMPI_DEBUG_BUILD)
@@ -276,17 +271,38 @@ IF (OMPI_DEBUG_BUILD)
 ENDIF (OMPI_DEBUG_BUILD)
           ")
 
-            ADD_SUBDIRECTORY (${PROJECT_BINARY_DIR}/mca/${MCA_FRAMEWORK}/${MCA_COMPONENT} mca/${MCA_FRAMEWORK}/${MCA_COMPONENT})
-          ENDIF(NOT OMPI_WANT_LIBLTDL OR NOT_SINGLE_SHARED_LIB STREQUAL "1")
+              ADD_SUBDIRECTORY (${PROJECT_BINARY_DIR}/mca/${MCA_FRAMEWORK}/${MCA_COMPONENT} mca/${MCA_FRAMEWORK}/${MCA_COMPONENT})
+
+              # for single dll, reset these two variables for the next component.
+              UNSET(EXTRA_INCLUDE_PATH)
+              UNSET(EXTRA_LINK_LIBRARIES)
+
+              ENDIF(NOT OPAL_WANT_LIBLTDL OR NOT_SINGLE_SHARED_LIB STREQUAL "1")
 
           # Install help files if they are here.
           INSTALL(DIRECTORY ${CURRENT_PATH}/ DESTINATION share/openmpi/
-            FILES_MATCHING PATTERN "*.txt" PATTERN ".svn" EXCLUDE)
+            FILES_MATCHING PATTERN "*.txt"
+            PATTERN ".svn" EXCLUDE
+            PATTERN ".hg" EXCLUDE)
 
         ENDIF(BUILD_COMPONENT)        
       ENDIF(${MCA_COMPONENT} STREQUAL "base")
 
     ENDFOREACH(MCA_COMPONENT)
+
+
+    # generate the correct order of the components.
+    LIST(SORT MCA_PRIORITY_LIST)
+    FOREACH(MCA_COMPONENT ${MCA_PRIORITY_LIST})
+      STRING(REGEX REPLACE "[0-9]*:" "" COMPONENT_NAME ${MCA_COMPONENT})
+      SET (OUTFILE_EXTERN
+        "extern const mca_base_component_t mca_${MCA_FRAMEWORK}_${COMPONENT_NAME}_component"  
+        "\n${OUTFILE_EXTERN}")
+      SET(FRAMEWORK_STRUCT_DEF
+        "&mca_${MCA_FRAMEWORK}_${COMPONENT_NAME}_component,\n"  
+        ${FRAMEWORK_STRUCT_DEF})
+      SET(BEST_COMPONENT_PRIORITY ${CURRENT_COMPONENT_PRIORITY})
+    ENDFOREACH(MCA_COMPONENT ${MCA_PRIORITY_LIST})
 
     STRING(LENGTH "${FRAMEWORK_STRUCT_DEF}" STRUCT_STRING_LENTH)
     IF(STRUCT_STRING_LENTH GREATER 0)

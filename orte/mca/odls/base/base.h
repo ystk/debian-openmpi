@@ -29,9 +29,8 @@
 #include "opal/mca/mca.h"
 #include "opal/class/opal_list.h"
 
-#if !ORTE_DISABLE_FULL_SUPPORT
 #include "orte/mca/odls/odls.h"
-#endif
+
 
 BEGIN_C_DECLS
 
@@ -79,6 +78,9 @@ ORTE_DECLSPEC int orte_odls_base_close(void);
 /* proc termination entry points */
 ORTE_DECLSPEC void orte_odls_base_notify_iof_complete(orte_process_name_t *proc);
 ORTE_DECLSPEC void orte_base_default_waitpid_fired(orte_process_name_t *proc, int32_t status);
+
+/* setup singleton job data */
+ORTE_DECLSPEC void orte_odls_base_setup_singleton_jobdat(orte_jobid_t jobid);
 
 #endif /* ORTE_DISABLE_FULL_SUPPORT */
 

@@ -25,7 +25,7 @@
 #include "mpi.h"
 #include "ompi/constants.h"
 #include "opal/class/opal_list.h"
-#include "orte/util/show_help.h"
+#include "opal/util/output.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_component_repository.h"
@@ -63,7 +63,6 @@ static int init_query_2_0_0(const mca_base_component_t *ls,
 int mca_io_base_find_available(bool enable_progress_threads,
                                bool enable_mpi_threads)
 {
-    int err;
     mca_base_component_priority_list_item_t *entry;
     opal_list_item_t *p;
     const mca_base_component_t *component;
@@ -119,12 +118,6 @@ int mca_io_base_find_available(bool enable_progress_threads,
     
     OBJ_DESTRUCT(&mca_io_base_components_opened);
     mca_io_base_components_opened_valid = false;
-
-    /* Setup the freelist */
-
-    if (OMPI_SUCCESS != (err = mca_io_base_request_create_freelist())) {
-        return err;
-    }
 
     /* All done */
 

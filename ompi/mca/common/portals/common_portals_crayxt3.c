@@ -16,12 +16,18 @@
  * $HEADER$
  */
 
-#include <catamount/cnos_mpi_os.h>
+#include "ompi_config.h"
 
-#include "orte/util/show_help.h"
+#if defined(HAVE_CNOS_MPI_OS_H)
+#  include "cnos_mpi_os.h"
+#elif defined(HAVE_CATAMOUNT_CNOS_MPI_OS_H)
+#  include "catamount/cnos_mpi_os.h"
+#endif
+
 #include "ompi/constants.h"
 #include "ompi/proc/proc.h"
 #include "opal/mca/base/base.h"
+#include "opal/util/output.h"
 
 static bool use_accelerated;
 

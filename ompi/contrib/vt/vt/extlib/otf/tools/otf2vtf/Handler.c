@@ -1,9 +1,12 @@
 /*
- This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2008.
+ This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2013.
  Authors: Andreas Knuepfer, Holger Brunst, Ronny Brendel, Thomas Kriebitzsch
 */
 
+#ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
+
 
 #include <stdlib.h>
 #include <assert.h>

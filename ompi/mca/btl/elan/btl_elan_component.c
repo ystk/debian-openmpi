@@ -13,17 +13,12 @@
 #include "ompi_config.h"
 #include "ompi/constants.h"
 #include "opal/event/event.h"
-#include "opal/util/if.h"
-#include "opal/util/argv.h"
-#include "orte/util/show_help.h"
-#include "ompi/mca/pml/pml.h"
+#include "opal/util/output.h"
 #include "ompi/mca/btl/btl.h"
 
 #include "opal/mca/base/mca_base_param.h"
 #include "ompi/runtime/ompi_module_exchange.h"
 
-#include "orte/mca/errmgr/errmgr.h"
-#include "orte/runtime/orte_globals.h"
 #include "ompi/mca/mpool/base/base.h" 
 
 #include "btl_elan.h"
@@ -32,13 +27,10 @@
 
 #include "ompi/mca/btl/base/base.h" 
 #include "ompi/mca/btl/base/btl_base_error.h" 
-#include "ompi/datatype/convertor.h" 
 
 #include "elan/elan.h"
 
-#include "opal/util/os_path.h"
 #include "opal/util/opal_environ.h"
-#include "ompi/communicator/communicator.h"
 
 #define ELAN_MAX_BTL  10
 
@@ -178,9 +170,9 @@ mca_btl_elan_component_init( int *num_btl_modules,
     OBJ_CONSTRUCT(&mca_btl_elan_component.elan_procs, opal_list_t);
     ompi_free_list_init_new( &mca_btl_elan_component.elan_frag_eager,
                              sizeof(mca_btl_elan_frag_t) + mca_btl_elan_module.super.btl_eager_limit,
-                             CACHE_LINE_SIZE,
+                             opal_cache_line_size,
                              OBJ_CLASS(mca_btl_elan_frag_t),
-                             0,CACHE_LINE_SIZE,
+                             0,opal_cache_line_size,
                              mca_btl_elan_component.elan_free_list_num,
                              mca_btl_elan_component.elan_free_list_max,
                              mca_btl_elan_component.elan_free_list_inc,
@@ -188,9 +180,9 @@ mca_btl_elan_component_init( int *num_btl_modules,
 
     ompi_free_list_init_new( &mca_btl_elan_component.elan_frag_user,
                              sizeof(mca_btl_elan_frag_t),
-                             CACHE_LINE_SIZE,
+                             opal_cache_line_size,
                              OBJ_CLASS(mca_btl_elan_frag_t),
-                             0,CACHE_LINE_SIZE,
+                             0,opal_cache_line_size,
                              mca_btl_elan_component.elan_free_list_num,
                              mca_btl_elan_component.elan_free_list_max,
                              mca_btl_elan_component.elan_free_list_inc,
@@ -198,9 +190,9 @@ mca_btl_elan_component_init( int *num_btl_modules,
 
     ompi_free_list_init_new( &mca_btl_elan_component.elan_frag_max,
                              sizeof(mca_btl_elan_frag_t)+mca_btl_elan_module.super.btl_max_send_size,
-                             CACHE_LINE_SIZE,
+                             opal_cache_line_size,
                              OBJ_CLASS(mca_btl_elan_frag_t),
-                             0,CACHE_LINE_SIZE,
+                             0,opal_cache_line_size,
                              mca_btl_elan_component.elan_free_list_num,
                              mca_btl_elan_component.elan_free_list_max,
                              mca_btl_elan_component.elan_free_list_inc,

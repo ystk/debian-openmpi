@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2008 Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -129,6 +129,8 @@ struct opal_output_stream_t {
      * If a NULL value is given, the string "opal" is used.
      */
 #if !defined(__WINDOWS__)
+    char *lds_syslog_ident;
+#elif !defined(_MSC_VER)
     char *lds_syslog_ident;
 #else
     HANDLE lds_syslog_ident;
@@ -399,7 +401,7 @@ struct opal_output_stream_t {
     * Same as opal_output_verbose(), but takes a va_list form of varargs.
     */
     OPAL_DECLSPEC void opal_output_vverbose(int verbose_level, int output_id, 
-                                            const char *format, va_list ap);
+                                            const char *format, va_list ap) __opal_attribute_format__(__printf__, 3, 0);
 
     /**    
      * Send output to a string if the verbosity level is high enough.
@@ -422,7 +424,7 @@ struct opal_output_stream_t {
     * Same as opal_output_string, but accepts a va_list form of varargs.
     */
     OPAL_DECLSPEC char *opal_output_vstring(int verbose_level, int output_id, 
-                                            const char *format, va_list ap);
+                                            const char *format, va_list ap) __opal_attribute_format__(__printf__, 3, 0);
 
     /**
      * Set the verbosity level for a stream.
@@ -488,7 +490,7 @@ struct opal_output_stream_t {
                                                         char **olddir,
                                                         char **oldprefix);
     
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     /**
      * Main macro for use in sending debugging output to output streams;
      * will be "compiled out" when OPAL is configured without

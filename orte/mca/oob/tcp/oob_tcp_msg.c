@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -25,6 +25,7 @@
 
 #include "orte_config.h"
 #include "orte/constants.h"
+#include "opal/types.h"
 
 #include "opal/opal_socket_errno.h"
 
@@ -75,7 +76,7 @@ static void mca_oob_tcp_msg_destruct(mca_oob_tcp_msg_t* msg)
 
 int mca_oob_tcp_msg_wait(mca_oob_tcp_msg_t* msg, int* rc)
 {
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     OPAL_THREAD_LOCK(&msg->msg_lock);
     while(msg->msg_complete == false) {
         if(opal_event_progress_thread()) {
@@ -136,7 +137,7 @@ int mca_oob_tcp_msg_timedwait(mca_oob_tcp_msg_t* msg, int* rc, struct timespec* 
     uint32_t usecs = abstime->tv_nsec * 1000;
     gettimeofday(&tv,NULL);
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     OPAL_THREAD_LOCK(&msg->msg_lock);
     while(msg->msg_complete == false && 
           ((uint32_t)tv.tv_sec <= secs ||
@@ -467,7 +468,6 @@ static void mca_oob_tcp_msg_ping(mca_oob_tcp_msg_t* msg, mca_oob_tcp_peer_t* pee
  * (1) signal a posted recv as complete
  * (2) queue an unexpected message in the recv list
  */
-
 static void mca_oob_tcp_msg_data(mca_oob_tcp_msg_t* msg, mca_oob_tcp_peer_t* peer)
 {
     /* attempt to match unexpected message to a posted recv */
@@ -475,19 +475,19 @@ static void mca_oob_tcp_msg_data(mca_oob_tcp_msg_t* msg, mca_oob_tcp_peer_t* pee
     int rc;
     OPAL_THREAD_LOCK(&mca_oob_tcp_component.tcp_match_lock);
 
-    if (ORTE_JOB_FAMILY(msg->msg_hdr.msg_origin.jobid) !=
-        ORTE_JOB_FAMILY(ORTE_PROC_MY_NAME->jobid)) {
-        /* this message came from a different job family, so we may
-         * not know how to route any reply back to the originator. Update
-         * our route so we can dynamically build the routing table
-         */
-        /* if the origin and the src are the same, then we don't need to do
-         * this - update_route was already called when the connection was
-         * established in oob_tcp_peer
-         */
-        if (OPAL_EQUAL != orte_util_compare_name_fields(ORTE_NS_CMP_ALL, 
-                                                        &(msg->msg_hdr.msg_origin),
-                                                        &(msg->msg_hdr.msg_src))) {
+    /* if I'm not a proc, check if this message came from
+     * another job family - procs dont' need to do this because
+     * they always route through their daemons anyway
+     */
+    if (!ORTE_PROC_IS_MPI) {
+        if ((ORTE_JOB_FAMILY(msg->msg_hdr.msg_origin.jobid) !=
+             ORTE_JOB_FAMILY(ORTE_PROC_MY_NAME->jobid)) &&
+            (0 != ORTE_JOB_FAMILY(msg->msg_hdr.msg_origin.jobid))) {
+            /* this message came from a different job family that is not
+             * a local slave, so we may
+             * not know how to route any reply back to the originator. Update
+             * our route so we can dynamically build the routing table
+             */
             if (ORTE_SUCCESS != (rc = orte_routed.update_route(&(msg->msg_hdr.msg_origin),
                                                                &(msg->msg_hdr.msg_src)))) {
                 /* Nothing we can do about errors here as we definitely want

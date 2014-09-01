@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2009 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -76,58 +76,89 @@
 #include "orte/constants.h"
 #include "orte/types.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
 
 #include "opal/class/opal_object.h"
+#include "opal/util/output.h"
 
 BEGIN_C_DECLS
 
 /**
  * States that a process can be in while checkpointing
  */
-/* Doing no checkpoint -- Quiet state */
-#define ORTE_SNAPC_CKPT_STATE_NONE          0
-/* There has been a request for a checkpoint from one of the applications */
-#define ORTE_SNAPC_CKPT_STATE_REQUEST       1
-/* There is a Pending checkpoint for this process */
-#define ORTE_SNAPC_CKPT_STATE_PENDING       2
-/* There is a Pending checkpoint for this process, terminate the process after checkpoint */
-#define ORTE_SNAPC_CKPT_STATE_PENDING_TERM  3
-/* Running the checkpoint */
-#define ORTE_SNAPC_CKPT_STATE_RUNNING       4
-/* Finished the checkpoint */
-#define ORTE_SNAPC_CKPT_STATE_FILE_XFER     5
-/* Finished the checkpoint */
-#define ORTE_SNAPC_CKPT_STATE_FINISHED      6
-/* Unable to checkpoint this job */
-#define ORTE_SNAPC_CKPT_STATE_NO_CKPT       7
 /* Reached an error */
-#define ORTE_SNAPC_CKPT_STATE_ERROR         8
+#define ORTE_SNAPC_CKPT_STATE_ERROR           0
+
+/* Doing no checkpoint -- Quiet state */
+#define ORTE_SNAPC_CKPT_STATE_NONE            1
+/* There has been a request for a checkpoint from one of the applications */
+#define ORTE_SNAPC_CKPT_STATE_REQUEST         2
+/* There is a Pending checkpoint for this process */
+#define ORTE_SNAPC_CKPT_STATE_PENDING         3
+/* Running the checkpoint */
+#define ORTE_SNAPC_CKPT_STATE_RUNNING         4
+/* All Processes have been stopped */
+#define ORTE_SNAPC_CKPT_STATE_STOPPED         5
+/* Finished the checkpoint locally */
+#define ORTE_SNAPC_CKPT_STATE_FINISHED_LOCAL  6
+/* File Transfer in progress */
+#define ORTE_SNAPC_CKPT_STATE_FILE_XFER       7
+/* Finished the checkpoint */
+#define ORTE_SNAPC_CKPT_STATE_FINISHED        8
+/* Unable to checkpoint this job */
+#define ORTE_SNAPC_CKPT_STATE_NO_CKPT         9
+#define ORTE_SNAPC_CKPT_MAX                  10
+
+/**
+ * Sufficiently high shift value to avoid colliding the process
+ * checkpointing states above with the ORTE process states
+ */
+#define ORTE_SNAPC_CKPT_SHIFT                131072
+
+/* Uniquely encode the SNAPC state */
+#define ORTE_SNAPC_CKPT_NOTIFY(state) (ORTE_SNAPC_CKPT_SHIFT + state)
+
+/* Decode the SNAPC state */
+#define ORTE_SNAPC_CKPT_STATE(state) (state - ORTE_SNAPC_CKPT_SHIFT)
+
+/* Check whether a state is a SNAPC state or not. */
+#define CHECK_ORTE_SNAPC_CKPT_STATE(state) (state >= ORTE_SNAPC_CKPT_SHIFT)
 
 /**
  * Definition of a orte local snapshot.
  * Similar to the opal_crs_base_snapshot_t except that it
  * contains process contact information.
  */
-struct orte_snapc_base_snapshot_1_0_0_t {
-    opal_crs_base_snapshot_t crs_snapshot_super;
+struct orte_snapc_base_local_snapshot_1_0_0_t {
+    /** List super object */
+    opal_list_item_t super;
+
     /** ORTE Process name */
     orte_process_name_t process_name;
-    /** PID of the application process that generated this snapshot */
-    pid_t process_pid;
-    /** State of the checkpoint */
-    size_t state;
-    /** Terminate this process after a checkpoint */
-    bool term;
-};
-typedef struct orte_snapc_base_snapshot_1_0_0_t orte_snapc_base_snapshot_1_0_0_t;
-typedef struct orte_snapc_base_snapshot_1_0_0_t orte_snapc_base_snapshot_t;
 
-ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_snapc_base_snapshot_t);
+    /** State of the checkpoint */
+    int state;
+
+    /** Unique name of the local snapshot */
+    char * reference_name;
+    
+    /** Local location of the local snapshot Absolute path */
+    char * local_location;
+
+    /** Remote location of the local snapshot Absolute path */
+    char * remote_location;
+
+    /** CRS agent */
+    char * opal_crs;
+
+};
+typedef struct orte_snapc_base_local_snapshot_1_0_0_t orte_snapc_base_local_snapshot_1_0_0_t;
+typedef struct orte_snapc_base_local_snapshot_1_0_0_t orte_snapc_base_local_snapshot_t;
+
+ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_snapc_base_local_snapshot_t);
 
 /**
  * Definition of the global snapshot.
@@ -138,12 +169,9 @@ struct orte_snapc_base_global_snapshot_1_0_0_t {
     /** This is an object, so must have super */
     opal_list_item_t super;
 
-    /** A list of orte_snapc_base_snapshot_ts */
-    opal_list_t snapshots;
+    /** A list of orte_snapc_base_snapshot_t's */
+    opal_list_t local_snapshots;
     
-    /* ORTE SnapC Component used to generate the global snapshot */
-    char * component_name;
-
     /** Unique name of the global snapshot */
     char * reference_name;
     
@@ -153,16 +181,45 @@ struct orte_snapc_base_global_snapshot_1_0_0_t {
     /** Sequence Number */
     int seq_num;
 
-    /** Beginning timestamp */
+    /** Start Timestamp */
     char * start_time;
 
-    /** Ending timestamp */
+    /** End Timestamp */
     char * end_time;
 };
 typedef struct orte_snapc_base_global_snapshot_1_0_0_t orte_snapc_base_global_snapshot_1_0_0_t;
 typedef struct orte_snapc_base_global_snapshot_1_0_0_t orte_snapc_base_global_snapshot_t;
 
 ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_snapc_base_global_snapshot_t);
+
+struct orte_snapc_base_quiesce_1_0_0_t {
+    /** Parent is an object type */
+    opal_object_t super;
+
+    /** Current epoch */
+    int epoch;
+    /** Requested CRS */
+    char * crs_name;
+    /** Handle for reference */
+    char * handle;
+    /** snapshot list */
+    orte_snapc_base_global_snapshot_t *snapshot;
+
+    /** Target Directory */
+    char * target_dir;
+    /** Command Line */
+    char * cmdline;
+    /** State of operation if checkpointing */
+    opal_crs_state_type_t cr_state;
+    /** Checkpointing? */
+    bool checkpointing;
+    /** Restarting? */
+    bool restarting;
+};
+typedef struct orte_snapc_base_quiesce_1_0_0_t orte_snapc_base_quiesce_1_0_0_t;
+typedef struct orte_snapc_base_quiesce_1_0_0_t orte_snapc_base_quiesce_t;
+
+ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_snapc_base_quiesce_t);
 
 /**
  * Module initialization function.
@@ -204,6 +261,28 @@ typedef int (*orte_snapc_base_release_job_fn_t)
 typedef int  (*orte_snapc_base_ft_event_fn_t)(int state);
 
 /**
+ * Start a checkpoint originating from an internal source.
+ *
+ * This really only makes sense to call from an application, but in the future
+ * we may allow the checkpoint operation to use this function from the local
+ * coordinator.
+ *
+ * @param[out] epoch Epoch number to associate with this checkpoint operation
+ * Returns ORTE_SUCCESS
+ */
+typedef int (*orte_snapc_base_start_checkpoint_fn_t)
+    (orte_snapc_base_quiesce_t *datum);
+
+/**
+ * Signal end of checkpoint epoch originating from an internal source.
+ *
+ * @param[in] epoch Epoch number to associate with this checkpoint operation
+ * Returns ORTE_SUCCESS
+ */
+typedef int (*orte_snapc_base_end_checkpoint_fn_t)
+    (orte_snapc_base_quiesce_t *datum);
+
+/**
  * Structure for SNAPC components.
  */
 struct orte_snapc_base_component_2_0_0_t {
@@ -236,11 +315,15 @@ struct orte_snapc_base_module_1_0_0_t {
     orte_snapc_base_release_job_fn_t           release_job;
     /** Handle any FT Notifications */
     orte_snapc_base_ft_event_fn_t              ft_event;
+    /** Handle internal request for checkpoint */
+    orte_snapc_base_start_checkpoint_fn_t      start_ckpt;
+    orte_snapc_base_end_checkpoint_fn_t        end_ckpt;
 };
 typedef struct orte_snapc_base_module_1_0_0_t orte_snapc_base_module_1_0_0_t;
 typedef struct orte_snapc_base_module_1_0_0_t orte_snapc_base_module_t;
 
 ORTE_DECLSPEC extern orte_snapc_base_module_t orte_snapc;
+ORTE_DECLSPEC extern orte_snapc_base_component_t orte_snapc_base_selected_component;
 
 /**
  * Macro for use in components that are of type SNAPC

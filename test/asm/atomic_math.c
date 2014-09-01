@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -17,7 +18,7 @@
  */
 
 #define OMPI_BUILDING 0
-#include "ompi_config.h"
+#include "opal_config.h"
 
 #ifdef HAVE_PTHREAD_H
 #include <pthread.h>
@@ -56,7 +57,7 @@ static int
 atomic_math_test_th(int count, int thr_count)
 {
     int value;
-#if OMPI_HAVE_POSIX_THREADS
+#if OPAL_HAVE_POSIX_THREADS
     pthread_t *th;
     int tid, ret = 0;
 

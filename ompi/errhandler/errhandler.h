@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2009 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2008-2009 Sun Microsystems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
@@ -109,9 +109,9 @@ struct ompi_errhandler_t {
        (vs., for example, a union) because the predefined errhandlers
        can be invoked on any MPI object type, so we need callbacks for
        all of three. */
-    MPI_Comm_errhandler_fn *eh_comm_fn;
+    MPI_Comm_errhandler_function *eh_comm_fn;
     ompi_file_errhandler_fn *eh_file_fn;
-    MPI_Win_errhandler_fn *eh_win_fn;
+    MPI_Win_errhandler_function *eh_win_fn;
     ompi_errhandler_fortran_handler_fn_t *eh_fort_fn;
 
     /* Have separate callback for C++ errhandlers.  This pointer is
@@ -253,7 +253,7 @@ struct ompi_request_t;
  */
 #define OMPI_ERRHANDLER_RETURN(rc, mpi_object, err_code, message) \
   OPAL_CR_EXIT_LIBRARY() \
-  if (rc != OMPI_SUCCESS) { \
+  if ( OPAL_UNLIKELY(OMPI_SUCCESS != rc) ) { \
     int __mpi_err_code = (err_code < 0 ? (ompi_errcode_get_mpi_code(err_code)) : err_code); \
     ompi_errhandler_invoke((mpi_object)->error_handler, \
                            (mpi_object), \

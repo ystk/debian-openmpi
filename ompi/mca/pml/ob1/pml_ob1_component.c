@@ -1,15 +1,18 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -18,7 +21,6 @@
  */
 
 #include "ompi_config.h"
-#include "opal/sys/cache.h"
 #include "opal/event/event.h"
 #include "mpi.h"
 #include "ompi/runtime/params.h"
@@ -105,8 +107,14 @@ static int mca_pml_ob1_component_open(void)
         mca_pml_ob1_param_register_int("send_pipeline_depth", 3);
     mca_pml_ob1.recv_pipeline_depth =
         mca_pml_ob1_param_register_int("recv_pipeline_depth", 4);
-    mca_pml_ob1.rdma_put_retries_limit =
-        mca_pml_ob1_param_register_int("rdma_put_retries_limit", 5);
+
+    /* NTH: we can get into a live-lock situation in the RDMA failure path so disable
+       RDMA retries for now. Falling back to send may suck but it is better than
+       hanging */
+    mca_pml_ob1.rdma_put_retries_limit = 0;
+    /*     mca_pml_ob1.rdma_put_retries_limit = */
+    /*         mca_pml_ob1_param_register_int("rdma_put_retries_limit", 5); */
+
     mca_pml_ob1.max_rdma_per_request =
         mca_pml_ob1_param_register_int("max_rdma_per_request", 4);
     mca_pml_ob1.max_send_per_range =
@@ -127,6 +135,7 @@ static int mca_pml_ob1_component_open(void)
         opal_output(0, "mca_pml_ob1_component_open: can't find allocator: %s\n", mca_pml_ob1.allocator_name);
         return OMPI_ERROR;
     }
+
     mca_pml_ob1.allocator = allocator_component->allocator_init(true,
                                                                 mca_pml_ob1_seg_alloc,
                                                                 mca_pml_ob1_seg_free, NULL);
@@ -144,8 +153,12 @@ static int mca_pml_ob1_component_close(void)
 {
     int rc;
 
-    if(OMPI_SUCCESS != (rc = mca_bml_base_close()))
-        return rc;
+    if (OMPI_SUCCESS != (rc = mca_bml_base_close())) {
+         return rc;
+    }
+    if (NULL != mca_pml_ob1.allocator_name) {
+        free(mca_pml_ob1.allocator_name);
+    }
 
     return OMPI_SUCCESS;
 }

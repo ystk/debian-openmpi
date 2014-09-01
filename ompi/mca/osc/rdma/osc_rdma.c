@@ -55,7 +55,7 @@ ompi_osc_rdma_module_free(ompi_win_t *win)
     ret = (ret != OMPI_SUCCESS) ? ret : tmp;
 
     if (0 == opal_hash_table_get_size(&mca_osc_rdma_component.c_modules)) {
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
         void *foo;
 
         mca_osc_rdma_component.c_thread_run = false;
@@ -83,6 +83,9 @@ ompi_osc_rdma_module_free(ompi_win_t *win)
     }
     if (NULL != module->m_sc_remote_active_ranks) {
         free(module->m_sc_remote_active_ranks);
+    }
+    if (NULL != module->m_pending_buffers) {
+        free(module->m_pending_buffers);
     }
     if (NULL != module->m_fence_coll_counts) {
         free(module->m_fence_coll_counts);

@@ -9,7 +9,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -19,13 +19,13 @@
 
 man_pages = mpicc.1 mpic++.1 mpicxx.1 mpif77.1 mpif90.1
 
-if OMPI_WANT_SCRIPT_WRAPPER_COMPILERS
+if OPAL_WANT_SCRIPT_WRAPPER_COMPILERS
 
 bin_SCRIPTS = ompi_wrapper_script
 CLEANFILES += $(bin_SCRIPTS)
 
 install-exec-hook-always:
-	test -z "$(bindir)" || $(mkdir_p) "$(DESTDIR)$(bindir)"
+	test -z "$(bindir)" || $(MKDIR_P) "$(DESTDIR)$(bindir)"
 	(cd $(DESTDIR)$(bindir); rm -f mpicc; $(LN_S) ompi_wrapper_script mpicc)
 	(cd $(DESTDIR)$(bindir); rm -f mpic++; $(LN_S) ompi_wrapper_script mpic++)
 	(cd $(DESTDIR)$(bindir); rm -f mpicxx; $(LN_S) ompi_wrapper_script mpicxx)
@@ -47,9 +47,12 @@ install-exec-hook: install-exec-hook-always
 uninstall-local: uninstall-local-always
 endif # CASE_SENSITIVE_FS
 
-else # OMPI_WANT_SHELL_WRAPPER_COMPILERS
+else # OPAL_WANT_SCRIPT_WRAPPER_COMPILERS
 
 if OMPI_INSTALL_BINARIES
+
+pkgconfigdir = $(libdir)/pkgconfig
+pkgconfig_DATA = ompi.pc ompi-c.pc ompi-cxx.pc ompi-f77.pc ompi-f90.pc
 
 man_MANS = $(man_pages)
 
@@ -60,7 +63,7 @@ dist_pkgdata_DATA = \
 	mpif90-wrapper-data.txt
 
 install-exec-hook-always:
-	test -z "$(bindir)" || $(mkdir_p) "$(DESTDIR)$(bindir)"
+	test -z "$(bindir)" || $(MKDIR_P) "$(DESTDIR)$(bindir)"
 	(cd $(DESTDIR)$(bindir); rm -f mpicc$(EXEEXT); $(LN_S) opal_wrapper mpicc)
 	(cd $(DESTDIR)$(bindir); rm -f mpic++$(EXEEXT); $(LN_S) opal_wrapper mpic++)
 	(cd $(DESTDIR)$(bindir); rm -f mpicxx$(EXEEXT); $(LN_S) opal_wrapper mpicxx)
@@ -100,7 +103,7 @@ endif # CASE_SENSITIVE_FS
 
 endif # OMPI_INSTALL_BINARIES
 
-endif # OMPI_WANT_SHELL_WRAPPER_COMPILERS
+endif # OPAL_WANT_SCRIPT_WRAPPER_COMPILERS
 
 
 ########################################################

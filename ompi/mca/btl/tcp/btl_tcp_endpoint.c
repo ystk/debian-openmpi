@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007-2008 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -48,10 +49,11 @@
 #include <time.h>
 #endif  /* HAVE_TIME_H */
 
+#include "opal/util/net.h"
+#include "opal/util/show_help.h"
+
 #include "ompi/types.h"
 #include "ompi/mca/btl/base/btl_base_error.h"
-#include "opal/util/if.h"
-#include "opal/util/net.h"
 
 #include "btl_tcp.h"
 #include "btl_tcp_endpoint.h" 
@@ -316,7 +318,7 @@ static int mca_btl_tcp_endpoint_send_connect_ack(mca_btl_base_endpoint_t* btl_en
 {
     /* send process identifier to remote endpoint */
     mca_btl_tcp_proc_t* btl_proc = mca_btl_tcp_proc_local();
-    orte_process_name_t guid = btl_proc->proc_name;
+    orte_process_name_t guid = btl_proc->proc_ompi->proc_name;
 
     ORTE_PROCESS_NAME_HTON(guid);
     if(mca_btl_tcp_endpoint_send_blocking(btl_endpoint, &guid, sizeof(guid)) != 
@@ -338,7 +340,6 @@ static int mca_btl_tcp_endpoint_send_connect_ack(mca_btl_base_endpoint_t* btl_en
 bool mca_btl_tcp_endpoint_accept(mca_btl_base_endpoint_t* btl_endpoint,
                                  struct sockaddr* addr, int sd)
 {
-    mca_btl_tcp_addr_t* btl_addr;
     mca_btl_tcp_proc_t* this_proc = mca_btl_tcp_proc_local();
     mca_btl_tcp_proc_t *endpoint_proc = btl_endpoint->endpoint_proc;
     int cmpval;
@@ -346,7 +347,7 @@ bool mca_btl_tcp_endpoint_accept(mca_btl_base_endpoint_t* btl_endpoint,
     OPAL_THREAD_LOCK(&btl_endpoint->endpoint_recv_lock);
     OPAL_THREAD_LOCK(&btl_endpoint->endpoint_send_lock);
 
-    if(NULL == (btl_addr = btl_endpoint->endpoint_addr)) {
+    if(NULL == btl_endpoint->endpoint_addr) {
         OPAL_THREAD_UNLOCK(&btl_endpoint->endpoint_send_lock);
         OPAL_THREAD_UNLOCK(&btl_endpoint->endpoint_recv_lock);
         return false;
@@ -369,7 +370,7 @@ bool mca_btl_tcp_endpoint_accept(mca_btl_base_endpoint_t* btl_endpoint,
         mca_btl_tcp_endpoint_event_init(btl_endpoint);
         opal_event_add(&btl_endpoint->endpoint_recv_event, 0);
         mca_btl_tcp_endpoint_connected(btl_endpoint);
-#if OMPI_ENABLE_DEBUG && WANT_PEER_DUMP
+#if OPAL_ENABLE_DEBUG && WANT_PEER_DUMP
         mca_btl_tcp_endpoint_dump(btl_endpoint, "accepted");
 #endif
         OPAL_THREAD_UNLOCK(&btl_endpoint->endpoint_send_lock);
@@ -447,7 +448,7 @@ static int mca_btl_tcp_endpoint_recv_blocking(mca_btl_base_endpoint_t* btl_endpo
         /* remote closed connection */
         if(retval == 0) {
             mca_btl_tcp_endpoint_close(btl_endpoint);
-            return -1;
+            return cnt;
         }
 
         /* socket is non-blocking so handle errors */
@@ -474,14 +475,30 @@ static int mca_btl_tcp_endpoint_recv_blocking(mca_btl_base_endpoint_t* btl_endpo
 static int mca_btl_tcp_endpoint_recv_connect_ack(mca_btl_base_endpoint_t* btl_endpoint)
 {
     orte_process_name_t guid;
+    size_t s;
     mca_btl_tcp_proc_t* btl_proc = btl_endpoint->endpoint_proc;
 
-    if((mca_btl_tcp_endpoint_recv_blocking(btl_endpoint, &guid, sizeof(orte_process_name_t))) != sizeof(orte_process_name_t)) {
+    s = mca_btl_tcp_endpoint_recv_blocking(btl_endpoint,
+                                           &guid, sizeof(orte_process_name_t));
+    if (s != sizeof(orte_process_name_t)) {
+        if (0 == s) {
+            /* If we get zero bytes, the peer closed the socket. This
+               can happen when the two peers started the connection
+               protocol simultaneously. Just report the problem
+               upstream. */
+            return OMPI_ERROR;
+        }
+        opal_show_help("help-mpi-btl-tcp.txt", "client handshake fail",
+                       true, orte_process_info.nodename,
+                       orte_process_info.pid, 
+                       "did not receive entire connect ACK from peer");
         return OMPI_ERR_UNREACH;
     }
     ORTE_PROCESS_NAME_NTOH(guid);
     /* compare this to the expected values */
-    if (OPAL_EQUAL != orte_util_compare_name_fields(ORTE_NS_CMP_ALL, &btl_proc->proc_name, &guid)) {
+    if (OPAL_EQUAL != orte_util_compare_name_fields(ORTE_NS_CMP_ALL,
+                                                    &btl_proc->proc_ompi->proc_name,
+                                                    &guid)) {
         BTL_ERROR(("received unexpected process identifier %s", 
                    ORTE_NAME_PRINT(&guid)));
         mca_btl_tcp_endpoint_close(btl_endpoint);
@@ -675,7 +692,7 @@ static void mca_btl_tcp_endpoint_recv_handler(int sd, short flags, void* user)
                 OPAL_THREAD_LOCK(&btl_endpoint->endpoint_send_lock);
                 mca_btl_tcp_endpoint_connected(btl_endpoint);
                 OPAL_THREAD_UNLOCK(&btl_endpoint->endpoint_send_lock);
-#if OMPI_ENABLE_DEBUG && WANT_PEER_DUMP
+#if OPAL_ENABLE_DEBUG && WANT_PEER_DUMP
                 mca_btl_tcp_endpoint_dump(btl_endpoint, "connected");
 #endif
             }

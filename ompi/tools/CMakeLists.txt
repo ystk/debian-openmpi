@@ -1,4 +1,4 @@
-# Copyright (c) 2007-2010 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2007-2011 High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2008      The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
@@ -13,90 +13,133 @@
 ADD_SUBDIRECTORY(ompi_info)
 ADD_SUBDIRECTORY(ompi-server)
 
-# select debug or release libraries at configure time
-IF(OMPI_DEBUG_BUILD)
-  SET(OMPI_WRAPPER_EXTRA_LIBS
-    "libmpid.lib libopen-pald.lib libopen-rted.lib advapi32.lib Ws2_32.lib shlwapi.lib")
-ELSE(OMPI_DEBUG_BUILD)
-  SET(OMPI_WRAPPER_EXTRA_LIBS
-    "libmpi.lib libopen-pal.lib libopen-rte.lib advapi32.lib Ws2_32.lib shlwapi.lib")
-ENDIF(OMPI_DEBUG_BUILD)
 
-GET_FILENAME_COMPONENT(CC "${CL_EXE}" NAME)
+MACRO(CONFIGURE_WRAPPER_DATA_FILE APP_NAME)
+
+  # mpic++ and mpicxx share the same input file
+  IF(${APP_NAME} STREQUAL "mpicxx")
+    SET(INPUT_PREFIX "mpic++")
+  ELSE(${APP_NAME} STREQUAL "mpicxx")
+    SET(INPUT_PREFIX ${APP_NAME})
+  ENDIF(${APP_NAME} STREQUAL "mpicxx")
+  
+  FILE(READ ${OpenMPI_SOURCE_DIR}/ompi/tools/wrappers/${INPUT_PREFIX}-wrapper-data.txt.in DATA_FILE)
+  STRING(REGEX REPLACE "-l[-a-zA-Z0-9_]+ " "" DATA_FILE ${DATA_FILE})
+
+  # create a temporary input file, for "write file" command only
+  # replace the variables in the first level. :(
+  FILE(WRITE ${OMPI_BINARY_DIR}/tools/wrappers/${APP_NAME}-wrapper-data.txt.in "${DATA_FILE}")
+
+  CONFIGURE_FILE(${OMPI_BINARY_DIR}/tools/wrappers/${APP_NAME}-wrapper-data.txt.in
+                 ${OMPI_BINARY_DIR}/tools/wrappers/${APP_NAME}${OMPI_EXE_DEBUG_POSTFIX}-wrapper-data.txt @ONLY)
+  INSTALL(FILES ${OMPI_BINARY_DIR}/tools/wrappers/${APP_NAME}${OMPI_EXE_DEBUG_POSTFIX}-wrapper-data.txt
+          DESTINATION share/openmpi)
+  CONFIGURE_FILE(${OMPI_BINARY_DIR}/tools/wrappers/${APP_NAME}-wrapper-data.txt.in
+                 ${OMPI_BINARY_DIR}/tools/wrappers/${APP_NAME}${OMPI_EXE_DEBUG_POSTFIX}.exe-wrapper-data.txt @ONLY)
+  INSTALL(FILES ${OMPI_BINARY_DIR}/tools/wrappers/${APP_NAME}${OMPI_EXE_DEBUG_POSTFIX}.exe-wrapper-data.txt
+          DESTINATION share/openmpi)
+ENDMACRO()
+
+
+# select debug or release libraries at configure time
+IF(WINDOWS_VS)
+  IF(OMPI_DEBUG_BUILD)
+    SET(OMPI_WRAPPER_BASE_LIBS
+      "libmpid.lib libopen-pald.lib libopen-rted.lib advapi32.lib Ws2_32.lib shlwapi.lib")
+  ELSE(OMPI_DEBUG_BUILD)
+    SET(OMPI_WRAPPER_BASE_LIBS
+      "libmpi.lib libopen-pal.lib libopen-rte.lib advapi32.lib Ws2_32.lib shlwapi.lib")
+  ENDIF(OMPI_DEBUG_BUILD)
+ELSEIF(WINDOWS_MINGW)
+  IF(OMPI_DEBUG_BUILD)
+    SET(OMPI_WRAPPER_BASE_LIBS "-lmpid")
+  ELSE(OMPI_DEBUG_BUILD)
+    SET(OMPI_WRAPPER_BASE_LIBS "-lmpi")
+  ENDIF(OMPI_DEBUG_BUILD)
+ENDIF(WINDOWS_VS)
+
 IF(BUILD_SHARED_LIBS)
   SET(OMPI_WRAPPER_EXTRA_CFLAGS
-    "/TC /D \"OMPI_IMPORTS\" /D \"OPAL_IMPORTS\" /D \"ORTE_IMPORTS\"")
+    "${OMPI_C_LAN_FLAG} ${OMPI_C_DEF_PRE}OMPI_IMPORTS ${OMPI_C_DEF_PRE}OPAL_IMPORTS ${OMPI_C_DEF_PRE}ORTE_IMPORTS")
 ELSE(BUILD_SHARED_LIBS)
   IF(OMPI_DEBUG_BUILD)
-    SET(OMPI_WRAPPER_EXTRA_CFLAGS "/TC /MDd")
+    SET(OMPI_WRAPPER_EXTRA_CFLAGS "${OMPI_C_LAN_FLAG} ${OMPI_C_MD_DEBUG}")
   ELSE(OMPI_DEBUG_BUILD)
-    SET(OMPI_WRAPPER_EXTRA_CFLAGS "/TC /MD")
+    SET(OMPI_WRAPPER_EXTRA_CFLAGS "${OMPI_C_LAN_FLAG} ${OMPI_C_MD}")
   ENDIF(OMPI_DEBUG_BUILD)
 ENDIF(BUILD_SHARED_LIBS)
 
-CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/contrib/platform/win32/ConfigFiles/mpicc-wrapper-data.txt.cmake
-               ${OMPI_BINARY_DIR}/tools/wrappers/mpicc-wrapper-data.txt @ONLY)
-INSTALL(FILES ${OMPI_BINARY_DIR}/tools/wrappers/mpicc-wrapper-data.txt
-        DESTINATION share/openmpi)
-CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/contrib/platform/win32/ConfigFiles/mpicc-wrapper-data.txt.cmake
-               ${OMPI_BINARY_DIR}/tools/wrappers/mpicc.exe-wrapper-data.txt @ONLY)
-INSTALL(FILES ${OMPI_BINARY_DIR}/tools/wrappers/mpicc.exe-wrapper-data.txt
-        DESTINATION share/openmpi)
+SET(OMPI_WRAPPER_EXTRA_LIBS ${OMPI_WRAPPER_BASE_LIBS})
+CONFIGURE_WRAPPER_DATA_FILE(mpicc)
+UNSET(OMPI_WRAPPER_EXTRA_LIBS)
 
 IF(OMPI_WANT_CXX_BINDINGS)
-  GET_FILENAME_COMPONENT(CXX "${CL_EXE}" NAME)
+
+  # select debug or release libraries at configure time
+  IF(WINDOWS_VS)
+    IF(OMPI_DEBUG_BUILD)
+      SET(OMPI_WRAPPER_CXX_LIB "libmpi_cxxd.lib ${OMPI_WRAPPER_BASE_LIBS}")
+    ELSE(OMPI_DEBUG_BUILD)
+      SET(OMPI_WRAPPER_CXX_LIB "libmpi_cxx.lib ${OMPI_WRAPPER_BASE_LIBS}")
+    ENDIF(OMPI_DEBUG_BUILD)
+  ELSEIF(WINDOWS_MINGW)
+    IF(OMPI_DEBUG_BUILD)
+      SET(OMPI_WRAPPER_CXX_LIB "-lmpi_cxxd ${OMPI_WRAPPER_BASE_LIBS}")
+    ELSE(OMPI_DEBUG_BUILD)
+      SET(OMPI_WRAPPER_CXX_LIB "-lmpi_cxx ${OMPI_WRAPPER_BASE_LIBS}")
+    ENDIF(OMPI_DEBUG_BUILD)
+  ENDIF(WINDOWS_VS)
 
   IF(BUILD_SHARED_LIBS)
     SET(OMPI_WRAPPER_EXTRA_CXXFLAGS 
-      "/TP /EHsc /D \"OMPI_IMPORTS\" /D \"OPAL_IMPORTS\" /D \"ORTE_IMPORTS\"")
+      "${OMPI_CXX_LAN_FLAG} ${OMPI_CXX_EXCEPTION} ${OMPI_C_DEF_PRE}OMPI_IMPORTS ${OMPI_C_DEF_PRE}OPAL_IMPORTS ${OMPI_C_DEF_PRE}ORTE_IMPORTS")
   ELSE(BUILD_SHARED_LIBS)
-    SET(OMPI_WRAPPER_EXTRA_CXXFLAGS "/TP /EHsc")
+    IF(OMPI_DEBUG_BUILD)
+      SET(OMPI_WRAPPER_EXTRA_CXXFLAGS "${OMPI_CXX_LAN_FLAG} ${OMPI_CXX_EXCEPTION} ${OMPI_C_MD_DEBUG}")
+    ELSE(OMPI_DEBUG_BUILD)
+      SET(OMPI_WRAPPER_EXTRA_CXXFLAGS "${OMPI_CXX_LAN_FLAG} ${OMPI_CXX_EXCEPTION} ${OMPI_C_MD}")
+    ENDIF(OMPI_DEBUG_BUILD)
   ENDIF(BUILD_SHARED_LIBS)
 
-  # select debug or release libraries at configure time
-  IF(OMPI_DEBUG_BUILD)
-    SET(OMPI_WRAPPER_CXX_LIB "libmpi_cxxd.lib")
-  ELSE(OMPI_DEBUG_BUILD)
-    SET(OMPI_WRAPPER_CXX_LIB "libmpi_cxx.lib")
-  ENDIF(OMPI_DEBUG_BUILD)
-
-  CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/contrib/platform/win32/ConfigFiles/mpic++-wrapper-data.txt.cmake
-                 ${OMPI_BINARY_DIR}/tools/wrappers/mpic++-wrapper-data.txt @ONLY)
-  INSTALL(FILES ${OMPI_BINARY_DIR}/tools/wrappers/mpic++-wrapper-data.txt
-          DESTINATION share/openmpi)
-  CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/contrib/platform/win32/ConfigFiles/mpic++-wrapper-data.txt.cmake
-                 ${OMPI_BINARY_DIR}/tools/wrappers/mpicxx-wrapper-data.txt @ONLY)
-  INSTALL(FILES ${OMPI_BINARY_DIR}/tools/wrappers/mpicxx-wrapper-data.txt
-          DESTINATION share/openmpi)
-  CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/contrib/platform/win32/ConfigFiles/mpic++-wrapper-data.txt.cmake
-                 ${OMPI_BINARY_DIR}/tools/wrappers/mpic++.exe-wrapper-data.txt @ONLY)
-  INSTALL(FILES ${OMPI_BINARY_DIR}/tools/wrappers/mpic++.exe-wrapper-data.txt
-          DESTINATION share/openmpi)
-  CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/contrib/platform/win32/ConfigFiles/mpic++-wrapper-data.txt.cmake
-                 ${OMPI_BINARY_DIR}/tools/wrappers/mpicxx.exe-wrapper-data.txt @ONLY)
-  INSTALL(FILES ${OMPI_BINARY_DIR}/tools/wrappers/mpicxx.exe-wrapper-data.txt
-          DESTINATION share/openmpi)
+  CONFIGURE_WRAPPER_DATA_FILE(mpic++)
+  CONFIGURE_WRAPPER_DATA_FILE(mpicxx)
 ENDIF(OMPI_WANT_CXX_BINDINGS)
 
 IF(OMPI_WANT_F77_BINDINGS)
-  CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/contrib/platform/win32/ConfigFiles/mpif77-wrapper-data.txt.cmake
-                 ${OMPI_BINARY_DIR}/tools/wrappers/mpif77-wrapper-data.txt @ONLY)
-  INSTALL(FILES ${OMPI_BINARY_DIR}/tools/wrappers/mpif77-wrapper-data.txt
-          DESTINATION share/openmpi)
-  CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/contrib/platform/win32/ConfigFiles/mpif77-wrapper-data.txt.cmake
-                 ${OMPI_BINARY_DIR}/tools/wrappers/mpif77.exe-wrapper-data.txt @ONLY)
-  INSTALL(FILES ${OMPI_BINARY_DIR}/tools/wrappers/mpif77.exe-wrapper-data.txt
-          DESTINATION share/openmpi)
+  # select debug or release libraries at configure time
+  IF(WINDOWS_VS)
+    IF(OMPI_DEBUG_BUILD)
+      SET(OMPI_WRAPPER_EXTRA_LIBS "libmpi_f77d.lib ${OMPI_WRAPPER_BASE_LIBS}")
+    ELSE(OMPI_DEBUG_BUILD)
+      SET(OMPI_WRAPPER_EXTRA_LIBS "libmpi_f77.lib ${OMPI_WRAPPER_BASE_LIBS}")
+    ENDIF(OMPI_DEBUG_BUILD)
+  ELSEIF(WINDOWS_MINGW)
+    IF(OMPI_DEBUG_BUILD)
+      SET(OMPI_WRAPPER_EXTRA_LIBS "-lmpi_f77d ${OMPI_WRAPPER_BASE_LIBS}")
+    ELSE(OMPI_DEBUG_BUILD)
+      SET(OMPI_WRAPPER_EXTRA_LIBS "-lmpi_f77 ${OMPI_WRAPPER_BASE_LIBS}")
+    ENDIF(OMPI_DEBUG_BUILD)
+  ENDIF(WINDOWS_VS)
+
+  IF(BUILD_SHARED_LIBS)
+    SET(OMPI_WRAPPER_EXTRA_FFLAGS 
+      "")
+  ELSE(BUILD_SHARED_LIBS)
+    IF(OMPI_DEBUG_BUILD)
+      SET(OMPI_WRAPPER_EXTRA_FFLAGS "${F77_DYNAMIC_FLAG_DEBUG}")
+    ELSE(OMPI_DEBUG_BUILD)
+      SET(OMPI_WRAPPER_EXTRA_FFLAGS "${F77_DYNAMIC_FLAG}")
+    ENDIF(OMPI_DEBUG_BUILD)
+  ENDIF(BUILD_SHARED_LIBS)
+
+  CONFIGURE_WRAPPER_DATA_FILE(mpif77)
+  UNSET(OMPI_WRAPPER_EXTRA_LIBS)
 ENDIF(OMPI_WANT_F77_BINDINGS)
 
-IF(OMPI_WANT_F90_BINDINGS)
-  CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/contrib/platform/win32/ConfigFiles/mpif90-wrapper-data.txt.cmake
-                 ${OMPI_BINARY_DIR}/tools/wrappers/mpif90-wrapper-data.txt @ONLY)
-  INSTALL(FILES ${OMPI_BINARY_DIR}/tools/wrappers/mpif90-wrapper-data.txt
-          DESTINATION share/openmpi)
-  CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/contrib/platform/win32/ConfigFiles/mpif90-wrapper-data.txt.cmake
-                 ${OMPI_BINARY_DIR}/tools/wrappers/mpif90.exe-wrapper-data.txt @ONLY)
-  INSTALL(FILES ${OMPI_BINARY_DIR}/tools/wrappers/mpif90.exe-wrapper-data.txt
-          DESTINATION share/openmpi)
-ENDIF(OMPI_WANT_F90_BINDINGS)
+#IF(OMPI_WANT_F90_BINDINGS)
+#  CONFIGURE_WRAPPER_DATA_FILE(mpif90)
+#ENDIF(OMPI_WANT_F90_BINDINGS)
 
+IF(WANT_INSTALL_HEADERS)
+  CONFIGURE_WRAPPER_DATA_FILE(opal-wrapper)
+ENDIF(WANT_INSTALL_HEADERS)

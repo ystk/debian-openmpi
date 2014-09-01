@@ -1,5 +1,5 @@
 /*
- This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2009.
+ This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2013.
  Authors: Michael Heyde
 */
 
@@ -19,7 +19,6 @@ static mapInfoProcessT *add_inner( mapInfoProcessT **current, uint32_t process )
     (*current)->process = process;
     return *current;
   }
-  return NULL;
 }
 
 static mapInfoProcessT *search_inner( mapInfoProcessT *current, uint32_t process )
@@ -78,7 +77,6 @@ mapInfoProcessT *hash_search( mapInfoProcessT *hash, uint32_t process)
   {
     return search_inner( hash[hashkey].next, process );
   }
-  return NULL;
 }
 
 void hash_delete( mapInfoProcessT *hash )

@@ -2,7 +2,7 @@
  * VampirTrace
  * http://www.tu-dresden.de/zih/vampirtrace
  *
- * Copyright (c) 2005-2008, ZIH, TU Dresden, Federal Republic of Germany
+ * Copyright (c) 2005-2013, ZIH, TU Dresden, Federal Republic of Germany
  *
  * Copyright (c) 1998-2005, Forschungszentrum Juelich, Juelich Supercomputing
  *                          Centre, Federal Republic of Germany
@@ -43,9 +43,10 @@
 #elif TIMER == TIMER_GETTIMEOFDAY
   static uint64_t vt_time_base = 0;
 #elif TIMER == TIMER_PAPI_REAL_CYC
-# include <vt_metric.h>
+  extern uint64_t vt_metric_clckrt(void);
+  extern uint64_t vt_metric_real_cyc(void);
 #elif TIMER == TIMER_PAPI_REAL_USEC
-# include <vt_metric.h>
+  extern uint64_t vt_metric_real_usec(void);
   static uint64_t vt_time_base = 0;
 #endif
 
@@ -90,11 +91,17 @@ char* vt_pform_gdir() {
 
 /* directory of local file system  */
 char* vt_pform_ldir() {
-  #ifdef PFORM_LDIR
-    return PFORM_LDIR;
-  #else
-    return "/tmp";
-  #endif
+#ifdef DEFAULT_PFORM_LDIR
+  return DEFAULT_PFORM_LDIR;
+#else
+  return "/tmp";
+#endif
+}
+
+/* full path of executable  */
+char* vt_pform_exec()
+{
+  return NULL;
 }
 
 /* clock resolution */
@@ -102,11 +109,11 @@ uint64_t vt_pform_clockres() {
 #if TIMER == TIMER_RTC
   return vt_ticks_per_sec;
 #elif TIMER == TIMER_GETTIMEOFDAY
-  return 1e6;
+  return 1000000LL;
 #elif TIMER == TIMER_PAPI_REAL_CYC
   return vt_metric_clckrt();
 #elif TIMER == TIMER_PAPI_REAL_USEC
-  return 1e6;
+  return 1000000LL;
 #endif
 }
 
@@ -117,7 +124,7 @@ uint64_t vt_pform_wtime() {
 #elif TIMER == TIMER_GETTIMEOFDAY
   struct timeval tp;
   gettimeofday(&tp, 0);
-  return ((tp.tv_sec - vt_time_base) * 1e6) + tp.tv_usec;
+  return ((tp.tv_sec - vt_time_base) * 1000000LL) + tp.tv_usec;
 #elif TIMER == TIMER_PAPI_REAL_CYC
   return vt_metric_real_cyc();
 #elif TIMER == TIMER_PAPI_REAL_USEC

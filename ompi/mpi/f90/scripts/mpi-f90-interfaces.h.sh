@@ -1762,7 +1762,7 @@ output_53() {
     cat <<EOF
 
 subroutine ${procedure}(comm, flag, ierr)
-  integer, intent(inout) :: comm
+  integer, intent(in) :: comm
   logical, intent(in) :: flag
   integer, intent(out) :: ierr
 end subroutine ${procedure}
@@ -5914,6 +5914,29 @@ end MPI_Keyval_free
 
 #------------------------------------------------------------------------
 
+output_171_commutative() {
+    if test "$output" = "0"; then
+        return 0
+    fi
+
+    procedure=$1
+    cat <<EOF
+
+subroutine ${procedure}(op, commute, ierr)
+  integer, intent(in) :: op
+  logical, intent(out) :: commute
+  integer, intent(out) :: ierr
+end subroutine ${procedure}
+
+EOF
+}
+
+start MPI_Op_commutative small
+output_171_commutative MPI_Op_commutative
+end MPI_Op_commutative
+
+#------------------------------------------------------------------------
+
 output_171() {
     if test "$output" = "0"; then
         return 0
@@ -6433,6 +6456,62 @@ end MPI_Reduce
 
 #------------------------------------------------------------------------
 
+output_183_local() {
+    if test "$output" = "0"; then
+        return 0
+    fi
+
+    procedure=$1
+    rank=$2
+    type=$4
+    proc="$1$2D$3"
+    cat <<EOF
+
+subroutine ${proc}(inbuf, inout, count, datatype, op, &
+        ierr)
+  ${type}, intent(in) :: inbuf
+  ${type}, intent(out) :: inout
+  integer, intent(in) :: count
+  integer, intent(in) :: datatype
+  integer, intent(in) :: op
+  integer, intent(out) :: ierr
+end subroutine ${proc}
+
+EOF
+}
+
+start MPI_Reduce_local large
+
+for rank in $allranks
+do
+  case "$rank" in  0)  dim=''  ;  esac
+  case "$rank" in  1)  dim=', dimension(*)'  ;  esac
+  case "$rank" in  2)  dim=', dimension(1,*)'  ;  esac
+  case "$rank" in  3)  dim=', dimension(1,1,*)'  ;  esac
+  case "$rank" in  4)  dim=', dimension(1,1,1,*)'  ;  esac
+  case "$rank" in  5)  dim=', dimension(1,1,1,1,*)'  ;  esac
+  case "$rank" in  6)  dim=', dimension(1,1,1,1,1,*)'  ;  esac
+  case "$rank" in  7)  dim=', dimension(1,1,1,1,1,1,*)'  ;  esac
+
+  output_183_local MPI_Reduce_local ${rank} CH "character${dim}"
+  output_183_local MPI_Reduce_local ${rank} L "logical${dim}"
+  for kind in $ikinds
+  do
+    output_183_local MPI_Reduce_local ${rank} I${kind} "integer*${kind}${dim}"
+  done
+  for kind in $rkinds
+  do
+    output_183_local MPI_Reduce_local ${rank} R${kind} "real*${kind}${dim}"
+  done
+  for kind in $ckinds
+  do
+    output_183_local MPI_Reduce_local ${rank} C${kind} "complex*${kind}${dim}"
+  done
+done
+end MPI_Reduce_local
+
+#------------------------------------------------------------------------
+
 output_184() {
     if test "$output" = "0"; then
         return 0
@@ -6807,7 +6886,7 @@ output_192() {
     proc="$1$2D$3"
     cat <<EOF
 
-! Because we can't break ABI in the middle of the 1.5 series, also
+! Because we can't break ABI in the middle of the 1.4 series, also
 ! provide the old/bad/incorrect MPI_Scatterv binding
 subroutine ${proc}(sendbuf, sendcounts, displs, sendtype, recvbuf, &
         recvcount, recvtype, root, comm, ierr)

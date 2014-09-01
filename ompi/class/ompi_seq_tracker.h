@@ -22,11 +22,8 @@
 #include "ompi_config.h"
 #include "opal/class/opal_list.h"
 #include "ompi/constants.h"
-#include "ompi/mca/mpool/mpool.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 struct ompi_seq_tracker_range_t{ 
     opal_list_item_t super; 
@@ -68,8 +65,6 @@ OMPI_DECLSPEC void ompi_seq_tracker_insert(ompi_seq_tracker_t* seq_tracker, uint
  */
 OMPI_DECLSPEC void ompi_seq_tracker_copy(ompi_seq_tracker_t* dst, ompi_seq_tracker_t* src);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif 
 

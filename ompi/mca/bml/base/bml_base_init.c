@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,6 +22,8 @@
 #include "opal/mca/base/base.h"
 
 #include "opal/mca/mca.h"
+#include "opal/runtime/opal.h"
+
 int mca_bml_base_output = -1;
 
 mca_bml_base_module_t mca_bml = {
@@ -86,8 +89,12 @@ int mca_bml_base_init( bool enable_progress_threads,
     else { 
         mca_bml_component = *best_component; 
         mca_bml = *best_module; 
+        if (opal_profile) {
+            opal_output(0, "bml:%s", mca_bml_component.bml_version.mca_component_name);
+        }
         return mca_base_components_close(mca_bml_base_output, 
                                          &mca_bml_base_components_available, 
-                                         (mca_base_component_t*) best_component); 
+                                         (mca_base_component_t*) best_component,
+                                         false); 
     }
 }

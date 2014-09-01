@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2008 The University of Tennessee and The University
@@ -150,9 +150,10 @@ int orte_dt_unpack_job(opal_buffer_t *buffer, void *dest,
                        int32_t *num_vals, opal_data_type_t type)
 {
     int rc;
-    int32_t i, j, n;
+    int32_t i, j, n, np, nprocs;
     orte_job_t **jobs;
-
+    orte_proc_t *proc;
+    
     /* unpack into array of orte_job_t objects */
     jobs = (orte_job_t**) dest;
     for (i=0; i < *num_vals; i++) {
@@ -218,7 +219,31 @@ int orte_dt_unpack_job(opal_buffer_t *buffer, void *dest,
             return rc;
         }
         
-        /* no proc data to unpack */
+        /* unpack the number of procs */
+        n = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
+                         (void*)(&(jobs[i]->num_procs)), &n, ORTE_VPID))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        
+        /* unpack the actual number of proc entries in the message */
+        n = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, (void*)&nprocs, &n, OPAL_INT32))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        if (0 < nprocs) {
+            for (np=0; np < nprocs; np++) {
+                n = 1;
+                if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
+                                 (void**)&proc, &n, ORTE_PROC))) {
+                    ORTE_ERROR_LOG(rc);
+                    return rc;
+                }
+                opal_pointer_array_set_item(jobs[i]->procs, proc->name.vpid, proc);
+            }
+        }
         
         /* if the map is NULL, then we din't pack it as there was
          * nothing to pack. Instead, we packed a flag to indicate whether or not
@@ -281,7 +306,7 @@ int orte_dt_unpack_job(opal_buffer_t *buffer, void *dest,
             return rc;
         }
 
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
         /* unpack the ckpt state */
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
                          (&(jobs[i]->ckpt_state)), &n, OPAL_SIZE))) {
@@ -360,14 +385,6 @@ int orte_dt_unpack_node(opal_buffer_t *buffer, void *dest,
             return rc;
         }
         
-        /* unpack the arch */
-        n = 1;
-        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
-                         (&(nodes[i]->arch)), &n, OPAL_INT32))) {
-            ORTE_ERROR_LOG(rc);
-            return rc;
-        }
-        
         /* unpack the state */
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
@@ -406,14 +423,6 @@ int orte_dt_unpack_node(opal_buffer_t *buffer, void *dest,
         }
         
         /* do not unpack the board, socket, and core info */
-        
-        /* unpack the cpu set */
-        n = 1;
-        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
-                                                         &(nodes[i]->cpu_set), &n, OPAL_STRING))) {
-            ORTE_ERROR_LOG(rc);
-            return rc;
-        }
         
         /* do not unpack the username */
     }
@@ -496,7 +505,15 @@ int orte_dt_unpack_proc(opal_buffer_t *buffer, void *dest,
             return rc;
         }
         
-#if OPAL_ENABLE_FT == 1
+        /* unpack the number of restarts */
+        n = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
+                          (&(procs[i]->restarts)), &n, OPAL_INT32))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        
+#if OPAL_ENABLE_FT_CR == 1
         /* unpack the ckpt state */
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
                          (&(procs[i]->ckpt_state)), &n, OPAL_SIZE))) {
@@ -653,6 +670,30 @@ int orte_dt_unpack_app_context(opal_buffer_t *buffer, void *dest,
             return rc;
         }
         
+        /* get the number of add_host strings that were packed */
+        max_n = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &count, &max_n, ORTE_STD_CNTR))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        
+        /* if there are dash_host strings, allocate the required space for the char * pointers */
+        if (0 < count) {
+            app_context[i]->add_host = (char **)malloc((count+1) * sizeof(char*));
+            if (NULL == app_context[i]->add_host) {
+                ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
+                return ORTE_ERR_OUT_OF_RESOURCE;
+            }
+            app_context[i]->add_host[count] = NULL;
+            
+            /* and unpack them */
+            max_n = count;
+            if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, app_context[i]->add_host, &max_n, OPAL_STRING))) {
+                ORTE_ERROR_LOG(rc);
+                return rc;
+            }
+        }
+        
         /* get the number of dash_host strings that were packed */
         max_n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &count, &max_n, ORTE_STD_CNTR))) {
@@ -702,6 +743,14 @@ int orte_dt_unpack_app_context(opal_buffer_t *buffer, void *dest,
             return rc;
         }
 
+        /* Unpack the preload_libs flag */
+        max_n=1;
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &(app_context[i]->preload_libs),
+                                                         &max_n, OPAL_BOOL))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        
         /* Unpack the preload_files set */
         max_n=1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &have_preload_files,
@@ -736,6 +785,23 @@ int orte_dt_unpack_app_context(opal_buffer_t *buffer, void *dest,
             app_context[i]->preload_files_dest_dir = NULL;
         }
 
+        /* Unpack the preload_files_src_dir set */
+        max_n=1;
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &have_preload_files_dest_dir,
+                                                         &max_n, OPAL_INT8))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        if (have_preload_files_dest_dir) {
+            if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &app_context[i]->preload_files_src_dir,
+                                                             &max_n, OPAL_STRING))) {
+                ORTE_ERROR_LOG(rc);
+                return rc;
+            }
+        } else {
+            app_context[i]->preload_files_src_dir = NULL;
+        }
+        
     }
 
     return ORTE_SUCCESS;

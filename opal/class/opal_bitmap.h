@@ -30,6 +30,12 @@
  *  find_and_set_bit. Other functions like clear, if passed a bit
  *  outside the initialized range will result in an error.
  *
+ *  To allow these bitmaps to track fortran handles (which MPI defines
+ *  to be Fortran INTEGER), we offer a opal_bitmap_set_max_size, so that
+ *  the upper layer can ask to never have more than
+ *  OMPI_FORTRAN_HANDLE_MAX, which is min(INT_MAX, fortran INTEGER max).
+ *  Currently the only user of this is ompi/attribute/attribute.c
+ *
  */
 
 #ifndef OPAL_BITMAP_H
@@ -44,14 +50,27 @@
 BEGIN_C_DECLS
 
 struct opal_bitmap_t {
-    opal_object_t super; /**< Subclass of opal_object_t */
+    opal_object_t super;   /**< Subclass of opal_object_t */
     unsigned char *bitmap; /**< The actual bitmap array of characters */
-    int array_size;  /**< The actual array size that maintains the bitmap */
+    int array_size;        /**< The actual array size that maintains the bitmap */
+    int max_size;          /**< The maximum size that this bitmap may grow (optional) */
 };
 
 typedef struct opal_bitmap_t opal_bitmap_t;
 
 OPAL_DECLSPEC OBJ_CLASS_DECLARATION(opal_bitmap_t);
+
+/**
+ * Set the maximum size of the bitmap.
+ * May be reset any time, but HAS TO BE SET BEFORE opal_bitmap_init!
+ *
+ * @param  bitmap     The input bitmap (IN)
+ * @param  max_size   The maximum size of the bitmap in terms of bits (IN)
+ * @return OPAL error code or success
+ *
+ */
+OPAL_DECLSPEC int opal_bitmap_set_max_size (opal_bitmap_t *bm, int max_size);
+
 
 /**
  * Initializes the bitmap and sets its size. This must be called
@@ -146,6 +165,21 @@ OPAL_DECLSPEC int opal_bitmap_set_all_bits(opal_bitmap_t *bm);
 static inline int opal_bitmap_size(opal_bitmap_t *bm)
 {
     return (NULL == bm) ? 0 : (bm->array_size * ((int) (sizeof(char) * 8)));
+}
+
+
+/**
+ * Copy a bitmap
+ *
+ * @param dest Pointer to the destination bitmap
+ * @param src Pointer to the source bitmap
+ * @ return OPAL error code if something goes wrong
+ */
+static inline void opal_bitmap_copy(opal_bitmap_t *dest, opal_bitmap_t *src)
+{
+    dest->bitmap = (unsigned char*)malloc(src->array_size);
+    memcpy(dest->bitmap, src->bitmap, src->array_size);
+    dest->array_size = src->array_size;
 }
 
 END_C_DECLS

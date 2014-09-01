@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2010 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -91,7 +91,7 @@ ompi_coll_tuned_comm_query(struct ompi_communicator_t *comm, int *priority)
     tuned_module->super.coll_module_enable = tuned_module_enable;
     tuned_module->super.ft_event = mca_coll_tuned_ft_event;
 
-    /* By default stick with the fixed version of the tuned collectives. Later on,
+    /* By default stick with the fied version of the tuned collectives. Later on,
      * when the module get enabled, set the correct version based on the availability
      * of the dynamic rules.
      */
@@ -266,7 +266,7 @@ tuned_module_enable( mca_coll_base_module_t *module,
                          " decision by lack of dynamic rules"));
         }
     }
-
+    
     /* general n fan out tree */
     data->cached_ntree = NULL;
     /* binary tree */

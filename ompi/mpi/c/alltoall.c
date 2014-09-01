@@ -2,14 +2,14 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2012 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,10 +21,13 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Alltoall = PMPI_Alltoall
 #endif
 
@@ -51,24 +54,24 @@ int MPI_Alltoall(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
     if (MPI_PARAM_CHECK) {
 
-      /* Unrooted operation -- same checks for all ranks on both
-         intracommunicators and intercommunicators */
+        /* Unrooted operation -- same checks for all ranks on both
+           intracommunicators and intercommunicators */
 
-      err = MPI_SUCCESS;
-      OMPI_ERR_INIT_FINALIZE(FUNC_NAME);
-      if (ompi_comm_invalid(comm)) {
-	return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_COMM, 
-                                     FUNC_NAME);
-      } else if (MPI_DATATYPE_NULL == recvtype || NULL == recvtype) {
-        err = MPI_ERR_TYPE;
-      } else if (recvcount < 0) {
-        err = MPI_ERR_COUNT;
-      } else if (MPI_IN_PLACE == sendbuf || MPI_IN_PLACE == recvbuf) {
-        err = MPI_ERR_ARG;
-      } else {
-        OMPI_CHECK_DATATYPE_FOR_SEND(err, sendtype, sendcount);
-      }
-      OMPI_ERRHANDLER_CHECK(err, comm, err, FUNC_NAME);
+        err = MPI_SUCCESS;
+        OMPI_ERR_INIT_FINALIZE(FUNC_NAME);
+        if (ompi_comm_invalid(comm)) {
+            return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_COMM, 
+                                          FUNC_NAME);
+        } else if (MPI_DATATYPE_NULL == recvtype || NULL == recvtype) {
+            err = MPI_ERR_TYPE;
+        } else if (recvcount < 0) {
+            err = MPI_ERR_COUNT;
+        } else if (MPI_IN_PLACE == sendbuf || MPI_IN_PLACE == recvbuf) {
+            err = MPI_ERR_ARG;
+        } else {
+            OMPI_CHECK_DATATYPE_FOR_SEND(err, sendtype, sendcount);
+        }
+        OMPI_ERRHANDLER_CHECK(err, comm, err, FUNC_NAME);
     }
 
     /* Do we need to do anything? */

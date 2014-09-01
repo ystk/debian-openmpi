@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -31,7 +32,6 @@
 
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "opal/util/arch.h"
 #include "opal/util/output.h"
 
 #include "orte/util/proc_info.h"
@@ -45,15 +45,13 @@ ORTE_DECLSPEC orte_proc_info_t orte_process_info = {
     /*  .hnp_pid =              */    0,
     /*  .app_num =              */   -1,
     /*  .num_procs =            */   1,
+    /*  .num_nodes =            */   1,
     /*  .nodename =             */   NULL,
-    /*  .arch =                 */   0,
     /*  .pid =                  */   0,
-    /*  .singleton =            */   false,
-    /*  .daemon =               */   false,
-    /*  .hnp =                  */   false,
-    /*  .tool =                 */   false,
-    /*  .mpi_proc =             */   false,
+    /*  .proc_type =            */   ORTE_PROC_TYPE_NONE,
     /*  .sync_buf =             */   NULL,
+    /*  .my_port =              */   0,
+    /*  .num_restarts =         */   0,
     /*  .tmpdir_base =          */   NULL,
     /*  .top_session_dir =      */   NULL,
     /*  .job_session_dir =      */   NULL,
@@ -70,7 +68,6 @@ int orte_proc_info(void)
     
     int tmp;
     char *uri, *ptr;
-    size_t len, i;
     char hostname[ORTE_MAX_HOSTNAME_SIZE];
     
     if (init) {
@@ -88,28 +85,34 @@ int orte_proc_info(void)
         */
         if ('"' == uri[0]) {
             /* if the first char is a quote, then so will the last one be */
+            uri[strlen(uri)-1] = '\0';
             ptr = &uri[1];
-            len = strlen(ptr) - 1;
         } else {
             ptr = &uri[0];
-            len = strlen(uri);
         }
-        
-        /* we have to copy the string by hand as strndup is a GNU extension
-         * and may not be generally available
-         */
-        orte_process_info.my_hnp_uri = (char*)malloc(len+1);
-        for (i=0; i < len; i++) {
-            orte_process_info.my_hnp_uri[i] = ptr[i];
-        }
-        orte_process_info.my_hnp_uri[len] = '\0';  /* NULL terminate */
+        orte_process_info.my_hnp_uri = strdup(ptr);
         free(uri);
-
     }
     
     mca_base_param_reg_string_name("orte", "local_daemon_uri",
                                    "Daemon contact info",
-                                   true, false, NULL,  &(orte_process_info.my_daemon_uri));
+                                   true, false, NULL,  &(uri));
+    
+    if (NULL != uri) {
+        /* the uri value passed to us may have quote marks around it to protect
+         * the value if passed on the command line. We must remove those
+         * to have a correct uri string
+         */
+        if ('"' == uri[0]) {
+            /* if the first char is a quote, then so will the last one be */
+            uri[strlen(uri)-1] = '\0';
+            ptr = &uri[1];
+        } else {
+            ptr = &uri[0];
+        }
+        orte_process_info.my_daemon_uri = strdup(ptr);
+        free(uri);
+    }
     
     mca_base_param_reg_int_name("orte", "app_num",
                                 "Index of the app_context that defines this proc",
@@ -123,11 +126,18 @@ int orte_proc_info(void)
     gethostname(hostname, ORTE_MAX_HOSTNAME_SIZE);
     orte_process_info.nodename = strdup(hostname);
     
-    /* get the arch */
-    if (ORTE_SUCCESS != opal_arch_compute_local_id(&orte_process_info.arch)) {
-        opal_output(0, "Process on node %s could not obtain local architecture - aborting", orte_process_info.nodename);
-        return ORTE_ERROR;
-    }
+    /* get the number of nodes in the job */
+    mca_base_param_reg_int_name("orte", "num_nodes",
+                                "Number of nodes in the job",
+                                true, false,
+                                orte_process_info.num_nodes, &tmp);
+    orte_process_info.num_nodes = tmp;
+    
+    /* get the number of times this proc has restarted */
+    mca_base_param_reg_int_name("orte", "num_restarts",
+                                "Number of times this proc has restarted",
+                                true, false, 0, &tmp);
+    orte_process_info.num_restarts = tmp;
     
     /* setup the sync buffer */
     orte_process_info.sync_buf = OBJ_NEW(opal_buffer_t);
@@ -182,9 +192,17 @@ int orte_proc_info_finalize(void)
         orte_process_info.sock_stderr = NULL;
     }
 
-    orte_process_info.hnp = false;
-    orte_process_info.singleton = false;
-    orte_process_info.daemon = false;
+    if (NULL != orte_process_info.my_hnp_uri) {
+        free(orte_process_info.my_hnp_uri);
+        orte_process_info.my_hnp_uri = NULL;
+    }
+
+    if (NULL != orte_process_info.my_daemon_uri) {
+        free(orte_process_info.my_daemon_uri);
+        orte_process_info.my_daemon_uri = NULL;
+    }
+
+    orte_process_info.proc_type = ORTE_PROC_TYPE_NONE;
     
     OBJ_RELEASE(orte_process_info.sync_buf);
     orte_process_info.sync_buf = NULL;

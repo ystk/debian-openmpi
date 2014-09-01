@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -23,9 +23,11 @@
 #include <stdlib.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/mca/mpool/mpool.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Free_mem = PMPI_Free_mem
 #endif
 

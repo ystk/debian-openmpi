@@ -21,9 +21,10 @@
 
 #include "osc_rdma.h"
 
-#include "opal/class/opal_list.h"
 #include "opal/class/opal_free_list.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/request/request.h"
+#include "ompi/op/op.h"
 
 struct ompi_osc_rdma_longreq_t;
 typedef struct ompi_osc_rdma_longreq_t ompi_osc_rdma_longreq_t;

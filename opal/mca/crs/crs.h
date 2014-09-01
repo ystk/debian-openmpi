@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2009 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -51,14 +51,13 @@
 #include "opal/mca/base/base.h"
 #include "opal/class/opal_object.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /**
  * States of the module
  */
 enum opal_crs_state_type_t {
+    OPAL_CRS_NONE,
     OPAL_CRS_CHECKPOINT,
     OPAL_CRS_RESTART_PRE,
     OPAL_CRS_RESTART, /* RESTART_POST */
@@ -68,6 +67,22 @@ enum opal_crs_state_type_t {
     OPAL_CRS_ERROR
 };
 typedef enum opal_crs_state_type_t opal_crs_state_type_t;
+
+/*
+ * Possible checkpoint options
+ */
+struct opal_crs_base_ckpt_options_1_0_0_t {
+    /** Parent is an object type */
+    opal_object_t super;
+
+    /** Terminate after checkpoint */
+    bool term;
+    /** Send SIGSTOP after checkpoint */
+    bool stop;
+};
+typedef struct opal_crs_base_ckpt_options_1_0_0_t opal_crs_base_ckpt_options_1_0_0_t;
+typedef struct opal_crs_base_ckpt_options_1_0_0_t opal_crs_base_ckpt_options_t;
+OPAL_DECLSPEC OBJ_CLASS_DECLARATION(opal_crs_base_ckpt_options_t);
 
 /**
  * Structure for Single process snapshot
@@ -135,6 +150,7 @@ typedef int (*opal_crs_base_module_finalize_fn_t)
 typedef int (*opal_crs_base_module_checkpoint_fn_t)
      (pid_t pid,
       opal_crs_base_snapshot_t *snapshot,
+      opal_crs_base_ckpt_options_t *options,
       opal_crs_state_type_t *state);
 
 /**
@@ -266,9 +282,7 @@ OPAL_DECLSPEC extern opal_crs_base_module_t opal_crs;
     MCA_BASE_VERSION_2_0_0, \
     "crs", 2, 0, 0
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OPAL_CRS_H */
 

@@ -134,7 +134,7 @@ int orte_rmaps_base_open(void)
                                         false, false, -1, &orte_rmaps_base.nperboard);
     if (0 < orte_rmaps_base.nperboard) {
         ORTE_ADD_MAPPING_POLICY(ORTE_MAPPING_NPERXXX);
-     }
+    }
 
     /* #procs/socket */
     param = mca_base_param_reg_int_name("rmaps", "base_n_persocket",

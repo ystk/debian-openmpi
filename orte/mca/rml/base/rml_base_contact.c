@@ -22,14 +22,14 @@
 #include "orte/types.h"
 
 #include "opal/util/argv.h"
-#include "orte/util/show_help.h"
+#include "opal/util/output.h"
 
 #include "opal/dss/dss.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/routed/routed.h"
 #include "orte/util/name_fns.h"
+#include "orte/util/proc_info.h"
 #include "orte/runtime/orte_globals.h"
-#include "orte/mca/grpcomm/grpcomm.h"
 
 #include "orte/mca/rml/rml.h"
 #include "orte/mca/rml/base/rml_contact.h"
@@ -72,11 +72,13 @@ int orte_rml_base_update_contact_info(opal_buffer_t* data)
     orte_vpid_t num_procs;
     char *rml_uri;
     orte_process_name_t name;
+    bool got_name;
     int rc;
-    orte_jobid_t jobid=ORTE_JOBID_INVALID;
 
     /* unpack the data for each entry */
     num_procs = 0;
+    name.jobid = ORTE_JOBID_INVALID;
+    got_name = false;
     cnt = 1;
     while (ORTE_SUCCESS == (rc = opal_dss.unpack(data, &rml_uri, &cnt, OPAL_STRING))) {
         
@@ -92,24 +94,29 @@ int orte_rml_base_update_contact_info(opal_buffer_t* data)
                 free(rml_uri);
                 return(rc);
             }
-            /* extract the proc's name */
-            if (ORTE_SUCCESS != (rc = orte_rml_base_parse_uris(rml_uri, &name, NULL))) {
-                ORTE_ERROR_LOG(rc);
-                free(rml_uri);
-                return rc;
+            if (!got_name) {
+                /* we only get an update from a single jobid - the command
+                 * that creates these doesn't cross jobid boundaries - so
+                 * record it here
+                 */
+                if (ORTE_SUCCESS != (rc = orte_rml_base_parse_uris(rml_uri, &name, NULL))) {
+                    ORTE_ERROR_LOG(rc);
+                    free(rml_uri);
+                    return rc;
+                }
+                got_name = true;
+                /* if this is for a different job family, update the route to this proc */
+                if (ORTE_JOB_FAMILY(name.jobid) != ORTE_JOB_FAMILY(ORTE_PROC_MY_NAME->jobid)) {
+                    if (ORTE_SUCCESS != (rc = orte_routed.update_route(&name, &name))) {
+                        ORTE_ERROR_LOG(rc);
+                        free(rml_uri);
+                        return rc;
+                    }
+                }
             }
             free(rml_uri);
-            /* update the route - in this case, always set it to direct routing
-             * since we were given the contact info
-             */
-            orte_routed.update_route(&name, &name);
         }
         
-        /* we only get an update from a single jobid - the command
-         * that creates these doesn't cross jobid boundaries - so
-         * record it here
-         */
-        jobid = name.jobid;
         /* track how many procs were in the message */
         ++num_procs;
     }
@@ -124,8 +131,8 @@ int orte_rml_base_update_contact_info(opal_buffer_t* data)
      * changed since we were initially launched. Thus, update the num_procs
      * in our process_info struct so we can correctly route any messages
      */
-    if (ORTE_PROC_MY_NAME->jobid == jobid &&
-        orte_process_info.daemon &&
+    if (ORTE_PROC_MY_NAME->jobid == name.jobid &&
+        ORTE_PROC_IS_DAEMON &&
         orte_process_info.num_procs < num_procs) {
         orte_process_info.num_procs = num_procs;
         /* if we changed it, then we better update the routed

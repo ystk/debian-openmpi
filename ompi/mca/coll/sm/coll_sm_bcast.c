@@ -19,9 +19,14 @@
 
 #include "ompi_config.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
+#include "opal/datatype/opal_convertor.h"
 #include "ompi/constants.h"
 #include "ompi/communicator/communicator.h"
-#include "ompi/datatype/convertor.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/mca/coll/coll.h"
 #include "opal/sys/atomic.h"
 #include "coll_sm.h"
@@ -63,7 +68,7 @@ int mca_coll_sm_bcast_intra(void *buff, int count,
     int parent_rank;
     size_t total_size, max_data, bytes;
     mca_coll_sm_in_use_flag_t *flag;
-    ompi_convertor_t convertor;
+    opal_convertor_t convertor;
     mca_coll_sm_tree_node_t *me, *parent, **children;
     mca_coll_sm_data_index_t *index;
 
@@ -81,7 +86,7 @@ int mca_coll_sm_bcast_intra(void *buff, int count,
     rank = ompi_comm_rank(comm);
     size = ompi_comm_size(comm);
 
-    OBJ_CONSTRUCT(&convertor, ompi_convertor_t);
+    OBJ_CONSTRUCT(&convertor, opal_convertor_t);
     iov.iov_len = mca_coll_sm_component.sm_fragment_size;
     bytes = 0;
 
@@ -106,15 +111,15 @@ int mca_coll_sm_bcast_intra(void *buff, int count,
 
         if (OMPI_SUCCESS != 
             (ret = 
-             ompi_convertor_copy_and_prepare_for_send(ompi_mpi_local_convertor,
-                                                      datatype,
+             opal_convertor_copy_and_prepare_for_send(ompi_mpi_local_convertor,
+                                                      &(datatype->super),
                                                       count, 
                                                       buff,
                                                       0,
                                                       &convertor))) {
             return ret;
         }
-        ompi_convertor_get_packed_size(&convertor, &total_size);
+        opal_convertor_get_packed_size(&convertor, &total_size);
 
         /* Main loop over sending fragments */
 
@@ -164,15 +169,15 @@ int mca_coll_sm_bcast_intra(void *buff, int count,
 
         if (OMPI_SUCCESS != 
             (ret = 
-             ompi_convertor_copy_and_prepare_for_recv(ompi_mpi_local_convertor,
-                                                      datatype,
+             opal_convertor_copy_and_prepare_for_recv(ompi_mpi_local_convertor,
+                                                      &(datatype->super),
                                                       count, 
                                                       buff,
                                                       0,
                                                       &convertor))) {
             return ret;
         }
-        ompi_convertor_get_packed_size(&convertor, &total_size);
+        opal_convertor_get_packed_size(&convertor, &total_size);
 
         /* Loop over receiving (and possibly re-sending) the
            fragments */

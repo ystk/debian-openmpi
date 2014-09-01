@@ -20,7 +20,7 @@
 
 #include "ompi/mpi/f77/bindings.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_IS_THREAD_MAIN = mpi_is_thread_main_f
 #pragma weak pmpi_is_thread_main = mpi_is_thread_main_f
 #pragma weak pmpi_is_thread_main_ = mpi_is_thread_main_f
@@ -31,33 +31,33 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_IS_THREAD_MAIN,
                            pmpi_is_thread_main_,
                            pmpi_is_thread_main__,
                            pmpi_is_thread_main_f,
-                           (MPI_Flogical *flag, MPI_Fint *ierr),
+                           (ompi_fortran_logical_t *flag, MPI_Fint *ierr),
                            (flag, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_IS_THREAD_MAIN = mpi_is_thread_main_f
 #pragma weak mpi_is_thread_main = mpi_is_thread_main_f
 #pragma weak mpi_is_thread_main_ = mpi_is_thread_main_f
 #pragma weak mpi_is_thread_main__ = mpi_is_thread_main_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_IS_THREAD_MAIN,
                            mpi_is_thread_main,
                            mpi_is_thread_main_,
                            mpi_is_thread_main__,
                            mpi_is_thread_main_f,
-                           (MPI_Flogical *flag, MPI_Fint *ierr),
+                           (ompi_fortran_logical_t *flag, MPI_Fint *ierr),
                            (flag, ierr) )
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
-void mpi_is_thread_main_f(MPI_Flogical *flag, MPI_Fint *ierr)
+void mpi_is_thread_main_f(ompi_fortran_logical_t *flag, MPI_Fint *ierr)
 {
     OMPI_LOGICAL_NAME_DECL(flag);
 

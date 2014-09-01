@@ -5,7 +5,7 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -91,15 +91,16 @@ OPAL_DECLSPEC  int opal_argv_append_nosize(char ***argv, const char *arg);
  *
  * @param argv Pointer to an argv array.
  * @param str Pointer to the string to append.
+ * @param bool Whether or not to overwrite a matching value if found
  *
  * @retval OPAL_SUCCESS On success
  * @retval OPAL_ERROR On failure
  *
  * This function is identical to the opal_argv_append_nosize() function
  * except that it only appends the provided argument if it does not already
- * exist in the provided array.
+ * exist in the provided array, or overwrites it if it is.
  */
-OPAL_DECLSPEC  int opal_argv_append_unique_nosize(char ***argv, const char *arg);
+OPAL_DECLSPEC  int opal_argv_append_unique_nosize(char ***argv, const char *arg, bool overwrite);
 
 /**
    * Free a NULL-terminated argv array.
@@ -131,7 +132,7 @@ OPAL_DECLSPEC  void opal_argv_free(char **argv);
    * argument (i.e., it can be freed after calling this function
    * without invalidating the output argv).
    */
-OPAL_DECLSPEC  char **opal_argv_split(const char *src_string, int delimiter) __opal_attribute_warn_unused_result__;
+OPAL_DECLSPEC  char **opal_argv_split(const char *src_string, int delimiter) __opal_attribute_malloc__ __opal_attribute_warn_unused_result__;
 
   /**
    * Split a string into a NULL-terminated argv array. Include empty 
@@ -148,7 +149,7 @@ OPAL_DECLSPEC  char **opal_argv_split(const char *src_string, int delimiter) __o
    * argument (i.e., it can be freed after calling this function
    * without invalidating the output argv).
    */
-OPAL_DECLSPEC  char **opal_argv_split_with_empty(const char *src_string, int delimiter) __opal_attribute_warn_unused_result__;
+OPAL_DECLSPEC  char **opal_argv_split_with_empty(const char *src_string, int delimiter) __opal_attribute_malloc__ __opal_attribute_warn_unused_result__;
 
   /**
    * Return the length of a NULL-terminated argv array.
@@ -178,9 +179,9 @@ OPAL_DECLSPEC  int opal_argv_count(char **argv);
    *
    * It is the callers responsibility to free the returned string.
    */
-OPAL_DECLSPEC  char *opal_argv_join(char **argv, int delimiter) __opal_attribute_malloc__;
+OPAL_DECLSPEC  char *opal_argv_join(char **argv, int delimiter) __opal_attribute_malloc__ __opal_attribute_warn_unused_result__;
 
-OPAL_DECLSPEC char *opal_argv_join_range(char **argv, size_t start, size_t end, int delimiter) __opal_attribute_malloc__;
+OPAL_DECLSPEC  char *opal_argv_join_range(char **argv, size_t start, size_t end, int delimiter) __opal_attribute_malloc__ __opal_attribute_warn_unused_result__;
 
   /**
    * Return the number of bytes consumed by an argv array.
@@ -205,7 +206,7 @@ OPAL_DECLSPEC  size_t opal_argv_len(char **argv);
    * Specifically, the output argv will be an array of the same length
    * as the input argv, and strcmp(argv_in[i], argv_out[i]) will be 0.
    */
-OPAL_DECLSPEC  char **opal_argv_copy(char **argv) __opal_attribute_malloc__;
+OPAL_DECLSPEC  char **opal_argv_copy(char **argv) __opal_attribute_malloc__ __opal_attribute_warn_unused_result__;
 
     /**
      * Delete one or more tokens from the middle of an argv.

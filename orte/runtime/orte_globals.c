@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2008 The University of Tennessee and The University
@@ -9,9 +9,10 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
- * Copyright (c) 2009      Sun Microsystems, Inc. All rights reserved.
- * Copyright (c) 2009      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2007-2009 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2009-2011 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c)      2011 Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -29,53 +30,73 @@
 
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/mca/paffinity/paffinity.h"
-#include "opal/threads/mutex.h"
-#include "opal/threads/condition.h"
 #include "opal/util/argv.h"
+#include "opal/util/output.h"
 #include "opal/class/opal_pointer_array.h"
+#include "opal/class/opal_value_array.h"
 #include "opal/dss/dss.h"
 
 #include "orte/mca/errmgr/errmgr.h"
-#include "orte/util/show_help.h"
+#include "orte/util/proc_info.h"
+#include "orte/util/name_fns.h"
 
 #include "orte/runtime/runtime.h"
 #include "orte/runtime/runtime_internals.h"
 #include "orte/runtime/orte_globals.h"
 
-#if !ORTE_DISABLE_FULL_SUPPORT
-
 /* need the data type support functions here */
 #include "orte/runtime/data_type_support/orte_dt_support.h"
 
+#if !ORTE_DISABLE_FULL_SUPPORT
+
 /* globals used by RTE */
 bool orte_timing;
+FILE *orte_timing_output = NULL;
+bool orte_timing_details;
 bool orte_debug_daemons_file_flag = false;
 bool orte_leave_session_attached;
 bool orte_do_not_launch = false;
 bool orted_spin_flag = false;
+bool orte_daemon_bootstrap = false;
+char *orte_local_cpu_type = NULL;
+char *orte_local_cpu_model = NULL;
+
+/* ORTE OOB port flags */
 bool orte_static_ports = false;
+char *orte_oob_static_ports = NULL;
+bool orte_standalone_operation = false;
+
 bool orte_keep_fqdn_hostnames = false;
 bool orte_show_resolved_nodenames;
 int orted_debug_failure;
 int orted_debug_failure_delay;
 bool orte_homogeneous_nodes = false;
 bool orte_hetero_apps = false;
+bool orte_never_launched = false;
 bool orte_devel_level_output = false;
 
-int32_t orte_contiguous_nodes;
 char **orte_launch_environ;
-opal_pointer_array_t orte_daemonmap;
 
 bool orte_hnp_is_allocated = false;
 bool orte_allocation_required;
+bool orte_managed_allocation = false;
 
-char *orte_launch_agent;
+char *orte_launch_agent = NULL;
 char **orted_cmd_line=NULL;
 
+/* debugger job */
+orte_job_t *orte_debugger_daemon=NULL;
+bool orte_debugger_dump_proctable;
+char *orte_debugger_test_daemon;
+bool orte_debugger_test_attach;
+bool orte_debugger_enable_fifo_attach;
+int orte_debugger_check_rate;
+
+/* exit triggers and flags */ 
 orte_trigger_event_t orte_exit, orteds_exit;
 int orte_exit_status = 0;
 bool orte_abnormal_term_ordered = false;
-bool orte_shutdown_in_progress = false;
+bool orte_routing_is_enabled = false;
 bool orte_job_term_ordered = false;
 
 int orte_heartbeat_rate;
@@ -93,6 +114,15 @@ opal_pointer_array_t *orte_node_pool;
 /* a clean output channel without prefix */
 int orte_clean_output = -1;
 
+/* RHC: FLAG TO SELECT WHETHER OR NOT TO SEND PROFILE FILE IN NIDMAP */
+bool orte_send_profile;
+
+/* Nidmap and job maps */
+opal_pointer_array_t orte_nidmap;
+opal_pointer_array_t orte_jobmap;
+bool orte_use_regexp;
+char *orted_launch_cmd = NULL;
+
 /* list of local children on a daemon */
 opal_list_t orte_local_children;
 /* list of job data for local children on a daemon */
@@ -108,6 +138,13 @@ char *orte_xterm;
 /* whether or not to forward SIGTSTP and SIGCONT signals */
 bool orte_forward_job_control;
 
+/* rsh support */
+char *orte_rsh_agent = NULL;
+bool orte_assume_same_shell = true;
+
+/* orted exit with barrier */
+bool orte_orted_exit_with_barrier = true;
+
 /* report launch progress */
 bool orte_report_launch_progress = false;
 
@@ -117,7 +154,6 @@ uint8_t orte_default_num_sockets_per_board;
 uint8_t orte_default_num_cores_per_socket;
 
 /* allocation specification */
-char *orte_default_cpu_set;
 char *orte_default_hostfile = NULL;
 char *orte_rankfile;
 #ifdef __WINDOWS__
@@ -127,8 +163,15 @@ char *orte_ccp_headnode;
 /* default rank assigment and binding policy */
 orte_mapping_policy_t orte_default_mapping_policy = 0;
 
-/* basename of the orte/mpirun cmd */
-char *orte_cmd_basename = NULL;
+/* tool communication controls */
+bool orte_report_events = false;
+char *orte_report_events_uri = NULL;
+
+/* report bindings */
+bool orte_report_bindings = false;
+
+/* barrier control */
+bool orte_do_not_barrier = false;
 
 #endif /* !ORTE_DISABLE_FULL_RTE */
 
@@ -138,7 +181,7 @@ bool orte_xml_output = false;
 FILE *orte_xml_fp = NULL;
 char *orte_job_ident = NULL;
 
-/* See comment in orte/tools/orterun/debuggers.c about this MCA
+/* See comment in orte/tools/orterun/orterun.c about this MCA
    param */
 bool orte_in_parallel_debugger = false;
 
@@ -153,15 +196,14 @@ int orte_dt_init(void)
     
     /* open up the verbose output for ORTE debugging */
     if (orte_debug_flag || 0 < orte_debug_verbosity ||
-        (orte_debug_daemons_flag && (orte_process_info.daemon || orte_process_info.hnp))) {
+        (orte_debug_daemons_flag && (ORTE_PROC_IS_DAEMON || ORTE_PROC_IS_HNP))) {
         if (0 < orte_debug_verbosity) {
             opal_output_set_verbosity(orte_debug_output, orte_debug_verbosity);
         } else {
             opal_output_set_verbosity(orte_debug_output, 1);
         }
     }
-
-#if !ORTE_DISABLE_FULL_SUPPORT
+        
     /** register the base system types with the DSS */
     tmp = ORTE_STD_CNTR;
     if (ORTE_SUCCESS != (rc = opal_dss.register_type(orte_dt_pack_std_cntr,
@@ -218,6 +260,7 @@ int orte_dt_init(void)
         return rc;
     }
 
+#if !ORTE_DISABLE_FULL_SUPPORT
     /* get a clean output channel too */
     {
         opal_output_stream_t lds;
@@ -415,51 +458,25 @@ int orte_dt_init(void)
 }
 
 #if !ORTE_DISABLE_FULL_SUPPORT
-int orte_hnp_globals_init(void)
-{
-    int rc;
-
-    orte_job_data = OBJ_NEW(opal_pointer_array_t);
-    if (ORTE_SUCCESS != (rc = opal_pointer_array_init(orte_job_data,
-                                                      1,
-                                                      ORTE_GLOBAL_ARRAY_MAX_SIZE,
-                                                      1))) {
-        ORTE_ERROR_LOG(rc);
-        return rc;
-    }
-    
-    orte_node_pool = OBJ_NEW(opal_pointer_array_t);
-    if (ORTE_SUCCESS != (rc = opal_pointer_array_init(orte_node_pool,
-                                                      ORTE_GLOBAL_ARRAY_BLOCK_SIZE,
-                                                      ORTE_GLOBAL_ARRAY_MAX_SIZE,
-                                                      ORTE_GLOBAL_ARRAY_BLOCK_SIZE))) {
-        ORTE_ERROR_LOG(rc);
-        return rc;
-    }
-    
-    return ORTE_SUCCESS;
-}
-
 
 orte_job_t* orte_get_job_data_object(orte_jobid_t job)
 {
-    orte_job_t **jptr;
-    orte_std_cntr_t i;
+    int32_t ljob;
     
     /* if I am not an HNP, I cannot provide this object */
-    if (!orte_process_info.hnp) {
+    if (!ORTE_PROC_IS_HNP && !ORTE_PROC_IS_CM) {
         return NULL;
     }
     
-    jptr = (orte_job_t**)orte_job_data->addr;
-    for (i=0; i < orte_job_data->size; i++) {
-        if (NULL != jptr[i] && job == jptr[i]->jobid) {
-            return jptr[i];
-        }
-    }
-    
-    ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-    return NULL;
+    /* the job is indexed by its local jobid, so we can
+     * just look it up here. it is not an error for this
+     * to not be found - could just be
+     * a race condition whereby the job has already been
+     * removed from the array. The get_item function
+     * will just return NULL in that case.
+     */
+    ljob = ORTE_LOCAL_JOBID(job);
+    return (orte_job_t*)opal_pointer_array_get_item(orte_job_data, ljob);
 }
 
 
@@ -479,11 +496,13 @@ static void orte_app_context_construct(orte_app_context_t* app_context)
     app_context->user_specified_cwd=false;
     app_context->hostfile=NULL;
     app_context->add_hostfile=NULL;
+    app_context->add_host = NULL;
     app_context->dash_host = NULL;
     app_context->prefix_dir = NULL;
     app_context->preload_binary = false;
     app_context->preload_files  = NULL;
     app_context->preload_files_dest_dir  = NULL;
+    app_context->preload_files_src_dir  = NULL;
     app_context->used_on_node = false;
 }
 
@@ -491,45 +510,66 @@ static void orte_app_context_destructor(orte_app_context_t* app_context)
 {
     if (NULL != app_context->app) {
         free (app_context->app);
+        app_context->app = NULL;
     }
     
     /* argv and env lists created by util/argv copy functions */
     if (NULL != app_context->argv) {
         opal_argv_free(app_context->argv);
+        app_context->argv = NULL;
     }
     
     if (NULL != app_context->env) {
         opal_argv_free(app_context->env);
+        app_context->env = NULL;
     }
     
     if (NULL != app_context->cwd) {
         free (app_context->cwd);
+        app_context->cwd = NULL;
     }
     
     if (NULL != app_context->hostfile) {
         free(app_context->hostfile);
+        app_context->hostfile = NULL;
     }
     
     if (NULL != app_context->add_hostfile) {
         free(app_context->add_hostfile);
+        app_context->add_hostfile = NULL;
+    }
+    
+    if (NULL != app_context->add_host) {
+        opal_argv_free(app_context->add_host);
+        app_context->add_host = NULL;
     }
     
     if (NULL != app_context->dash_host) {
-        opal_argv_free(app_context->dash_host); 
+        opal_argv_free(app_context->dash_host);
+        app_context->dash_host = NULL;
     }
     
     if (NULL != app_context->prefix_dir) {
         free(app_context->prefix_dir);
+        app_context->prefix_dir = NULL;
     }
     
     app_context->preload_binary = false;
-    
+    app_context->preload_libs = false;
+
     if(NULL != app_context->preload_files) {
         free(app_context->preload_files);
+        app_context->preload_files = NULL;
     }
     
     if(NULL != app_context->preload_files_dest_dir) {
         free(app_context->preload_files_dest_dir);
+        app_context->preload_files_dest_dir = NULL;
+    }
+
+    if(NULL != app_context->preload_files_src_dir) {
+        free(app_context->preload_files_src_dir);
+        app_context->preload_files_src_dir = NULL;
     }
 }
 
@@ -567,8 +607,13 @@ static void orte_job_construct(orte_job_t* job)
     job->num_terminated = 0;
     job->abort = false;
     job->aborted_proc = NULL;
-
-#if OPAL_ENABLE_FT == 1
+    
+    job->err_cbfunc = NULL;
+    job->err_cbstates = ORTE_PROC_STATE_UNDEF;
+    job->err_cbdata = NULL;
+    job->max_restarts = INT32_MAX;
+    
+#if OPAL_ENABLE_FT_CR == 1
     job->ckpt_state = 0;
     job->ckpt_snapshot_ref = NULL;
     job->ckpt_snapshot_loc = NULL;
@@ -577,29 +622,66 @@ static void orte_job_construct(orte_job_t* job)
 
 static void orte_job_destruct(orte_job_t* job)
 {
-    orte_std_cntr_t i;
-    orte_vpid_t j;
+    orte_proc_t *proc;
+    orte_app_context_t *app;
+    orte_job_t *jdata;
+    int n;
     
-    for (i=0; i < job->num_apps; i++) {
-        if (NULL != job->apps->addr[i]) OBJ_RELEASE(job->apps->addr[i]);
+    if (NULL == job) {
+        /* probably just a race condition - just return */
+        return;
+    }
+    
+    if (orte_debug_flag) {
+        opal_output(0, "%s Releasing job data for %s",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_JOBID_PRINT(job->jobid));
+    }
+    
+    for (n=0; n < job->apps->size; n++) {
+        if (NULL == (app = (orte_app_context_t*)opal_pointer_array_get_item(job->apps, n))) {
+            continue;
+        }
+        OBJ_RELEASE(app);
     }
     OBJ_RELEASE(job->apps);
     
-    for (j=0; j < job->num_procs; j++) {
-        if (NULL != job->procs->addr[j]) OBJ_RELEASE(job->procs->addr[j]);
+    if (NULL != job->map) {
+        OBJ_RELEASE(job->map);
+        job->map = NULL;
+    }
+    
+    for (n=0; n < job->procs->size; n++) {
+        if (NULL == (proc = (orte_proc_t*)opal_pointer_array_get_item(job->procs, n))) {
+            continue;
+        }
+        OBJ_RELEASE(proc);
     }
     OBJ_RELEASE(job->procs);
     
-    if (NULL != job->map) OBJ_RELEASE(job->map);
-
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     if (NULL != job->ckpt_snapshot_ref) {
         free(job->ckpt_snapshot_ref);
+        job->ckpt_snapshot_ref = NULL;
     }
     if (NULL != job->ckpt_snapshot_loc) {
         free(job->ckpt_snapshot_loc);
+        job->ckpt_snapshot_loc = NULL;
     }
 #endif
+    
+    /* find the job in the global array */
+    if (NULL != orte_job_data) {
+        for (n=0; n < orte_job_data->size; n++) {
+            if (NULL == (jdata = (orte_job_t*)opal_pointer_array_get_item(orte_job_data, n))) {
+                continue;
+            }
+            if (jdata->jobid == job->jobid) {
+                /* set the entry to NULL */
+                opal_pointer_array_set_item(orte_job_data, n, NULL);
+                break;
+            }
+        }
+    }
 }
 
 OBJ_CLASS_INSTANCE(orte_job_t,
@@ -626,52 +708,60 @@ static void orte_node_construct(orte_node_t* node)
     node->next_node_rank = 0;
     
     node->oversubscribed = false;
-    node->arch = 0;
     node->state = ORTE_NODE_STATE_UNKNOWN;
     node->slots = 0;
     node->slots_inuse = 0;
     node->slots_alloc = 0;
     node->slots_max = 0;
-
+    
     node->boards = orte_default_num_boards;
     node->sockets_per_board = orte_default_num_sockets_per_board;
     node->cores_per_socket = orte_default_num_cores_per_socket;
-    if (NULL != orte_default_cpu_set) {
-        node->cpu_set = strdup(orte_default_cpu_set);
-    } else {
-        node->cpu_set = NULL;
-    }
     
     node->username = NULL;
-    node->slot_list = NULL;
+    
+    OBJ_CONSTRUCT(&node->resources, opal_list_t);
 }
 
 static void orte_node_destruct(orte_node_t* node)
 {
-    orte_vpid_t i;
+    int i;
+    opal_list_item_t *item;
     
     if (NULL != node->name) {
         free(node->name);
+        node->name = NULL;
     }
 
     if (NULL != node->alias) {
         opal_argv_free(node->alias);
+        node->alias = NULL;
     }
     
-    if (NULL != node->daemon) OBJ_RELEASE(node->daemon);
+    if (NULL != node->daemon) {
+        node->daemon->node = NULL;
+        OBJ_RELEASE(node->daemon);
+        node->daemon = NULL;
+    }
     
-    for (i=0; i < node->num_procs; i++) {
-        if (NULL != node->procs->addr[i]) OBJ_RELEASE(node->procs->addr[i]);
+    for (i=0; i < node->procs->size; i++) {
+        if (NULL != node->procs->addr[i]) {
+            ((orte_proc_t*)(node->procs->addr[i]))->node = NULL;
+            OBJ_RELEASE(node->procs->addr[i]);
+            node->procs->addr[i] = NULL;
+        }
     }
     OBJ_RELEASE(node->procs);
     
-    if (NULL != node->cpu_set) {
-        free(node->cpu_set);
-        node->cpu_set = NULL;
-    }
     if (NULL != node->username) {
         free(node->username);
+        node->username = NULL;
     }
+    
+    while (NULL != (item = opal_list_remove_first(&node->resources))) {
+        OBJ_RELEASE(item);
+    }
+    OBJ_DESTRUCT(&node->resources);
 }
 
 
@@ -695,7 +785,8 @@ static void orte_proc_construct(orte_proc_t* proc)
     proc->nodename = NULL;
     proc->rml_uri = NULL;
     proc->beat = 0;
-#if OPAL_ENABLE_FT == 1
+    proc->restarts = 0;
+#if OPAL_ENABLE_FT_CR == 1
     proc->ckpt_state = 0;
     proc->ckpt_snapshot_ref = NULL;
     proc->ckpt_snapshot_loc = NULL;
@@ -712,18 +803,27 @@ static void orte_proc_destruct(orte_proc_t* proc)
     
     if (NULL != proc->slot_list) {
         free(proc->slot_list);
+        proc->slot_list = NULL;
     }
 
-    if (NULL != proc->node) OBJ_RELEASE(proc->node);
+    if (NULL != proc->node) {
+        OBJ_RELEASE(proc->node);
+        proc->node = NULL;
+    }
     
-    if (NULL != proc->rml_uri) free(proc->rml_uri);
+    if (NULL != proc->rml_uri) {
+        free(proc->rml_uri);
+        proc->rml_uri = NULL;
+    }
     
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     if (NULL != proc->ckpt_snapshot_ref) {
         free(proc->ckpt_snapshot_ref);
+        proc->ckpt_snapshot_ref = NULL;
     }
     if (NULL != proc->ckpt_snapshot_loc) {
         free(proc->ckpt_snapshot_loc);
+        proc->ckpt_snapshot_loc = NULL;
     }
 #endif
 }
@@ -733,18 +833,50 @@ OBJ_CLASS_INSTANCE(orte_proc_t,
                    orte_proc_construct,
                    orte_proc_destruct);
 
+static void orte_attr_construct(orte_attr_t *ptr)
+{
+    ptr->name = NULL;
+    ptr->size = 0;
+    ptr->bytes = NULL;
+}
+
+static void orte_attr_destruct(orte_attr_t *ptr)
+{
+    if (NULL != ptr->name) {
+        free(ptr->name);
+        ptr->name = NULL;
+    }
+    if (NULL != ptr->bytes) {
+        free(ptr->bytes);
+        ptr->bytes = NULL;
+    }
+}
+
+OBJ_CLASS_INSTANCE(orte_attr_t,
+                   opal_list_item_t,
+                   orte_attr_construct,
+                   orte_attr_destruct);
+
 static void orte_nid_construct(orte_nid_t *ptr)
 {
     ptr->name = NULL;
     ptr->daemon = ORTE_VPID_INVALID;
-    ptr->arch = orte_process_info.arch;
+    ptr->oversubscribed = false;
+    OBJ_CONSTRUCT(&ptr->attrs, opal_list_t);
 }
 
 static void orte_nid_destruct(orte_nid_t *ptr)
 {
+    opal_list_item_t *item;
+    
     if (NULL != ptr->name) {
         free(ptr->name);
+        ptr->name = NULL;
     }
+    while (NULL != (item = opal_list_remove_first(&ptr->attrs))) {
+        OBJ_RELEASE(item);
+    }
+    OBJ_DESTRUCT(&ptr->attrs);
 }
 
 OBJ_CLASS_INSTANCE(orte_nid_t,
@@ -755,8 +887,8 @@ OBJ_CLASS_INSTANCE(orte_nid_t,
 static void orte_pmap_construct(orte_pmap_t *ptr)
 {
     ptr->node = -1;
-    ptr->local_rank = 0;
-    ptr->node_rank = 0;
+    ptr->local_rank = ORTE_LOCAL_RANK_INVALID;
+    ptr->node_rank = ORTE_NODE_RANK_INVALID;
 }
 
 OBJ_CLASS_INSTANCE(orte_pmap_t,
@@ -768,12 +900,23 @@ OBJ_CLASS_INSTANCE(orte_pmap_t,
 static void orte_jmap_construct(orte_jmap_t *ptr)
 {
     ptr->job = ORTE_JOBID_INVALID;
-    OBJ_CONSTRUCT(&ptr->pmap, opal_value_array_t);
-    opal_value_array_init(&ptr->pmap, sizeof(orte_pmap_t));
+    ptr->num_procs = 0;
+    OBJ_CONSTRUCT(&ptr->pmap, opal_pointer_array_t);
+    opal_pointer_array_init(&ptr->pmap,
+                            ORTE_GLOBAL_ARRAY_BLOCK_SIZE,
+                            ORTE_GLOBAL_ARRAY_MAX_SIZE,
+                            ORTE_GLOBAL_ARRAY_BLOCK_SIZE);
 }
 
 static void orte_jmap_destruct(orte_jmap_t *ptr)
 {
+    orte_pmap_t **pmaps;
+    int i;
+    
+    pmaps = (orte_pmap_t**)ptr->pmap.addr;
+    for (i=0; i < ptr->pmap.size && NULL != pmaps[i]; i++) {
+        OBJ_RELEASE(pmaps[i]);
+    }
     OBJ_DESTRUCT(&ptr->pmap);
 }
 
@@ -812,6 +955,7 @@ static void orte_job_map_destruct(orte_job_map_t* map)
     for (i=0; i < map->nodes->size; i++) {
         if (NULL != map->nodes->addr[i]) {
             OBJ_RELEASE(map->nodes->addr[i]);
+            map->nodes->addr[i] = NULL;
         }
     }
     OBJ_RELEASE(map->nodes);
@@ -821,4 +965,39 @@ OBJ_CLASS_INSTANCE(orte_job_map_t,
                    opal_object_t,
                    orte_job_map_construct,
                    orte_job_map_destruct);
+
+static void orte_regex_node_construct(orte_regex_node_t *ptr)
+{
+    ptr->prefix = NULL;
+    OBJ_CONSTRUCT(&ptr->suffix, opal_value_array_t);
+    opal_value_array_init(&ptr->suffix, sizeof(char));
+    OBJ_CONSTRUCT(&ptr->nodes, opal_value_array_t);
+    opal_value_array_init(&ptr->nodes, sizeof(int32_t));
+    OBJ_CONSTRUCT(&ptr->cnt, opal_value_array_t);
+    opal_value_array_init(&ptr->cnt, sizeof(int32_t));
+    OBJ_CONSTRUCT(&ptr->starting_vpid, opal_value_array_t);
+    opal_value_array_init(&ptr->starting_vpid, sizeof(orte_vpid_t));
+    OBJ_CONSTRUCT(&ptr->ppn, opal_value_array_t);
+    opal_value_array_init(&ptr->ppn, sizeof(int32_t));
+    OBJ_CONSTRUCT(&ptr->nrank, opal_value_array_t);
+    opal_value_array_init(&ptr->nrank, sizeof(orte_node_rank_t));
+}
+static void orte_regex_node_destruct(orte_regex_node_t *ptr)
+{
+    if (NULL != ptr->prefix) {
+        free(ptr->prefix);
+        ptr->prefix = NULL;
+    }
+    OBJ_DESTRUCT(&ptr->suffix);
+    OBJ_DESTRUCT(&ptr->nodes);
+    OBJ_DESTRUCT(&ptr->cnt);
+    OBJ_DESTRUCT(&ptr->starting_vpid);
+    OBJ_DESTRUCT(&ptr->ppn);
+    OBJ_DESTRUCT(&ptr->nrank);
+}
+OBJ_CLASS_INSTANCE(orte_regex_node_t,
+                   opal_list_item_t,
+                   orte_regex_node_construct,
+                   orte_regex_node_destruct);
+
 #endif

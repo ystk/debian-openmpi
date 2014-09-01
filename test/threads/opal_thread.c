@@ -1,4 +1,9 @@
-#include "ompi_config.h"
+/*
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
+ * $COPYRIGHT$
+ */
+
+#include "opal_config.h"
 
 #include <stdio.h>
 
@@ -8,7 +13,7 @@
 #include "opal/sys/atomic.h"
 
 
-#if !OMPI_HAVE_THREAD_SUPPORT
+#if !OPAL_HAVE_THREAD_SUPPORT
 
 /* If we don't have thread support, there's no point in running this
    test */
@@ -68,4 +73,4 @@ int main(int argc, char** argv)
     return test_finalize();
 }
 
-#endif /* OMPI_HAVE_THREAD_SUPPORT */
+#endif /* OPAL_HAVE_THREAD_SUPPORT */

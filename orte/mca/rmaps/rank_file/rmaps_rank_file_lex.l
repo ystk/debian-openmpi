@@ -80,7 +80,7 @@ rank                { orte_rmaps_rank_file_value.sval = yytext;
                      return ORTE_RANKFILE_RANK; }
 slot               { orte_rmaps_rank_file_value.sval = yytext; 
                      return ORTE_RANKFILE_SLOT; }
-slots              { orte_rmaps_rank_file_value.sval = yytext; 
+slots              { orte_rmaps_rank_file_value.sval = yytext;  
                      return ORTE_RANKFILE_SLOT; }
 
 username           { orte_rmaps_rank_file_value.sval = yytext;

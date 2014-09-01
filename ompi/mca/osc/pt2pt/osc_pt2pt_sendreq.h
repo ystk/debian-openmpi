@@ -22,13 +22,10 @@
 #include "osc_pt2pt_longreq.h"
 
 #include "opal/class/opal_list.h"
-#include "opal/threads/mutex.h"
-#include "ompi/datatype/datatype.h"
-#include "ompi/datatype/convertor.h"
+#include "ompi/datatype/ompi_datatype.h"
+#include "opal/datatype/opal_convertor.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/proc/proc.h"
-#include "ompi/op/op.h"
-#include "ompi/mca/pml/pml.h"
 #include "ompi/memchecker.h"
 
 typedef enum {
@@ -50,7 +47,7 @@ struct ompi_osc_pt2pt_sendreq_t {
     struct ompi_datatype_t *req_origin_datatype;
     /** Convertor for the origin side of the operation.  Setup for
         either send (Put / Accumulate) or receive (Get) */
-    ompi_convertor_t req_origin_convertor;
+    opal_convertor_t req_origin_convertor;
     /** packed size of message on the origin side */
     size_t req_origin_bytes_packed;
 
@@ -60,7 +57,7 @@ struct ompi_osc_pt2pt_sendreq_t {
     ompi_proc_t *req_target_proc;
 
     /** displacement on target */
-    OMPI_PTRDIFF_TYPE req_target_disp;
+    OPAL_PTRDIFF_TYPE req_target_disp;
     /** datatype count on target */
     int req_target_count;
     /** datatype on target */
@@ -80,7 +77,7 @@ ompi_osc_pt2pt_sendreq_alloc_init(ompi_osc_pt2pt_req_type_t req_type,
                                   void *origin_addr, int origin_count,
                                   struct ompi_datatype_t *origin_dt,
                                   int target, 
-                                  OMPI_PTRDIFF_TYPE target_disp, 
+                                  OPAL_PTRDIFF_TYPE target_disp, 
                                   int target_count,
                                   struct ompi_datatype_t *target_datatype,
                                   ompi_osc_pt2pt_module_t *module,
@@ -123,22 +120,22 @@ ompi_osc_pt2pt_sendreq_init_origin(ompi_osc_pt2pt_sendreq_t *sendreq,
     sendreq->req_type = req_type;
 
     if (req_type != OMPI_OSC_PT2PT_GET) {
-        ompi_convertor_copy_and_prepare_for_send(sendreq->req_target_proc->proc_convertor,
-                                                 origin_dt,
+        opal_convertor_copy_and_prepare_for_send(sendreq->req_target_proc->proc_convertor,
+                                                 &(origin_dt->super),
                                                  origin_count,
                                                  origin_addr,
                                                  0,
                                                  &(sendreq->req_origin_convertor));
-        ompi_convertor_get_packed_size(&sendreq->req_origin_convertor,
+        opal_convertor_get_packed_size(&sendreq->req_origin_convertor,
                                        &sendreq->req_origin_bytes_packed);
     } else {
-        ompi_convertor_copy_and_prepare_for_recv(sendreq->req_target_proc->proc_convertor,
-                                                 origin_dt,
+        opal_convertor_copy_and_prepare_for_recv(sendreq->req_target_proc->proc_convertor,
+                                                 &(origin_dt->super),
                                                  origin_count,
                                                  origin_addr,
                                                  0,
                                                  &(sendreq->req_origin_convertor));
-        ompi_convertor_get_packed_size(&sendreq->req_origin_convertor,
+        opal_convertor_get_packed_size(&sendreq->req_origin_convertor,
                                        &sendreq->req_origin_bytes_packed);        
     }
 
@@ -148,7 +145,7 @@ ompi_osc_pt2pt_sendreq_init_origin(ompi_osc_pt2pt_sendreq_t *sendreq,
 
 static inline int
 ompi_osc_pt2pt_sendreq_init_target(ompi_osc_pt2pt_sendreq_t *sendreq,
-                                   OMPI_PTRDIFF_TYPE target_disp,
+                                   OPAL_PTRDIFF_TYPE target_disp,
                                    int target_count,
                                    struct ompi_datatype_t *target_datatype)
 {
@@ -169,7 +166,7 @@ ompi_osc_pt2pt_sendreq_free(ompi_osc_pt2pt_sendreq_t *sendreq)
         memchecker_convertor_call(&opal_memchecker_base_mem_defined,
                                   &sendreq->req_origin_convertor);
     );
-    ompi_convertor_cleanup(&sendreq->req_origin_convertor);
+    opal_convertor_cleanup(&sendreq->req_origin_convertor);
 
     OBJ_RELEASE(sendreq->req_target_datatype);
     OBJ_RELEASE(sendreq->req_origin_datatype);

@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -17,7 +17,7 @@
  * $HEADER$
  */
 
-#include "ompi_config.h"
+#include "opal_config.h"
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
 #endif
@@ -315,9 +315,9 @@ void test2(void)
     
     OBJ_CONSTRUCT(&key_list, ompi_free_list_t);
     ompi_free_list_init_new(&key_list, sizeof(ompi_test_rb_value_t),
-            CACHE_LINE_SIZE,
+            opal_cache_line_size,
             OBJ_CLASS(ompi_test_rb_value_t), 
-            0,CACHE_LINE_SIZE,
+            0,opal_cache_line_size,
             0, -1 , 128, NULL);
     
     OBJ_CONSTRUCT(&tree, ompi_rb_tree_t);

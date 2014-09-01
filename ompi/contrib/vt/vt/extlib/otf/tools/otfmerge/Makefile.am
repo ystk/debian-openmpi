@@ -1,22 +1,18 @@
-INCLUDES = -I$(top_builddir)/otflib -I$(top_srcdir)/otflib
+if AMHAVEMPI
+SUBDIRS = . mpi
+endif
 
 if AMBUILDBINARIES
-bin_PROGRAMS = \
-	otfmerge
+bin_PROGRAMS = otfmerge
 endif
 
-otfmerge_LDADD = $(top_builddir)/otflib/libotf.la
-if ! AMDEPZLIB
-otfmerge_LDADD += $(ZLIB_LIB_LINE)
-endif
+OTFMERGESRCDIR = $(srcdir)
+include $(srcdir)/Makefile.common
 
-otfmerge_SOURCES = \
-	handler.h \
-	hash.h \
-	otfmerge.c \
-	handler.c \
-	hash.c
+AM_CPPFLAGS = $(COMMONINCLUDES)
 
-EXTRA_DIST = \
-	otfmerge_vs05.vcproj
-	
+otfmerge_CFLAGS = $(COMMONCFLAGS)
+otfmerge_LDADD = $(COMMONLDADD)
+otfmerge_DEPENDENCIES = $(COMMONDEPENDENCIES)
+otfmerge_SOURCES = $(COMMONSOURCES)
+

@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -22,8 +22,9 @@
 #ifndef MCA_PML_BASE_RECV_REQUEST_H
 #define MCA_PML_BASE_RECV_REQUEST_H
 
+#include "ompi_config.h"
 #include "ompi/mca/pml/base/pml_base_request.h"
-#include "ompi/datatype/convertor.h"
+#include "opal/datatype/opal_convertor.h"
 #include "ompi/peruse/peruse-internal.h"
 
 BEGIN_C_DECLS
@@ -95,7 +96,7 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(mca_pml_base_recv_request_t);
         (request)->req_ompi.req_status.MPI_SOURCE = OMPI_ANY_SOURCE;            \
         (request)->req_ompi.req_status.MPI_TAG = OMPI_ANY_TAG;                  \
         (request)->req_ompi.req_status.MPI_ERROR = OMPI_SUCCESS;                \
-        (request)->req_ompi.req_status._count = 0;                              \
+        (request)->req_ompi.req_status._ucount = 0;                             \
         (request)->req_ompi.req_status._cancelled = 0;                          \
                                                                                 \
         (request)->req_ompi.req_complete = false;                               \
@@ -113,7 +114,7 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(mca_pml_base_recv_request_t);
         OMPI_REQUEST_FINI(&(request)->req_base.req_ompi);               \
         OBJ_RELEASE( (request)->req_base.req_comm);                     \
         OBJ_RELEASE( (request)->req_base.req_datatype );                \
-        ompi_convertor_cleanup( &((request)->req_base.req_convertor) ); \
+        opal_convertor_cleanup( &((request)->req_base.req_convertor) ); \
     } while (0)
 
 END_C_DECLS

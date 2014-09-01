@@ -22,9 +22,7 @@
 
 #include "ompi_config.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
     /**
      * Convert a fortran string to a C string.
      *
@@ -108,9 +106,7 @@ extern "C" {
     OMPI_DECLSPEC int ompi_fortran_multiple_argvs_f2c(int count, char *array, int len,
                                                       char ****argv);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 
 #endif /* OMPI_F77_STRINGS_H */

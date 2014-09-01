@@ -9,8 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2010      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -96,6 +97,7 @@
 #include "opal/mca/base/base.h"
 
 /* ******************************************************************** */
+
 /** Process locality definitions */
 #define OPAL_PROC_ON_CLUSTER    0x10
 #define OPAL_PROC_ON_CU         0x08
@@ -119,6 +121,7 @@
 #define OPAL_PAFFINITY_BIND_TO_BOARD        0x08
 #define OPAL_PAFFINITY_BIND_IF_SUPPORTED    0x80
 /* ******************************************************************** */
+
 
 /**
  * Buffer type for paffinity processor masks.
@@ -146,6 +149,12 @@ typedef unsigned long int opal_paffinity_base_bitmask_t;
  * How many opal_paffinity_base_bitmask_t's we need
  */
 #define OPAL_PAFFINITY_BITMASK_NUM_ELEMENTS (OPAL_PAFFINITY_BITMASK_CPU_MAX / OPAL_PAFFINITY_BITMASK_T_NUM_BITS)
+
+/**
+ * \internal
+ * How many bytes in a cpu set
+ */
+#define OPAL_PAFFINITY_CPU_SET_NUM_BYTES (OPAL_PAFFINITY_BITMASK_NUM_ELEMENTS * sizeof(opal_paffinity_base_bitmask_t))
 
 /**
  * Public processor bitmask type
@@ -197,22 +206,23 @@ typedef struct opal_paffinity_base_cpu_set_t {
 /**
  * Public macro to test if a process is bound anywhere
  */
-#define OPAL_PAFFINITY_PROCESS_IS_BOUND(cpuset, bound)              \
-    do {                                                            \
-        int i, num_processors, num_bound;                           \
-        *(bound) = false;                                           \
-        if (OPAL_SUCCESS ==                                         \
-            opal_paffinity_base_get_processor_info(&num_processors)) {\
-            num_bound = 0;                                          \
-            for (i = 0; i < num_processors; i++) {                  \
-                if (OPAL_PAFFINITY_CPU_ISSET(i, (cpuset))) {        \
-                    num_bound++;                                    \
-                }                                                   \
-            }                                                       \
-            if (0 < num_bound && num_bound < num_processors) {      \
-                *(bound) = true;                                    \
-            }                                                       \
-        }                                                           \
+#define OPAL_PAFFINITY_PROCESS_IS_BOUND(cpuset, bound)                  \
+    do {                                                                \
+        int i, num_processors, num_bound;                               \
+        *(bound) = false;                                               \
+        if (OPAL_SUCCESS ==                                             \
+            opal_paffinity_base_get_processor_info(&num_processors)) {  \
+            num_bound = 0;                                              \
+            for (i = 0; i < OPAL_PAFFINITY_BITMASK_CPU_MAX; i++) {      \
+                if (OPAL_PAFFINITY_CPU_ISSET(i, (cpuset))) {            \
+                    num_bound++;                                        \
+                }                                                       \
+            }                                                           \
+            if (0 < num_bound && (1 == num_processors ||                \
+                                  num_bound < num_processors)) {        \
+                *(bound) = true;                                        \
+            }                                                           \
+        }                                                               \
     } while(0);
 
 /***************************************************************************/
@@ -231,16 +241,17 @@ typedef int (*opal_paffinity_base_module_set_fn_t)(opal_paffinity_base_cpu_set_t
 
 /**
  * Module function to get this process' affinity to a specific set of
- * PHYSICAL CPUs.  Returns OPAL_ERR_NOT_FOUND if
- * opal_paffinity_base_module_set_fn_t() was not previously invoked in
- * this process.
+ * PHYSICAL CPUs.  Returns any binding in the cpumask. This function -only-
+ * returns something other than OPAL_SUCCESS if an actual error is encountered.
+ * You will need to check the mask to find out if this process is actually
+ * bound somewhere specific - a macro for that purpose is provided above
  */
 typedef int (*opal_paffinity_base_module_get_fn_t)(opal_paffinity_base_cpu_set_t *cpumask);
 
 /**
  * Returns mapping of PHYSICAL socket:core -> PHYSICAL processor id.
  * 
- * return OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
+ * Return OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
  * supported
  */
 typedef int (*opal_paffinity_base_module_get_map_to_processor_id_fn_t)(int physical_socket,
@@ -250,7 +261,7 @@ typedef int (*opal_paffinity_base_module_get_map_to_processor_id_fn_t)(int physi
 /**
  * Provides mapping of PHYSICAL processor id -> PHYSICAL socket:core.
  * 
- * return OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
+ * Return OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
  * supported
  */
 typedef int (*opal_paffinity_base_module_get_map_to_socket_core_fn_t)(int physical_processor_id,
@@ -260,7 +271,7 @@ typedef int (*opal_paffinity_base_module_get_map_to_socket_core_fn_t)(int physic
 /**
  * Provides number of LOGICAL processors in a host.
  * 
- * return OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
+ * Return OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
  * supported
  */
 typedef int (*opal_paffinity_base_module_get_processor_info_fn_t)(int *num_processors);
@@ -268,7 +279,7 @@ typedef int (*opal_paffinity_base_module_get_processor_info_fn_t)(int *num_proce
 /**
  * Provides the number of LOGICAL sockets in a host.
  * 
- * return OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
+ * Return OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
  * supported
  */
 typedef int (*opal_paffinity_base_module_get_socket_info_fn_t)(int *num_sockets);
@@ -277,35 +288,32 @@ typedef int (*opal_paffinity_base_module_get_socket_info_fn_t)(int *num_sockets)
  * Provides the number of LOGICAL cores in a PHYSICAL socket. currently supported
  * only in Linux hosts
  * 
- * return OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
- * supporeted (solaris, windows, etc...)
+ * Returns OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
+ * supported.
  */
 typedef int (*opal_paffinity_base_module_get_core_info_fn_t)(int physical_socket, int *num_cores);
 
 /**
- * Return the PHYSICAL processor id that corresponds to the
- * given LOGICAL processor id
+ * Return the PHYSICAL processor ID that corresponds to the
+ * given LOGICAL processor ID.
  *
- * return OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
- * supporeted (solaris, windows, etc...)
+ * Return OPAL_ERR_NOT_SUPPORTED if not supported.
  */
 typedef int (*opal_paffinity_base_module_get_physical_processor_id_fn_t)(int logical_processor_id);
 
 /**
- * Return the PHYSICAL socket id that corresponds to the given
- * LOGICAL socket id
+ * Return the PHYSICAL socket ID that corresponds to the given
+ * LOGICAL socket ID.
  * 
- * return OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
- * supporeted (solaris, windows, etc...)
+ * Return OPAL_ERR_NOT_SUPPORTED if not supported.
  */
 typedef int (*opal_paffinity_base_module_get_physical_socket_id_fn_t)(int logical_socket_id);
 
 /**
- * Return the PHYSICAL core id that corresponds to the given LOGICAL
- * core id on the given PHYSICAL socket id
+ * Return the PHYSICAL core ID that corresponds to the given LOGICAL
+ * core ID on the given PHYSICAL socket ID.
  * 
- * return OPAL_SUCCESS or OPAL_ERR_NOT_SUPPORTED if not
- * supporeted (solaris, windows, etc...)
+ * Return OPAL_ERR_NOT_SUPPORTED if not supported.
  */
 typedef int (*opal_paffinity_base_module_get_physical_core_id_fn_t)(int physical_socket_id, int logical_core_id);
 

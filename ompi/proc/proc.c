@@ -21,21 +21,21 @@
 
 #include <string.h>
 
+#include "ompi/constants.h"
+#include "opal/datatype/opal_convertor.h"
 #include "opal/threads/mutex.h"
-#include "orte/util/show_help.h"
+#include "opal/dss/dss.h"
 #include "opal/util/arch.h"
 
-#include "opal/dss/dss.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/ess/ess.h"
 #include "orte/util/proc_info.h"
 #include "orte/util/name_fns.h"
+#include "orte/util/show_help.h"
 #include "orte/runtime/orte_globals.h"
 
 #include "ompi/proc/proc.h"
-#include "ompi/mca/pml/pml.h"
-#include "ompi/datatype/convertor.h"
-#include "ompi/runtime/params.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/runtime/mpiruntime.h"
 #include "ompi/runtime/ompi_module_exchange.h"
 
@@ -64,7 +64,7 @@ void ompi_proc_construct(ompi_proc_t* proc)
      * the arch of the remote nodes, we will have to set the convertors to the correct
      * architecture.
      */
-    proc->proc_arch = orte_process_info.arch;
+    proc->proc_arch = opal_local_arch;
     proc->proc_convertor = ompi_mpi_local_convertor;
     OBJ_RETAIN( ompi_mpi_local_convertor );
 
@@ -80,7 +80,7 @@ void ompi_proc_destruct(ompi_proc_t* proc)
     /* As all the convertors are created with OBJ_NEW we can just call OBJ_RELEASE. All, except
      * the local convertor, will get destroyed at some point here. If the reference count is correct
      * the local convertor (who has the reference count increased in the datatype) will not get
-     * destroyed here. It will be destroyed later when the ompi_ddt_finalize is called.
+     * destroyed here. It will be destroyed later when the ompi_datatype_finalize is called.
      */
     OBJ_RELEASE( proc->proc_convertor );
     /* DO NOT FREE THE HOSTNAME FIELD AS THIS POINTS
@@ -95,6 +95,7 @@ void ompi_proc_destruct(ompi_proc_t* proc)
 int ompi_proc_init(void)
 {
     orte_vpid_t i;
+    int ret;
 
     OBJ_CONSTRUCT(&ompi_proc_list, opal_list_t);
     OBJ_CONSTRUCT(&ompi_proc_lock, opal_mutex_t);
@@ -108,15 +109,13 @@ int ompi_proc_init(void)
         proc->proc_name.vpid = i;
         if (i == ORTE_PROC_MY_NAME->vpid) {
             ompi_proc_local_proc = proc;
-            proc->proc_flags |= OMPI_PROC_FLAG_LOCAL;
+            proc->proc_flags = OPAL_PROC_ALL_LOCAL;
             proc->proc_hostname = orte_process_info.nodename;
-            proc->proc_arch = orte_process_info.arch;
-        } else {
-            if (orte_ess.proc_is_local(&proc->proc_name)) {
-                /* flag all local procs */
-                proc->proc_flags |= OMPI_PROC_FLAG_LOCAL;
+            proc->proc_arch = opal_local_arch;
+            /* add our arch to the modex */
+            if (OMPI_SUCCESS != (ret = ompi_modex_send_key_value("OMPI_ARCH", &proc->proc_arch, OPAL_UINT32))) {
+                return ret;
             }
-            proc->proc_hostname = orte_ess.proc_get_hostname(&proc->proc_name);
         }
     }
 
@@ -137,6 +136,7 @@ int ompi_proc_set_arch(void)
 {
     ompi_proc_t *proc = NULL;
     opal_list_item_t *item = NULL;
+    int ret;
     
     OPAL_THREAD_LOCK(&ompi_proc_lock);
     
@@ -146,22 +146,33 @@ int ompi_proc_set_arch(void)
         proc = (ompi_proc_t*)item;
         
         if (proc->proc_name.vpid != ORTE_PROC_MY_NAME->vpid) {
-            proc->proc_arch = orte_ess.proc_get_arch(&proc->proc_name);
-            /* if arch is different than mine, create a new convertor for this proc */
-            if (proc->proc_arch != orte_process_info.arch) {
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
-                OBJ_RELEASE(proc->proc_convertor);
-                proc->proc_convertor = ompi_convertor_create(proc->proc_arch, 0);
+            ret = ompi_modex_recv_key_value("OMPI_ARCH", proc, (void*)&(proc->proc_arch), OPAL_UINT32);
+            if (OMPI_SUCCESS == ret) {
+                /* if arch is different than mine, create a new convertor for this proc */
+                if (proc->proc_arch != opal_local_arch) {
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
+                    OBJ_RELEASE(proc->proc_convertor);
+                    proc->proc_convertor = opal_convertor_create(proc->proc_arch, 0);
 #else
-                orte_show_help("help-mpi-runtime",
-                               "heterogeneous-support-unavailable",
-                               true, orte_process_info.nodename, 
-                               proc->proc_hostname == NULL ? "<hostname unavailable>" :
-                               proc->proc_hostname);
-                OPAL_THREAD_UNLOCK(&ompi_proc_lock);
-                return OMPI_ERR_NOT_SUPPORTED;
+                    orte_show_help("help-mpi-runtime",
+                                   "heterogeneous-support-unavailable",
+                                   true, orte_process_info.nodename, 
+                                   proc->proc_hostname == NULL ? "<hostname unavailable>" :
+                                   proc->proc_hostname);
+                    OPAL_THREAD_UNLOCK(&ompi_proc_lock);
+                    return OMPI_ERR_NOT_SUPPORTED;
 #endif
+                }
+            } else if (OMPI_ERR_NOT_IMPLEMENTED == ret) {
+                proc->proc_arch = opal_local_arch;
+            } else {
+                OPAL_THREAD_UNLOCK(&ompi_proc_lock);
+                return ret;
             }
+            /* get the locality information */
+            proc->proc_flags = orte_ess.proc_get_locality(&proc->proc_name);
+            /* get the name of the node it is on */
+            proc->proc_hostname = orte_ess.proc_get_hostname(&proc->proc_name);
         }
     }
     OPAL_THREAD_UNLOCK(&ompi_proc_lock);
@@ -354,20 +365,17 @@ int ompi_proc_refresh(void) {
 
         if (i == ORTE_PROC_MY_NAME->vpid) {
             ompi_proc_local_proc = proc;
-            proc->proc_flags |= OMPI_PROC_FLAG_LOCAL;
+            proc->proc_flags = OPAL_PROC_ALL_LOCAL;
             proc->proc_hostname = orte_process_info.nodename;
-            proc->proc_arch = orte_process_info.arch;
+            proc->proc_arch = opal_local_arch;
         } else {
-            if (orte_ess.proc_is_local(&proc->proc_name)) {
-                proc->proc_flags |= OMPI_PROC_FLAG_LOCAL;
-            }
+            proc->proc_flags = orte_ess.proc_get_locality(&proc->proc_name);
             proc->proc_hostname = orte_ess.proc_get_hostname(&proc->proc_name);
-            proc->proc_arch = orte_ess.proc_get_arch(&proc->proc_name);
             /* if arch is different than mine, create a new convertor for this proc */
-            if (proc->proc_arch != orte_process_info.arch) {
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+            if (proc->proc_arch != opal_local_arch) {
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 OBJ_RELEASE(proc->proc_convertor);
-                proc->proc_convertor = ompi_convertor_create(proc->proc_arch, 0);
+                proc->proc_convertor = opal_convertor_create(proc->proc_arch, 0);
 #else
                 orte_show_help("help-mpi-runtime",
                                "heterogeneous-support-unavailable",
@@ -534,12 +542,11 @@ ompi_proc_unpack(opal_buffer_t* buf,
             
             /* update all the values */
             plist[i]->proc_arch = new_arch;
-            
             /* if arch is different than mine, create a new convertor for this proc */
-            if (plist[i]->proc_arch != ompi_mpi_local_arch) {
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+            if (plist[i]->proc_arch != opal_local_arch) {
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 OBJ_RELEASE(plist[i]->proc_convertor);
-                plist[i]->proc_convertor = ompi_convertor_create(plist[i]->proc_arch, 0);
+                plist[i]->proc_convertor = opal_convertor_create(plist[i]->proc_arch, 0);
 #else
                 orte_show_help("help-mpi-runtime",
                                "heterogeneous-support-unavailable",
@@ -552,7 +559,7 @@ ompi_proc_unpack(opal_buffer_t* buf,
 #endif
             }
             if (0 == strcmp(ompi_proc_local_proc->proc_hostname,new_hostname)) {
-                plist[i]->proc_flags |= OMPI_PROC_FLAG_LOCAL;
+                plist[i]->proc_flags |= (OPAL_PROC_ON_NODE | OPAL_PROC_ON_CU | OPAL_PROC_ON_CLUSTER);
             }
             
             /* Save the hostname */

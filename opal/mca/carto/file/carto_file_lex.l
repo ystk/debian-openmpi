@@ -19,7 +19,7 @@
 #include "opal_config.h"
 
 #include <stdio.h>
-#if HAVE_UNISTD_H
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
@@ -28,15 +28,11 @@
 /*
  * local functions
  */
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif  /* defined(c_plusplus) || defined(__cplusplus) */
+BEGIN_C_DECLS
 
 int carto_file_wrap(void);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif  /* defined(c_plusplus) || defined(__cplusplus) */
+END_C_DECLS
 
 int carto_file_wrap(void)
 {

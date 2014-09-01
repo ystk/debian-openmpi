@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc. All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,7 +21,6 @@
 #include "opal_config.h"
 
 #include "opal/constants.h"
-#include "opal/util/output.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
@@ -31,12 +30,14 @@
 /*
  * Globals
  */
+bool opal_carto_base_selected = false;
 const opal_carto_base_component_2_0_0_t *opal_carto_base_component = NULL;
 const opal_carto_base_module_1_0_0_t *opal_carto_base_module = NULL;
 
 
 int opal_carto_base_select(void)
 {
+    int exit_status = OPAL_SUCCESS;
     opal_carto_base_component_2_0_0_t *best_component = NULL;
     opal_carto_base_module_1_0_0_t *best_module = NULL;
 
@@ -50,16 +51,22 @@ int opal_carto_base_select(void)
         /* This will only happen if no component was selected, so
          * use the default module instead
          */
-        opal_carto_base_module = &opal_carto_default_module;
+        opal_carto_base_module    = &opal_carto_default_module;
+        opal_carto_base_selected  = true;
         goto cleanup;
     }
 
     /* Save the winner */
     opal_carto_base_component = best_component;
     opal_carto_base_module    = best_module;
+    opal_carto_base_selected  = true;
 
-    /* Initialize the winner */
 cleanup:
-    return opal_carto_base_module->carto_module_init();
+    /* Initialize the winner */
+    if (NULL != opal_carto_base_module) {
+        exit_status = opal_carto_base_module->carto_module_init();
+    }
+
+    return exit_status;
 }
 

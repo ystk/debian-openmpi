@@ -1,35 +1,23 @@
+if AMHAVEMPI
+SUBDIRS = . mpi
+endif
+
 if AMBUILDBINARIES
 bin_PROGRAMS = vtfilter
 endif
 
-if AMEXTERNOTF
-OTFINCLUDE = $(OTFINCDIR)
-OTFLIBRARY = $(OTFLIBDIR) $(OTFLIB)
-else
-OTFINCLUDE = -I$(top_srcdir)/extlib/otf/otflib -I$(top_builddir)/extlib/otf/otflib
-OTFLIBRARY = -L$(top_builddir)/extlib/otf/otflib -L$(top_builddir)/extlib/otf/otflib/.libs $(OTFLIB)
-endif
+VTFILTERSRCDIR = $(srcdir)
+include $(srcdir)/Makefile.common
 
-INCLUDES = $(OTFINCLUDE) -I$(top_srcdir)/vtlib/ -I$(top_builddir)/vtlib
+install-exec-hook:
+	(cd $(DESTDIR)$(bindir); rm -f vtfiltergen$(EXEEXT); \
+	$(LN_S) vtfilter$(EXEEXT) vtfiltergen$(EXEEXT))
+uninstall-local:
+	rm -f $(DESTDIR)$(bindir)/vtfiltergen$(EXEEXT)
 
-if AMHAVEOMP
-vtfilter_CXXFLAGS = $(OMPFLAG) -DVT_OMP
-vtfilter_LDFLAGS = $(OMPFLAG)
-else
-vtfilter_CXXFLAGS =
-vtfilter_LDFLAGS =
-endif
-
-vtfilter_SOURCES = \
-	vt_filter.h \
-	vt_filthandler.h \
-	vt_otfhandler.h \
-	vt_filter.cc \
-	vt_filthandler.cc \
-	vt_otfhandler.cc \
-	vt_tracefilter.cc
-
-vtfilter_LDADD = \
-	$(top_builddir)/util/util.$(OBJEXT) \
-	$(OTFLIBRARY)
+vtfilter_CXXFLAGS = $(COMMONCXXFLAGS)
+vtfilter_LDFLAGS = $(COMMONLDFLAGS)
+vtfilter_SOURCES = $(COMMONSOURCES)
+vtfilter_LDADD = $(COMMONLDADD)
+vtfilter_DEPENDENCIES = $(COMMONDEPENDENCIES)
 

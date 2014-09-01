@@ -5,7 +5,7 @@
 **  Copyright (c) 1998-2008                                                **
 **  Forschungszentrum Juelich, Juelich Supercomputing Centre               **
 **                                                                         **
-**  See the file COPYING in the package base directory for details       **
+**  See the file COPYING in the package base directory for details         **
 ****************************************************************************/
 
 #include <iostream>
@@ -31,7 +31,7 @@ namespace {
                         unsigned& pline, string::size_type& ppos) {
     while ( pline < size ) {
       string::size_type wbeg = preStmt[pline].find_first_not_of(" \t", ppos);
-      if ( preStmt[pline][wbeg] == '\\' || wbeg == string::npos ) {
+      if ( wbeg == string::npos || preStmt[pline][wbeg] == '\\' ) {
         ++pline;
         if ( pline < size ) { ppos = 0; } else { return ""; }
       } else {
@@ -48,17 +48,11 @@ namespace {
                        string::size_type ppos, bool* e, bool* f, bool asd) {
     unsigned s = preStmt.size();
     bool inComment = false;
+    bool inString = false;
 
     for (unsigned i=0; i<s; ++i) {
       string::size_type pos = 0;
       string& line = preStmt[i];
-
-      // shift bonded line-continuation '\' one position to right
-      if ( line[line.size()-1] == '\\'
-           && line.size() >= 2 && line[line.size()-2] != ' '
-           && line[line.size()-2] != '\t' ) {
-        line.insert(line.size()-1, " ");
-      }
 
       // "remove" comments
       while ( pos < line.size() ) {
@@ -67,8 +61,28 @@ namespace {
           if ( line[pos] == '*' && line[pos+1] == '/' ) {
             line[pos++] = ' ';
             inComment = false;
-          } 
+          }
           line[pos++] = ' ';
+        } else if ( inString || line[pos] == '\"' ) {
+          // character string constant
+          if ( line[pos] == '\"' ) {
+            pos++;
+          } else { // inString
+            inString = false;
+          }
+          while ( pos < line.size() ) {
+            if ( line[pos] == '\\' ) {
+              pos++;
+              if ( line[pos] == '\0' ) {
+                inString = true;
+                break;
+              }
+            } else if ( line[pos] == '\"' ) {
+              pos++;
+              break;
+            }
+            pos++;
+          }
         } else if ( line[pos] == '/' ) {
           pos++;
           if ( line[pos] == '/' ) {
@@ -85,6 +99,14 @@ namespace {
         } else {
           pos++;
         }
+      }
+
+      // shift bonded line-continuation '\' one position to right
+      if ( !inString &&
+           line[line.size()-1] == '\\'
+           && line.size() >= 2 && line[line.size()-2] != ' '
+           && line[line.size()-2] != '\t' ) {
+        line.insert(line.size()-1, " ");
       }
     }
 
@@ -147,6 +169,10 @@ void process_c_or_cxx(istream& is, const char* infile, ostream& os,
     /* workaround for bogus getline implementations */
     if ( line.size() == 1 && line[0] == '\0' ) break;
 
+    /* remove possible trailing Carriage Return from line */
+    if ( line.size() > 0 && line[line.length()-1] == '\r' )
+      line.erase(line.length()-1);
+
     if ( preContLine ) {
       /*
        * preprocessor directive continuation
@@ -204,7 +230,7 @@ void process_c_or_cxx(istream& is, const char* infile, ostream& os,
             os << line[pos++];
           }
 
-        } else if ( line[pos] == '/' ) {
+        } else if ( !inString && line[pos] == '/' ) {
           pos++;
           if ( line[pos] == '/' ) {
             // c++ comments
@@ -222,29 +248,29 @@ void process_c_or_cxx(istream& is, const char* infile, ostream& os,
 
         } else if ( inString || line[pos] == '\"' ) {
           // character string constant
-          if ( inString ) {
-	    inString = false;
-	    pos--;  // to make sure current character gets reprcessed
-	  } else {
-	    os << "\"";
-	  }
-          do {
+          if ( line[pos] == '\"' ) {
+            os << '\"';
             pos++;
+          } else { // inString
+            inString = false;
+          }
+
+          while( pos < line.size() ) {
             if ( line[pos] == '\\' ) {
               os << '\\';
               pos++;
               if ( line[pos] == '\0' ) {
-		inString = true;
-		break;
-	      } else if ( line[pos] == '\"' ) {
-                os << '\"';
-                pos++;
+                inString = true;
+                break;
               }
+            } else if ( line[pos] == '\"' ) {
+              os << '\"';
+              pos++;
+              break;
             }
             os << line[pos];
+            pos++;
           }
-          while ( line[pos] != '\"' );
-          pos++;
 
         } else if ( line[pos] == '\'' ) {
           // character constant

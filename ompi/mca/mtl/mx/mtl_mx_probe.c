@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  *
  * Additional copyrights may follow
  *
@@ -19,7 +20,6 @@
 
 #include "ompi_config.h"
 
-#include "ompi/request/request.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/mtl/base/base.h"
 
@@ -62,7 +62,7 @@ ompi_mtl_mx_iprobe(struct mca_mtl_base_module_t* mtl,
         if(MPI_STATUS_IGNORE != status) { 
             MX_GET_SRC(mx_status.match_info, status->MPI_SOURCE);
             MX_GET_TAG(mx_status.match_info, status->MPI_TAG); 
-            status->_count = mx_status.msg_length;
+            OMPI_STATUS_SET_COUNT(&status->_ucount, &mx_status.msg_length);
         }
         *flag = 1;
     } else {

@@ -19,16 +19,13 @@
 
 #include "orte_config.h"
 #include "orte/constants.h"
-#include "orte/types.h"
 
 #if !ORTE_DISABLE_FULL_SUPPORT
 
-#include "opal/util/argv.h"
+#include "opal/util/output.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 
-#include "orte/mca/errmgr/errmgr.h"
-#include "orte/util/show_help.h"
 
 #include "orte/mca/plm/plm.h"
 #include "orte/mca/plm/base/plm_private.h"
@@ -58,6 +55,44 @@ int orte_plm_base_open(void)
 #else
 
 
+static void slave_file_construct(orte_slave_files_t *ptr)
+{
+    ptr->node = NULL;
+    ptr->local = false;
+    ptr->prefix = NULL;
+    ptr->bootproxy = NULL;
+    ptr->positioned = false;
+    OBJ_CONSTRUCT(&ptr->apps, opal_pointer_array_t);
+    opal_pointer_array_init(&ptr->apps, 8, 1024, 8);
+    OBJ_CONSTRUCT(&ptr->files, opal_pointer_array_t);
+    opal_pointer_array_init(&ptr->files, 8, 1024, 8);
+}
+static void slave_file_destruct(orte_slave_files_t *ptr)
+{
+    int i;
+    char *cptr;
+    
+    if (NULL != ptr->node) free(ptr->node);
+    if (NULL != ptr->prefix) free(ptr->prefix);
+    if (NULL != ptr->bootproxy) free(ptr->bootproxy);
+    for (i=0; i < ptr->apps.size; i++) {
+        if (NULL != (cptr = (char*)opal_pointer_array_get_item(&ptr->apps, i))) {
+            free(cptr);
+        }
+    }
+    OBJ_DESTRUCT(&ptr->apps);
+    for (i=0; i < ptr->files.size; i++) {
+        if (NULL != (cptr = (char*)opal_pointer_array_get_item(&ptr->files, i))) {
+            free(cptr);
+        }
+    }
+    OBJ_DESTRUCT(&ptr->files);
+}
+OBJ_CLASS_INSTANCE(orte_slave_files_t,
+                   opal_list_item_t,
+                   slave_file_construct,
+                   slave_file_destruct);
+
 /*
  * Global public variables
  */
@@ -78,6 +113,7 @@ orte_plm_base_module_t orte_plm = {
     NULL,   /* cannot remotely spawn by default */
     NULL,   /* cannot terminate job from a proxy */
     NULL,   /* cannot terminate orteds from a proxy */
+    NULL,   /* cannot terminate procs from a proxy */
     NULL,   /* cannot signal job from a proxy */
     orte_plm_proxy_finalize
 };
@@ -100,9 +136,22 @@ int orte_plm_base_open(void)
     OBJ_CONSTRUCT(&orte_plm_globals.orted_cmd_lock, opal_mutex_t);
     OBJ_CONSTRUCT(&orte_plm_globals.orted_cmd_cond, opal_condition_t);
     
+    /* initialize the condition variables for spawn */
+    OBJ_CONSTRUCT(&orte_plm_globals.spawn_lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&orte_plm_globals.spawn_cond, opal_condition_t);
+    OBJ_CONSTRUCT(&orte_plm_globals.spawn_in_progress_cond, opal_condition_t);
+    orte_plm_globals.spawn_complete = false;
+    orte_plm_globals.spawn_in_progress = false;
+    
     /* init the next jobid */
     orte_plm_globals.next_jobid = 0;
     
+    /* init the rsh support */
+    orte_plm_globals.rsh_agent_argv = NULL;
+    orte_plm_globals.rsh_agent_path = NULL;
+    orte_plm_globals.local_slaves = 0;
+    OBJ_CONSTRUCT(&orte_plm_globals.slave_files, opal_list_t);
+
     /* Open up all the components that we can find */
 
     if (ORTE_SUCCESS != 

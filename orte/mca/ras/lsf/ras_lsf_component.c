@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007-2009 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -24,8 +24,6 @@
 
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "orte/util/proc_info.h"
-#include "orte/util/show_help.h"
 
 #include "ras_lsf.h"
 
@@ -52,11 +50,11 @@ orte_ras_base_component_t mca_ras_lsf_component = {
         orte_ras_lsf_open,  /* component open  */
         orte_ras_lsf_close, /* component close */
         orte_ras_lsf_component_query
-    },
-    {
-        /* The component is checkpoint ready */
-        MCA_BASE_METADATA_PARAM_CHECKPOINT
-    }
+      },
+      {
+          /* The component is checkpoint ready */
+          MCA_BASE_METADATA_PARAM_CHECKPOINT
+      }
 };
 
 

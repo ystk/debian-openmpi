@@ -20,9 +20,11 @@
 #ifndef OMPI_OSC_RDMA_H
 #define OMPI_OSC_RDMA_H
 
+#include "ompi_config.h"
 #include "opal/class/opal_list.h"
 #include "opal/class/opal_free_list.h"
 #include "opal/class/opal_hash_table.h"
+#include "opal/threads/threads.h"
 
 #include "ompi/win/win.h"
 #include "ompi/communicator/communicator.h"
@@ -70,7 +72,7 @@ struct ompi_osc_rdma_component_t {
     /** list of outstanding requests, of type ompi_osc_pt2pt_longreq_t */
     opal_list_t c_pending_requests;
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     opal_thread_t c_thread;
     bool c_thread_run;
 #endif
@@ -248,7 +250,7 @@ int ompi_osc_rdma_module_put(void *origin_addr,
                              int origin_count,
                              struct ompi_datatype_t *origin_dt,
                              int target,
-                             OMPI_PTRDIFF_TYPE target_disp,
+                             OPAL_PTRDIFF_TYPE target_disp,
                              int target_count,
                              struct ompi_datatype_t *target_dt,
                              struct ompi_win_t *win);
@@ -257,7 +259,7 @@ int ompi_osc_rdma_module_accumulate(void *origin_addr,
                                     int origin_count,
                                     struct ompi_datatype_t *origin_dt,
                                     int target,
-                                    OMPI_PTRDIFF_TYPE target_disp,
+                                    OPAL_PTRDIFF_TYPE target_disp,
                                     int target_count,
                                     struct ompi_datatype_t *target_dt,
                                     struct ompi_op_t *op,
@@ -267,7 +269,7 @@ int ompi_osc_rdma_module_get(void *origin_addr,
                              int origin_count,
                              struct ompi_datatype_t *origin_dt,
                              int target,
-                             OMPI_PTRDIFF_TYPE target_disp,
+                             OPAL_PTRDIFF_TYPE target_disp,
                              int target_count,
                              struct ompi_datatype_t *target_dt,
                              struct ompi_win_t *win);

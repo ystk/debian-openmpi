@@ -9,7 +9,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
@@ -25,7 +25,7 @@ EXTRA_DIST = $(real_man_pages:.1=.1in) CMakeLists.txt
 
 include $(top_srcdir)/Makefile.man-page-rules
 
-if !OMPI_WANT_SCRIPT_WRAPPER_COMPILERS
+if !OPAL_WANT_SCRIPT_WRAPPER_COMPILERS
 if OMPI_INSTALL_BINARIES
 
 bin_PROGRAMS = opal_wrapper
@@ -43,6 +43,9 @@ nodist_pkgdata_DATA = \
 
 nodist_man_MANS += opalcc.1 opalc++.1
 
+pkgconfigdir = $(libdir)/pkgconfig
+pkgconfig_DATA = opal.pc
+
 install-exec-hook:
 	(cd $(DESTDIR)$(bindir); rm -f opalcc$(EXEEXT); $(LN_S) opal_wrapper opalcc)
 	(cd $(DESTDIR)$(bindir); rm -f opalc++$(EXEEXT); $(LN_S) opal_wrapper opalc++)
@@ -54,7 +57,7 @@ uninstall-local:
 endif # WANT_INSTALL_HEADERS
 
 endif # OMPI_INSTALL_BINARIES
-endif # OMPI_WANT_SCRIPT_WRAPPER_COMPILERS
+endif # OPAL_WANT_SCRIPT_WRAPPER_COMPILERS
 
 opal_wrapper_SOURCES = opal_wrapper.c
 opal_wrapper_LDADD = $(top_builddir)/opal/libopen-pal.la

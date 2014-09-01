@@ -6,7 +6,6 @@
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/mca/rml/rml.h"
-#include "orte/mca/oob/base/base.h"
 
 #include "orte/runtime/runtime.h"
 
@@ -30,7 +29,7 @@ main(int argc, char *argv[]){
     /*
      * Init
      */
-    orte_init(ORTE_NON_TOOL);
+    orte_init(&argc, &argv, ORTE_PROC_NON_MPI);
 
     num_peers = orte_process_info.num_procs;
 

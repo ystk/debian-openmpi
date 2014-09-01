@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2009 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -26,18 +26,14 @@
 
 #include "opal_config.h"
 
-#include "opal/util/output.h"
 
 #include "opal/mca/mca.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/base/base.h"
-#include "opal/runtime/opal_cr.h"
 
 #include <libcr.h>
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
     /*
      * Local Component structures
@@ -51,6 +47,8 @@ extern "C" {
 
     int opal_crs_blcr_component_query(mca_base_module_t **module, int *priority);
 
+    extern bool opal_crs_blcr_dev_null;
+
     /*
      * Module functions
      */
@@ -61,7 +59,8 @@ extern "C" {
      * Actual funcationality
      */
     int opal_crs_blcr_checkpoint( pid_t pid, 
-                                  opal_crs_base_snapshot_t *snapshot, 
+                                  opal_crs_base_snapshot_t *snapshot,
+                                  opal_crs_base_ckpt_options_t *options,
                                   opal_crs_state_type_t    *state);
 
     int opal_crs_blcr_restart(    opal_crs_base_snapshot_t *snapshot, 
@@ -80,8 +79,6 @@ extern "C" {
 
     int opal_crs_blcr_reg_thread(void);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* MCA_CRS_BLCR_EXPORT_H */

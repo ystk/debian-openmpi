@@ -20,15 +20,13 @@
 #include "opal_config.h"
 
 #include <stdio.h>
-#if HAVE_UNISTD_H
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
 #include "opal/util/show_help_lex.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /*
  * public functions
@@ -40,9 +38,7 @@ extern int opal_show_help_finish_parsing(void);
  */
 static int opal_show_help_yywrap(void);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 /*
  * global variables
@@ -64,7 +60,7 @@ CHAR        [A-Za-z0-9_\-\.]
 
 #.*\n               ; /* comment line */
 
-^\[.+\]/.*\n { BEGIN(CHOMP); return OPAL_SHOW_HELP_PARSE_TOPIC; }
+^\[.+\]/[^\]\n]*\n { BEGIN(CHOMP); return OPAL_SHOW_HELP_PARSE_TOPIC; }
 
 <CHOMP>.*\n { BEGIN(INITIAL); }
 

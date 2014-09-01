@@ -10,10 +10,10 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006      Voltaire. All rights reserved.
  * Copyright (c) 2007      Mellanox Technologies. All rights reserved.
- * Copyright (c) 2010      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2009      IBM Corporation.  All rights reserved.
  * Copyright (c) 2011      Los Alamos National Security, LLC. All rights
  *                         reserved.
  *
@@ -24,13 +24,11 @@
  * $HEADER$
  */
 
-#define OMPI_DISABLE_ENABLE_MEM_DEBUG 1
+#define OPAL_DISABLE_ENABLE_MEM_DEBUG 1
 #include "ompi_config.h"
-#include "opal/include/opal/align.h"
-#include "orte/util/proc_info.h"
+#include "opal/align.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
-#include "orte/util/show_help.h"
 #include "ompi/mca/mpool/rdma/mpool_rdma.h"
 #include <errno.h>
 #include <string.h>
@@ -64,9 +62,9 @@ void mca_mpool_rdma_module_init(mca_mpool_rdma_module_t* mpool)
 
     OBJ_CONSTRUCT(&mpool->reg_list, ompi_free_list_t);
     ompi_free_list_init_new(&mpool->reg_list, mpool->resources.sizeof_reg,
-            CACHE_LINE_SIZE,
+            opal_cache_line_size,
             OBJ_CLASS(mca_mpool_base_registration_t), 
-            0,CACHE_LINE_SIZE,
+            0,opal_cache_line_size,
             0, -1, 32, NULL);
     OBJ_CONSTRUCT(&mpool->lru_list, opal_list_t);
     OBJ_CONSTRUCT(&mpool->gc_list, opal_list_t);
@@ -260,7 +258,7 @@ int mca_mpool_rdma_register(mca_mpool_base_module_t *mpool, void *addr,
             mpool_rdma->stat_cache_hit++;
             (*reg)->ref_count++;
             OPAL_THREAD_UNLOCK(&mpool->rcache->lock);
-            return MPI_SUCCESS;
+            return OMPI_SUCCESS;
         }
 
         mpool_rdma->stat_cache_miss++;

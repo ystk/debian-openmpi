@@ -1,12 +1,14 @@
 /*
- This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2008.
+ This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2013.
  Authors: Andreas Knuepfer, Holger Brunst, Ronny Brendel, Thomas Kriebitzsch
 */
 
 #ifndef OTFTOVTF3_HANDLER_H
 #define OTFTOVTF3_HANDLER_H
 
+#ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
 
 
 #include "OTF_inttypes.h"

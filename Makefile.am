@@ -9,7 +9,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -18,7 +18,7 @@
 #
 
 SUBDIRS = config contrib $(MCA_PROJECT_SUBDIRS) test
-EXTRA_DIST = README INSTALL VERSION Doxyfile LICENSE autogen.sh CMakeLists.txt README.WINDOWS
+EXTRA_DIST = README INSTALL VERSION Doxyfile LICENSE autogen.sh CMakeLists.txt README.WINDOWS.txt
 
 include examples/Makefile.include
 

@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -20,7 +20,6 @@
 
 #include "ompi_config.h"
 
-#include "opal/class/opal_hash_table.h"
 #include "opal/util/arch.h"
 
 #include "ompi/runtime/ompi_module_exchange.h"
@@ -37,17 +36,17 @@ OBJ_CLASS_INSTANCE(mca_btl_openib_proc_t,
         opal_list_item_t, mca_btl_openib_proc_construct,
         mca_btl_openib_proc_destruct);
 
-void mca_btl_openib_proc_construct(mca_btl_openib_proc_t* proc)
+void mca_btl_openib_proc_construct(mca_btl_openib_proc_t* ib_proc)
 {
-    proc->proc_ompi = 0;
-    proc->proc_ports = NULL;
-    proc->proc_port_count = 0;
-    proc->proc_endpoints = 0;
-    proc->proc_endpoint_count = 0;
-    OBJ_CONSTRUCT(&proc->proc_lock, opal_mutex_t);
+    ib_proc->proc_ompi = 0;
+    ib_proc->proc_ports = NULL;
+    ib_proc->proc_port_count = 0;
+    ib_proc->proc_endpoints = 0;
+    ib_proc->proc_endpoint_count = 0;
+    OBJ_CONSTRUCT(&ib_proc->proc_lock, opal_mutex_t);
     /* add to list of all proc instance */
     OPAL_THREAD_LOCK(&mca_btl_openib_component.ib_lock);
-    opal_list_append(&mca_btl_openib_component.ib_procs, &proc->super);
+    opal_list_append(&mca_btl_openib_component.ib_procs, &ib_proc->super);
     OPAL_THREAD_UNLOCK(&mca_btl_openib_component.ib_lock);
 }
 
@@ -55,28 +54,29 @@ void mca_btl_openib_proc_construct(mca_btl_openib_proc_t* proc)
  * Cleanup ib proc instance
  */
 
-void mca_btl_openib_proc_destruct(mca_btl_openib_proc_t* proc)
+void mca_btl_openib_proc_destruct(mca_btl_openib_proc_t* ib_proc)
 {
     /* remove from list of all proc instances */
     OPAL_THREAD_LOCK(&mca_btl_openib_component.ib_lock);
-    opal_list_remove_item(&mca_btl_openib_component.ib_procs, &proc->super);
+    opal_list_remove_item(&mca_btl_openib_component.ib_procs, &ib_proc->super);
     OPAL_THREAD_UNLOCK(&mca_btl_openib_component.ib_lock);
 
     /* release resources */
-    if(NULL != proc->proc_endpoints) {
-        free(proc->proc_endpoints);
+    if(NULL != ib_proc->proc_endpoints) {
+        free(ib_proc->proc_endpoints);
     }
-    if (NULL != proc->proc_ports) {
+    if (NULL != ib_proc->proc_ports) {
         int i, j;
-        for (i = 0; i < proc->proc_port_count; ++i) {
-            for (j = 0; j < proc->proc_ports[i].pm_cpc_data_count; ++j) {
-                if (NULL != proc->proc_ports[i].pm_cpc_data[j].cbm_modex_message) {
-                    free(proc->proc_ports[i].pm_cpc_data[j].cbm_modex_message);
+        for (i = 0; i < ib_proc->proc_port_count; ++i) {
+            for (j = 0; j < ib_proc->proc_ports[i].pm_cpc_data_count; ++j) {
+                if (NULL != ib_proc->proc_ports[i].pm_cpc_data[j].cbm_modex_message) {
+                    free(ib_proc->proc_ports[i].pm_cpc_data[j].cbm_modex_message);
                 }
             }
         }
-        free(proc->proc_ports);
+        free(ib_proc->proc_ports);
     }
+    OBJ_DESTRUCT(&ib_proc->proc_lock);
 }
 
 
@@ -188,7 +188,7 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
         /* Unpack the modex comment message struct */
         size = modex_message_size;
         memcpy(&(module_proc->proc_ports[i].pm_port_info), offset, size);
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
         MCA_BTL_OPENIB_MODEX_MSG_NTOH(module_proc->proc_ports[i].pm_port_info);
 #endif
         offset += size;

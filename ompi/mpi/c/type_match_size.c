@@ -20,9 +20,13 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
+#include "ompi/datatype/ompi_datatype.h"
+#include "ompi/datatype/ompi_datatype_internal.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Type_match_size = PMPI_Type_match_size
 #endif
 
@@ -43,13 +47,13 @@ int MPI_Type_match_size(int typeclass, int size, MPI_Datatype *type)
 
     switch( typeclass ) {
     case MPI_TYPECLASS_REAL:
-        *type = (MPI_Datatype)ompi_ddt_match_size( size, DT_FLAG_DATA_FLOAT, DT_FLAG_DATA_FORTRAN );
+        *type = (MPI_Datatype)ompi_datatype_match_size( size, OMPI_DATATYPE_FLAG_DATA_FLOAT, OMPI_DATATYPE_FLAG_DATA_FORTRAN );
         break;
     case MPI_TYPECLASS_INTEGER:
-        *type = (MPI_Datatype)ompi_ddt_match_size( size, DT_FLAG_DATA_INT, DT_FLAG_DATA_FORTRAN );
+        *type = (MPI_Datatype)ompi_datatype_match_size( size, OMPI_DATATYPE_FLAG_DATA_INT, OMPI_DATATYPE_FLAG_DATA_FORTRAN );
         break;
     case MPI_TYPECLASS_COMPLEX:
-        *type = (MPI_Datatype)ompi_ddt_match_size( size, DT_FLAG_DATA_COMPLEX, DT_FLAG_DATA_FORTRAN );
+        *type = (MPI_Datatype)ompi_datatype_match_size( size, OMPI_DATATYPE_FLAG_DATA_COMPLEX, OMPI_DATATYPE_FLAG_DATA_FORTRAN );
         break;
     default:
         *type = &ompi_mpi_datatype_null.dt;

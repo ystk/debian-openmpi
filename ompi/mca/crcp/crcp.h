@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -34,7 +34,7 @@
 
 #include "opal/class/opal_object.h"
 
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/request/request.h"
 
 #include "ompi/class/ompi_free_list.h"
@@ -45,9 +45,7 @@
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /**
  * Module initialization function.
@@ -186,7 +184,7 @@ typedef ompi_crcp_base_btl_state_t* (*mca_crcp_base_btl_module_add_procs_fn_t)
        size_t nprocs,
        struct ompi_proc_t** procs,
        struct mca_btl_base_endpoint_t** endpoints,
-       struct ompi_bitmap_t* reachable,
+       struct opal_bitmap_t* reachable,
        ompi_crcp_base_btl_state_t* );
 
 typedef ompi_crcp_base_btl_state_t* (*mca_crcp_base_btl_module_del_procs_fn_t)
@@ -221,7 +219,7 @@ typedef ompi_crcp_base_btl_state_t* (*mca_crcp_base_btl_module_prepare_fn_t)
      ( struct mca_btl_base_module_t* btl,
        struct mca_btl_base_endpoint_t* endpoint,
        mca_mpool_base_registration_t* registration,
-       struct ompi_convertor_t* convertor,
+       struct opal_convertor_t* convertor,
        size_t reserve,
        size_t* size,
        ompi_crcp_base_btl_state_t*);
@@ -351,7 +349,7 @@ OMPI_DECLSPEC extern ompi_crcp_base_module_t ompi_crcp;
 /**
  * Macro to call the CRCP Request Complete function
  */
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
 #define OMPI_CRCP_REQUEST_COMPLETE(req)      \
   if( NULL != ompi_crcp.request_complete) {  \
     ompi_crcp.request_complete(req);         \
@@ -360,8 +358,6 @@ OMPI_DECLSPEC extern ompi_crcp_base_module_t ompi_crcp;
 #define OMPI_CRCP_REQUEST_COMPLETE(req) ;
 #endif
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OMPI_CRCP_H */

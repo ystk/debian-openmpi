@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2007-2008 Cisco, Inc.  All rights reserved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2008-2009 Sun Microsystems, Inc.  All rights reserved.
@@ -19,7 +19,7 @@
  * Permission is hereby granted to use, reproduce, prepare derivative
  * works, and to redistribute to others.
  *
- *				  DISCLAIMER
+ *                                DISCLAIMER
  *
  * Neither Dolphin Interconnect Solutions, Etnus LLC, nor any of their
  * employees, makes any warranty express or implied, or assumes any
@@ -378,8 +378,8 @@ int ompi_fill_in_type_info(mqs_image *image, char **message)
                           qh_type, ompi_status_public_t, MPI_TAG);
         ompi_field_offset(i_info->ompi_status_public_t.offset.MPI_ERROR,
                           qh_type, ompi_status_public_t, MPI_ERROR);
-        ompi_field_offset(i_info->ompi_status_public_t.offset._count,
-                          qh_type, ompi_status_public_t, _count);
+        ompi_field_offset(i_info->ompi_status_public_t.offset._ucount,
+                          qh_type, ompi_status_public_t, _ucount);
         ompi_field_offset(i_info->ompi_status_public_t.offset._cancelled,
                           qh_type, ompi_status_public_t, _cancelled);
     }
@@ -391,10 +391,27 @@ int ompi_fill_in_type_info(mqs_image *image, char **message)
         }
         i_info->ompi_datatype_t.type = qh_type;
         i_info->ompi_datatype_t.size = mqs_sizeof(qh_type);
-        ompi_field_offset(i_info->ompi_datatype_t.offset.size,
-                          qh_type, ompi_datatype_t, size);
         ompi_field_offset(i_info->ompi_datatype_t.offset.name,
                           qh_type, ompi_datatype_t, name);
+
+        /* get ompi_datatype_t super.size which requires the offset
+         * of super and then the offset of size in opal_datatype_t.
+         */
+        { 
+            int super_offset = 0;
+
+            ompi_field_offset(super_offset,
+                              qh_type, ompi_datatype_t, super);
+
+            qh_type = mqs_find_type( image, "opal_datatype_t", mqs_lang_c );
+            if( !qh_type ) {
+                missing_in_action = "opal_datatype_t";
+                goto type_missing;
+            }
+            ompi_field_offset(i_info->ompi_datatype_t.offset.size,
+                              qh_type, opal_datatype_t, size);
+            i_info->ompi_datatype_t.offset.size += super_offset;
+        }
     }
 
     /* All the types are here. Let's succesfully return. */

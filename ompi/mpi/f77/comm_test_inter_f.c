@@ -20,7 +20,7 @@
 
 #include "ompi/mpi/f77/bindings.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_COMM_TEST_INTER = mpi_comm_test_inter_f
 #pragma weak pmpi_comm_test_inter = mpi_comm_test_inter_f
 #pragma weak pmpi_comm_test_inter_ = mpi_comm_test_inter_f
@@ -31,33 +31,33 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_COMM_TEST_INTER,
                            pmpi_comm_test_inter_,
                            pmpi_comm_test_inter__,
                            pmpi_comm_test_inter_f,
-                           (MPI_Fint *comm, MPI_Flogical *flag, MPI_Fint *ierr),
+                           (MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *ierr),
                            (comm, flag, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_COMM_TEST_INTER = mpi_comm_test_inter_f
 #pragma weak mpi_comm_test_inter = mpi_comm_test_inter_f
 #pragma weak mpi_comm_test_inter_ = mpi_comm_test_inter_f
 #pragma weak mpi_comm_test_inter__ = mpi_comm_test_inter_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_COMM_TEST_INTER,
                            mpi_comm_test_inter,
                            mpi_comm_test_inter_,
                            mpi_comm_test_inter__,
                            mpi_comm_test_inter_f,
-                           (MPI_Fint *comm, MPI_Flogical *flag, MPI_Fint *ierr),
+                           (MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *ierr),
                            (comm, flag, ierr) )
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
-void mpi_comm_test_inter_f(MPI_Fint *comm, MPI_Flogical *flag, MPI_Fint *ierr)
+void mpi_comm_test_inter_f(MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *ierr)
 {
     MPI_Comm c_comm = MPI_Comm_f2c (*comm);
     OMPI_LOGICAL_NAME_DECL(flag);

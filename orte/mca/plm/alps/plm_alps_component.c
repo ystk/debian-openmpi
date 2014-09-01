@@ -25,11 +25,9 @@
 #include "orte_config.h"
 #include "orte/constants.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/base/mca_base_param.h"
 
 #include "orte/runtime/orte_globals.h"
-#include "orte/mca/errmgr/errmgr.h"
 
 #include "orte/mca/plm/plm.h"
 #include "orte/mca/plm/base/base.h"

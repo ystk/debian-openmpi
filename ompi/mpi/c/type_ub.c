@@ -19,10 +19,13 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Type_ub = PMPI_Type_ub
 #endif
 
@@ -54,7 +57,7 @@ int MPI_Type_ub(MPI_Datatype mtype, MPI_Aint *ub)
 
   OPAL_CR_ENTER_LIBRARY();
 
-  status = ompi_ddt_get_extent( mtype, &lb, &extent );
+  status = ompi_datatype_get_extent( mtype, &lb, &extent );
   if (MPI_SUCCESS == status) {
     *ub = lb + extent;
   }

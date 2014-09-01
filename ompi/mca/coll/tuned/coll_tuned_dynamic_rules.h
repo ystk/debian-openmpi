@@ -10,6 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011-2012 FUJITSU LIMITED.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,9 +23,7 @@
 
 #include "ompi_config.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 
 typedef struct msg_rule_s {
@@ -37,7 +36,7 @@ typedef struct msg_rule_s {
    int msg_rule_id; /* unique msg rule id */
 
    /* RULE */
-   int msg_size;    /* message size */
+   size_t msg_size; /* message size */
 
    /* RESULT */
    int result_alg;              /* result algorithm to use */
@@ -95,13 +94,11 @@ int ompi_coll_tuned_free_all_rules (ompi_coll_alg_rule_t* alg_p, int n_algs);
 
 ompi_coll_com_rule_t* ompi_coll_tuned_get_com_rule_ptr (ompi_coll_alg_rule_t* rules, int alg_id, int mpi_comsize);
 
-int ompi_coll_tuned_get_target_method_params (ompi_coll_com_rule_t* base_com_rule, int mpi_msgsize, 
+int ompi_coll_tuned_get_target_method_params (ompi_coll_com_rule_t* base_com_rule, size_t mpi_msgsize, 
                                               int* result_topo_faninout, int* result_segsize, 
                                               int* max_requests);
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif /* MCA_COLL_TUNED_DYNAMIC_RULES_H_HAS_BEEN_INCLUDED */
 

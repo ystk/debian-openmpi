@@ -1,9 +1,11 @@
 /*
- This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2008.
+ This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2013.
  Authors: Andreas Knuepfer, Holger Brunst, Ronny Brendel, Thomas Kriebitzsch
 */
 
+#ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
 
 
 #include <stddef.h>
@@ -24,31 +26,36 @@
 
 #define VTF32OTFCREATOR "vtf2otf"
 
+#define DEFAULT_OUTFILE "out"
+
 #define SHOW_HELPTEXT { \
 	int l = 0; while( Helptext[l] ) { printf( "%s", Helptext[l++] ); } }
 
 static const char* Helptext[] = {
-"                                                                          \n",
-" vtf2otf - Convert VTF3 trace files to OTF format.                        \n",
-"                                                                          \n",
-" vtf2otf [Options] <input file name>                                      \n",
-"                                                                          \n",
-" Options:                                                                 \n",
-"     -h, --help     show this help message                                \n",
-"     -V             show OTF version                                      \n",
-"     -o <file>      output file                                           \n",
-"     -f <n>         max count of filehandles                              \n",
-"     -n <n>         output stream count                                   \n",
-"     -b <n>         size of the writer buffer                             \n",
-"     -z <n>         use zlib compression                                  \n",
-"     -io            compute io events. This is necessary for getting      \n",
-"                    correct durations in IO-operations. Result of this    \n",
-"                    step is a file with extra information. This file      \n",
-"                    is used for creating correct duration-information in  \n",
-"                    a normal run.                                         \n",
-"                    If you do not have these extra-information-file, the  \n",
-"                    duration of every IO-operation will be zero.          \n",
-"                                                                          \n", NULL };
+"                                                                           \n",
+" vtf2otf - Convert VTF3 trace files to OTF format.                         \n",
+"                                                                           \n",
+" Syntax: vtf2otf [options] <input file name>                               \n",
+"                                                                           \n",
+"   options:                                                                \n",
+"      -h, --help    show this help message                                 \n",
+"      -V            show OTF version                                       \n",
+"      -o <file>     namestub of the output file                            \n",
+"                    (default: "DEFAULT_OUTFILE")                           \n",
+"      -f <n>        max count of filehandles                               \n",
+"                    (default: 100)                                         \n",
+"      -n <n>        output stream count                                    \n",
+"      -b <n>        size of the writer buffer                              \n",
+"      -z <n>        use zlib compression                                   \n",
+"      -io           compute io events. This is necessary for getting       \n",
+"                    correct durations in IO-operations. Result of this     \n",
+"                    step is a file with extra information. This file       \n",
+"                    is used for creating correct duration-information in   \n",
+"                    a normal run.                                          \n",
+"                    If you do not have these extra-information-file, the   \n",
+"                    duration of every IO-operation will be zero.           \n",
+"                                                                           \n",
+NULL };
 
 int main (int argc, char **argv) {
 
@@ -56,7 +63,7 @@ int main (int argc, char **argv) {
 	char* inputFile = NULL;
 	char* outputFile = NULL;
 	unsigned int nstreams= 0;
-	unsigned int maxfilehandles = 250;
+	unsigned int maxfilehandles= 100;
 
 	void *fcbin;
 	fcbT fcb;
@@ -128,7 +135,7 @@ int main (int argc, char **argv) {
 
 		} else if ( 0 == strcmp( "-V", argv[i] ) ) {
 		
-			printf( "%u.%u.%u \"%s\"\n", OTF_VERSION_MAYOR, OTF_VERSION_MINOR,
+			printf( "%u.%u.%u \"%s\"\n", OTF_VERSION_MAJOR, OTF_VERSION_MINOR,
 				OTF_VERSION_SUB, OTF_VERSION_STRING);
 			exit( 0 );
 
@@ -160,7 +167,7 @@ int main (int argc, char **argv) {
 		printf( " no output file specified\n" );
 		exit(1);
 		*/
-		outputFile= strdup( "out.otf" );
+		outputFile= strdup( DEFAULT_OUTFILE".otf" );
 	}
 
 	if ( maxfilehandles < 1 ) {

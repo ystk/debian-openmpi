@@ -40,12 +40,13 @@
 /*
  * Globals
  */
-int opal_paffinity_base_output = -1;
+OPAL_DECLSPEC int opal_paffinity_base_output = -1;
 bool opal_paffinity_base_components_opened_valid = false;
 opal_list_t opal_paffinity_base_components_opened;
 bool opal_paffinity_alone = false;
 char *opal_paffinity_base_slot_list;
-
+bool opal_paffinity_base_bound;
+char *opal_paffinity_base_applied_binding;
 
 /*
  * Register some paffinity-wide MCA params
@@ -74,9 +75,9 @@ int opal_paffinity_base_register_params(void)
     }
 
     id = mca_base_param_reg_int_name("opal", "paffinity_alone", 
-                                     "If nonzero, assume that this job is the only (set of) process(es) running on each node and bind processes to processors, starting with processor ID 0",
-                                     false, false,
-                                     0, NULL);
+                                "If nonzero, assume that this job is the only (set of) process(es) running on each node and bind processes to processors, starting with processor ID 0",
+                                false, false,
+                                0, NULL);
     /* register the historical mpi_paffinity_alone synonym, but don't
      * declare it deprecated so we don't scare the users.
      *
@@ -86,6 +87,17 @@ int opal_paffinity_base_register_params(void)
     mca_base_param_reg_syn_name(id, "mpi", "paffinity_alone", false);
     mca_base_param_lookup_int(id, &value);
     opal_paffinity_alone = OPAL_INT_TO_BOOL(value);
+
+    mca_base_param_reg_int_name("paffinity", "base_bound",
+                                "Process affinity was set by an external entity",
+                                true, false,
+                                false, &value);
+    opal_paffinity_base_bound = OPAL_INT_TO_BOOL(value);
+
+    mca_base_param_reg_string_name("paffinity", "base_applied_binding",
+                                   "Process affinity was set by an external entity",
+                                   true, false,
+                                   NULL, &opal_paffinity_base_applied_binding);
 
     return OPAL_SUCCESS;
 }

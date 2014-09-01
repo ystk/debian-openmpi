@@ -2,10 +2,7 @@
 #include <signal.h>
 #include <math.h>
 
-#include "orte/util/proc_info.h"
-#include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
-#include "orte/mca/errmgr/errmgr.h"
 
 #include "orte/runtime/runtime.h"
 
@@ -26,7 +23,7 @@ main(int argc, char *argv[]){
     /*
      * Init
      */
-    orte_init(ORTE_NON_TOOL);
+    orte_init(&argc, &argv, ORTE_PROC_NON_MPI);
 
     if (argc >= 2) {
         count = atoi(argv[1]);

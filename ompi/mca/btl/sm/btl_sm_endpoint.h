@@ -22,7 +22,7 @@
 #ifndef MCA_BTL_SM_ENDPOINT_H
 #define MCA_BTL_SM_ENDPOINT_H
 
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
 #include "opal/event/event.h"
 #endif
 
@@ -37,11 +37,15 @@ struct mca_btl_base_endpoint_t {
                          *   SMP specfic data structures. */
     int peer_smp_rank;  /**< My peer's SMP process rank.  Used for accessing
                          *   SMP specfic data structures. */
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
     int fifo_fd;        /**< pipe/fifo used to signal endpoint that data is queued */
 #endif
     opal_list_t pending_sends; /**< pending data to send */
+
+    /** lock for concurrent access to endpoint state */
+    opal_mutex_t                endpoint_lock;
+
 };
 
-void mca_btl_sm_process_pending_sends(struct mca_btl_base_endpoint_t *ep);
+void btl_sm_process_pending_sends(struct mca_btl_base_endpoint_t *ep);
 #endif

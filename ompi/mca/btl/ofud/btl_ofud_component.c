@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2011 The University of Tennessee and The University
@@ -11,7 +11,8 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Sandia National Laboratories. All rights
  *                         reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2011 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Oracle and/or all affiliates.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,17 +20,22 @@
  * $HEADER$
  */
 
-#include <errno.h>
+#include "ompi_config.h"
+
+#ifdef HAVE_STRING_H
 #include <string.h>
+#endif
+#include <errno.h>
 #include <infiniband/verbs.h>
 
-#include "ompi_config.h"
+#include "opal_stdint.h"
 #include "ompi/constants.h"
 #include "opal/prefetch.h"
 #include "orte/util/show_help.h"
 #include "ompi/mca/btl/btl.h"
-#include "opal/mca/timer/base/base.h"
+#include "opal/util/argv.h"
 #include "opal/mca/base/mca_base_param.h"
+#include "opal/mca/timer/base/base.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "ompi/mca/btl/base/base.h"
 #include "ompi/mca/mpool/rdma/mpool_rdma.h"
@@ -43,6 +49,10 @@
 #include "btl_ofud_endpoint.h"
 
 
+static int mca_btl_ud_component_register(void);
+static int mca_btl_ud_component_open(void);
+static int mca_btl_ud_component_close(void);
+
 mca_btl_ud_component_t mca_btl_ofud_component = {
     {
         /* First, the mca_base_component_t struct containing meta information
@@ -55,7 +65,9 @@ mca_btl_ud_component_t mca_btl_ofud_component = {
             OMPI_MINOR_VERSION,  /* MCA component minor version */
             OMPI_RELEASE_VERSION,  /* MCA component release version */
             mca_btl_ud_component_open,  /* component open */
-            mca_btl_ud_component_close  /* component close */
+            mca_btl_ud_component_close,  /* component close */
+            NULL, /* component query */
+            mca_btl_ud_component_register, /* component register */
         },
         {
             /* The component is not checkpoint ready */
@@ -102,27 +114,20 @@ static inline void mca_btl_ud_param_reg_int(const char* param_name,
 }
 
 
-/*
- *  Called by MCA framework to open the component, registers
- *  component parameters.
- */
-
-int mca_btl_ud_component_open(void)
+static int mca_btl_ud_component_register(void)
 {
     int val;
-    
-    /* initialize state */
-    mca_btl_ofud_component.num_btls = 0;
-    mca_btl_ofud_component.ud_btls = NULL;
-    
-    /* initialize objects */
-    OBJ_CONSTRUCT(&mca_btl_ofud_component.ud_lock, opal_mutex_t);
-    OBJ_CONSTRUCT(&mca_btl_ofud_component.ud_procs, opal_list_t);
 
     /* register IB component parameters */
     mca_btl_ud_param_reg_int("max_btls",
                              "Maximum number of HCAs/ports to use",
                              4, (int*)&mca_btl_ofud_component.max_btls);
+
+    mca_btl_ud_param_reg_string("if_include", "Comma-delimited list of HCAs/ports to be used; empty value means to use all HCAs/ports found",
+                                NULL, &mca_btl_ofud_component.if_include);
+
+    mca_btl_ud_param_reg_string("if_exclude", "Comma-delimited list of HCAs/ports to be excluded; empty value means to use all HCAs/ports found",
+                                NULL, &mca_btl_ofud_component.if_exclude);
 
     mca_btl_ud_param_reg_string("mpool", "Name of the memory pool to be used",
                                 "rdma", &mca_btl_ofud_component.ud_mpool_name);
@@ -168,7 +173,7 @@ int mca_btl_ud_component_open(void)
     mca_btl_ud_param_reg_int("bandwidth",
                              "Approximate maximum bandwidth of interconnect",
                              800, (int*)&mca_btl_ofud_module.super.btl_bandwidth);
-    
+
     mca_btl_ofud_module.super.btl_eager_limit -= sizeof(mca_btl_ud_header_t);
     mca_btl_ofud_module.super.btl_max_send_size -= sizeof(mca_btl_ud_header_t);
 
@@ -177,10 +182,42 @@ int mca_btl_ud_component_open(void)
 
 
 /*
+ *  Called by MCA framework to open the component
+ */
+
+static int mca_btl_ud_component_open(void)
+{
+    /* initialize state */
+    mca_btl_ofud_component.num_btls = 0;
+    mca_btl_ofud_component.ud_btls = NULL;
+    
+    /* initialize objects */
+    OBJ_CONSTRUCT(&mca_btl_ofud_component.ud_lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&mca_btl_ofud_component.ud_procs, opal_list_t);
+    
+    /* if_include and if_exclude need to be mutually exclusive */
+    if (OPAL_SUCCESS != 
+        mca_base_param_check_exclusive_string(
+        mca_btl_ofud_component.super.btl_version.mca_type_name,
+        mca_btl_ofud_component.super.btl_version.mca_component_name,
+        "if_include",
+        mca_btl_ofud_component.super.btl_version.mca_type_name,
+        mca_btl_ofud_component.super.btl_version.mca_component_name,
+        "if_exclude")) {
+        /* Return ERR_NOT_AVAILABLE so that a warning message about
+           "open" failing is not printed */
+        return OMPI_ERR_NOT_AVAILABLE;
+    }
+    
+    return OMPI_SUCCESS;
+}
+
+
+/*
  * Component cleanup 
  */
 
-int mca_btl_ud_component_close(void)
+static int mca_btl_ud_component_close(void)
 {
     OBJ_DESTRUCT(&mca_btl_ofud_component.ud_lock);
     OBJ_DESTRUCT(&mca_btl_ofud_component.ud_procs);
@@ -216,7 +253,7 @@ static int mca_btl_ud_modex_send(void)
             mca_btl_ud_module_t* btl = &mca_btl_ofud_component.ud_btls[i];
             addrs[i] = btl->addr;
     
-            BTL_VERBOSE((0, "modex_send QP num %x, LID = %x",
+            BTL_VERBOSE(("modex_send QP num %x, LID = %x",
               addrs[i].qp_num, addrs[i].lid));
         }
     }
@@ -228,6 +265,119 @@ static int mca_btl_ud_modex_send(void)
     }
     return rc;
 }
+
+
+static int
+get_port_list(struct ibv_device* ib_dev, int port_cnt, int *allowed_ports)
+{
+    int i, j, k, num_ports = 0;
+    const char *dev_name;
+    char *name;
+
+    dev_name = ibv_get_device_name(ib_dev);
+    name = (char*) malloc(strlen(dev_name) + 4);
+    if (NULL == name) {
+        return 0;
+    }
+
+    /* Assume that all ports are allowed.  num_ports will be adjusted
+       below to reflect whether this is true or not. */
+    for (i = 1; i <= port_cnt; ++i) {
+        allowed_ports[num_ports++] = i;
+    }
+    num_ports = 0;
+    if (NULL != mca_btl_ofud_component.if_include_list) {
+        /* If only the HCA name is given (eg. mthca0,mthca1) use all
+           ports */
+        i = 0;
+        while (mca_btl_ofud_component.if_include_list[i]) {
+            if (0 == strcmp(dev_name,
+                            mca_btl_ofud_component.if_include_list[i])) {
+                num_ports = port_cnt;
+                goto done;
+            }
+            ++i;
+        }
+        /* Include only requested ports on the HCA */
+        for (i = 1; i <= port_cnt; ++i) {
+            sprintf(name,"%s:%d",dev_name,i);
+            for (j = 0;
+                 NULL != mca_btl_ofud_component.if_include_list[j]; ++j) {
+                if (0 == strcmp(name,
+                                mca_btl_ofud_component.if_include_list[j])) {
+                    allowed_ports[num_ports++] = i;
+                    break;
+                }
+            }
+        }
+    } else if (NULL != mca_btl_ofud_component.if_exclude_list) {
+        /* If only the HCA name is given (eg. mthca0,mthca1) exclude
+           all ports */
+        i = 0;
+        while (mca_btl_ofud_component.if_exclude_list[i]) {
+            if (0 == strcmp(dev_name,
+                            mca_btl_ofud_component.if_exclude_list[i])) {
+                num_ports = 0;
+                goto done;
+            }
+            ++i;
+        }
+        /* Exclude the specified ports on this HCA */
+        for (i = 1; i <= port_cnt; ++i) {
+            sprintf(name,"%s:%d",dev_name,i);
+            for (j = 0;
+                 NULL != mca_btl_ofud_component.if_exclude_list[j]; ++j) {
+                if (0 == strcmp(name,
+                                mca_btl_ofud_component.if_exclude_list[j])) {
+                    /* If found, set a sentinel value */
+                    j = -1;
+                    break;
+                }
+            }
+            /* If we didn't find it, it's ok to include in the list */
+            if (-1 != j) {
+                allowed_ports[num_ports++] = i;
+            }
+        }
+    } else {
+        num_ports = port_cnt;
+    }
+
+done:
+
+    /* Remove the following from the error-checking if_list:
+       - bare device name
+       - device name suffixed with port number */
+    if (NULL != mca_btl_ofud_component.if_list) {
+        for (i = 0; NULL != mca_btl_ofud_component.if_list[i]; ++i) {
+
+            /* Look for raw device name */
+            if (0 == strcmp(mca_btl_ofud_component.if_list[i], dev_name)) {
+                j = opal_argv_count(mca_btl_ofud_component.if_list);
+                opal_argv_delete(&j, &(mca_btl_ofud_component.if_list),
+                                 i, 1);
+                --i;
+            }
+        }
+        for (i = 1; i <= port_cnt; ++i) {
+            sprintf(name, "%s:%d", dev_name, i);
+            for (j = 0; NULL != mca_btl_ofud_component.if_list[j]; ++j) {
+                if (0 == strcmp(mca_btl_ofud_component.if_list[j], name)) {
+                    k = opal_argv_count(mca_btl_ofud_component.if_list);
+                    opal_argv_delete(&k, &(mca_btl_ofud_component.if_list),
+                                     j, 1);
+                    --j;
+                    break;
+                }
+            }
+        }
+    }
+
+    free(name);
+
+    return num_ports;
+}
+
 
 /*
  *  UD component initialization:
@@ -245,12 +395,14 @@ mca_btl_base_module_t** mca_btl_ud_component_init(int* num_btl_modules,
     struct ibv_device* ib_dev;
     int32_t num_devs;
     mca_btl_base_module_t** btls;
-    uint32_t i, j;
+    uint32_t i, j, k;
+    uint32_t port_cnt;
     opal_list_t btl_list;
     mca_btl_ud_module_t* ud_btl;
     mca_btl_base_selected_module_t* ib_selected;
     opal_list_item_t* item;
     unsigned short seedv[3];
+    int* allowed_ports = NULL;
     char* btl_str;
     char* tok;
 
@@ -290,12 +442,38 @@ mca_btl_base_module_t** mca_btl_ud_component_init(int* num_btl_modules,
     seedv[2] = opal_timer_base_get_cycles();
     seed48(seedv);
 
+
+    /* Parse the include and exclude lists, checking for errors */
+    mca_btl_ofud_component.if_include_list =
+        mca_btl_ofud_component.if_exclude_list =
+        mca_btl_ofud_component.if_list = NULL;
+    if (NULL != mca_btl_ofud_component.if_include &&
+        NULL != mca_btl_ofud_component.if_exclude) {
+        orte_show_help("help-mpi-btl-openib.txt",
+                       "specified include and exclude", true,
+                       mca_btl_ofud_component.if_include,
+                       mca_btl_ofud_component.if_exclude, NULL);
+        btls = NULL;
+        goto modex_send;
+    } else if (NULL != mca_btl_ofud_component.if_include) {
+        mca_btl_ofud_component.if_include_list =
+            opal_argv_split(mca_btl_ofud_component.if_include, ',');
+        mca_btl_ofud_component.if_list =
+            opal_argv_copy(mca_btl_ofud_component.if_include_list);
+    } else if (NULL != mca_btl_ofud_component.if_exclude) {
+        mca_btl_ofud_component.if_exclude_list =
+            opal_argv_split(mca_btl_ofud_component.if_exclude, ',');
+        mca_btl_ofud_component.if_list =
+            opal_argv_copy(mca_btl_ofud_component.if_exclude_list);
+    }
+
+
     ib_devs = ibv_get_device_list(&num_devs);
 
     if(0 == num_devs) {
         mca_btl_base_error_no_nics("OpenFabrics UD", "HCA");
-        mca_btl_ud_modex_send();
-        return NULL;
+        btls = NULL;
+        goto free_include_list;
     }
 
     /** We must loop through all the hca id's, get their handles and
@@ -316,23 +494,31 @@ mca_btl_base_module_t** mca_btl_ud_component_init(int* num_btl_modules,
         if(!ib_dev_context) {
             BTL_ERROR(("error obtaining device context for %s: %s\n",
                         ibv_get_device_name(ib_dev), strerror(errno)));
-            return NULL;
+            btls = NULL;
+            goto free_dev_list;
         }
 
         if(ibv_query_device(ib_dev_context, &ib_dev_attr)){
             BTL_ERROR(("error obtaining device attributes for %s: %s\n",
                         ibv_get_device_name(ib_dev), strerror(errno)));
-            return NULL;
+            btls = NULL;
+            goto free_dev_list;
         }
 
 
-        /* Note ports are 1 based hence j = 1 */
-        for(j = 1; j <= ib_dev_attr.phys_port_cnt; j++) {
+        allowed_ports = (int*)malloc(ib_dev_attr.phys_port_cnt * sizeof(int));
+        port_cnt = get_port_list(ib_dev,
+                ib_dev_attr.phys_port_cnt, allowed_ports);
+
+        /* Note ports are 1 based, but j goes over the array of ports */
+        for(j = 0; j < port_cnt; j++) {
             struct ibv_port_attr ib_port_attr;
 
-            if(ibv_query_port(ib_dev_context, (uint8_t)j, &ib_port_attr)) {
+            k = allowed_ports[j];
+
+            if(ibv_query_port(ib_dev_context, (uint8_t)k, &ib_port_attr)) {
                 BTL_ERROR(("error getting port attributes for device %s port %d: %s",
-                          ibv_get_device_name(ib_dev), j, strerror(errno)));
+                          ibv_get_device_name(ib_dev), k, strerror(errno)));
                 return NULL;
             }
 
@@ -346,7 +532,7 @@ mca_btl_base_module_t** mca_btl_ud_component_init(int* num_btl_modules,
 
                 ud_btl->ib_dev = ib_dev;
                 ud_btl->ib_dev_context = ib_dev_context;
-                ud_btl->ib_port_num = (uint8_t)j;
+                ud_btl->ib_port_num = (uint8_t)k;
                 ud_btl->addr.subnet = ib_port_attr.sm_lid;
                 ud_btl->addr.lid = ib_port_attr.lid;
 
@@ -357,6 +543,8 @@ mca_btl_base_module_t** mca_btl_ud_component_init(int* num_btl_modules,
             }
         }
     }
+
+    free(allowed_ports);
 
 
     /* Allocate space for btl modules */
@@ -399,7 +587,6 @@ mca_btl_base_module_t** mca_btl_ud_component_init(int* num_btl_modules,
     }
 
     OBJ_DESTRUCT(&btl_list);
-    mca_btl_ud_modex_send();
     
     /* Since not all modules may have initialized successfully, realloc
        to free space from failed modules */
@@ -411,7 +598,21 @@ mca_btl_base_module_t** mca_btl_ud_component_init(int* num_btl_modules,
 
     *num_btl_modules = mca_btl_ofud_component.num_btls;
 
+free_dev_list:
     ibv_free_device_list(ib_devs);
+
+free_include_list:
+    if (NULL != mca_btl_ofud_component.if_include_list) {
+        opal_argv_free(mca_btl_ofud_component.if_include_list);
+        mca_btl_ofud_component.if_include_list = NULL;
+    }    
+    if (NULL != mca_btl_ofud_component.if_exclude_list) {
+        opal_argv_free(mca_btl_ofud_component.if_exclude_list);
+        mca_btl_ofud_component.if_exclude_list = NULL;
+    }
+
+modex_send:
+    mca_btl_ud_modex_send();
     return btls;
 }
 
@@ -450,7 +651,7 @@ int mca_btl_ud_component_progress(void)
         for(j = 0; j < ne; j++) {
             cwc = &wc[j];
             if(OPAL_UNLIKELY(cwc->status != IBV_WC_SUCCESS)) {
-                BTL_ERROR(("error polling CQ with status %d for wr_id %llu opcode %d\n",
+                BTL_ERROR(("error polling CQ with status %d for wr_id %" PRIx64 " opcode %d\n",
                            cwc->status, cwc->wr_id, cwc->opcode));
                 return OMPI_ERROR;
             }

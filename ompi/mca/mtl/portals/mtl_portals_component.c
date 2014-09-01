@@ -19,9 +19,8 @@
 #include "ompi_config.h"
 
 #include "opal/event/event.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "orte/util/show_help.h" 
-#include "ompi/datatype/convertor.h"
 #include "ompi/mca/common/portals/common_portals.h"
 
 #include "mtl_portals.h"
@@ -145,7 +144,8 @@ ompi_mtl_portals_component_open(void)
                            false,
                            false,
                            8192,
-                           &ompi_mtl_portals.ptl_copy_block_len);
+                           &tmp);
+    ompi_mtl_portals.ptl_copy_block_len = tmp;
 
     mca_base_param_reg_int(&mca_mtl_portals_component.mtl_version,
                            "aggressive_polling",
@@ -193,9 +193,9 @@ ompi_mtl_portals_component_init(bool enable_progress_threads,
     OBJ_CONSTRUCT(&ompi_mtl_portals.event_fl, ompi_free_list_t);
     ompi_free_list_init_new(&ompi_mtl_portals.event_fl,
                         sizeof(ompi_mtl_portals_event_t),
-                        CACHE_LINE_SIZE,
+                        opal_cache_line_size,
                         OBJ_CLASS(ompi_mtl_portals_event_t),
-                        0,CACHE_LINE_SIZE,
+                        0,opal_cache_line_size,
                         1, -1, 1, NULL);
 
     OBJ_CONSTRUCT(&ompi_mtl_portals.ptl_recv_short_blocks, opal_list_t);

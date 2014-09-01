@@ -9,8 +9,10 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
- * Copyright (c) 2009      Sun Microsystems, Inc. All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2009-2011 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c)      2011 Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -25,9 +27,12 @@
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
+#include <stdio.h>
 
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/mca/paffinity/base/base.h"
+#include "opal/mca/installdirs/installdirs.h"
+#include "opal/util/output.h"
 #include "opal/util/argv.h"
 
 #include "orte/util/proc_info.h"
@@ -43,7 +48,7 @@ int orte_register_params(void)
     int value, tmp;
     char *strval, **params;
     uint16_t binding;
-
+    
     /* only go thru this once - mpirun calls it twice, which causes
      * any error messages to show up twice
      */
@@ -67,6 +72,13 @@ int orte_register_params(void)
                                    false, false, NULL,  &orte_prohibited_session_dirs);
 
 #if !ORTE_DISABLE_FULL_SUPPORT
+    
+    mca_base_param_reg_int_name("orte", "send_profile",
+                                "Send profile info in launch message",
+                                false, false,
+                                (int) false, &value);
+    orte_send_profile = OPAL_INT_TO_BOOL(value);
+
     mca_base_param_reg_int_name("orte", "debug",
                                 "Top-level ORTE debug switch (default verbosity: 1)",
                                 false, false, (int)false, &value);
@@ -91,6 +103,11 @@ int orte_register_params(void)
         orte_debug_daemons_flag = true;
     }
 
+    mca_base_param_reg_int_name("orte", "daemon_bootstrap",
+                                "Bootstrap the connection to the HNP",
+                                false, false, (int)false, &value);
+    orte_daemon_bootstrap = OPAL_INT_TO_BOOL(value);
+
     /* do we want session output left open? */
     mca_base_param_reg_int_name("orte", "leave_session_attached",
                                 "Whether applications and/or daemons should leave their sessions "
@@ -99,7 +116,7 @@ int orte_register_params(void)
                                 false, false, (int)false, &value);
     orte_leave_session_attached = OPAL_INT_TO_BOOL(value);
     
-    /* See comment in orte/tools/orterun/debuggers.c about this MCA
+    /* See comment in orte/tools/orterun/orterun.c about this MCA
        param (this param is internal) */
     mca_base_param_reg_int_name("orte",
                                 "in_parallel_debugger",
@@ -107,6 +124,27 @@ int orte_register_params(void)
                                 "in a parallel debugger (default: false)",
                                 true, false, 0, &value);
     orte_in_parallel_debugger = OPAL_INT_TO_BOOL(value);
+    
+    mca_base_param_reg_int_name("orte",
+                                "output_debugger_proctable",
+                                "Whether or not to output the debugger proctable after launch (default: false)",
+                                false, false, 0, &value);
+    orte_debugger_dump_proctable = OPAL_INT_TO_BOOL(value);
+
+    mca_base_param_reg_string_name("orte", "debugger_test_daemon",
+                                   "Name of the executable to be used to simulate a debugger colaunch (relative or absolute path)",
+                                   false, false, NULL, &orte_debugger_test_daemon);
+
+    mca_base_param_reg_int_name("orte",
+                                "debugger_test_attach",
+                                "Test debugger colaunch after debugger attachment",
+                                false, false, 0, &value);
+    orte_debugger_test_attach = OPAL_INT_TO_BOOL(value);
+
+    mca_base_param_reg_int_name("orte",
+                                "debugger_check_rate",
+                                "Set rate (in secs) for auto-detect of debugger attachment (0 => do not check)",
+                                false, false, 0, &orte_debugger_check_rate);
 
     mca_base_param_reg_int_name("orte", "do_not_launch",
                                 "Perform all necessary operations to prepare to launch the application, but do not actually launch it",
@@ -139,6 +177,36 @@ int orte_register_params(void)
                                 "Request that critical timing loops be measured",
                                 false, false, (int)false, &value);
     orte_timing = OPAL_INT_TO_BOOL(value);
+
+    mca_base_param_reg_int_name("orte", "timing_details",
+                                "Request that detailed timing data by reported",
+                                false, false, (int)false, &value);
+    orte_timing_details = OPAL_INT_TO_BOOL(value);
+    if (orte_timing_details) {
+        /* ensure the timing flag is set too */
+        orte_timing = true;
+    }
+    
+    if (ORTE_PROC_IS_HNP) {
+        char *tmp;
+        mca_base_param_reg_string_name("orte", "timing_file",
+                                       "Name of the file where timing data is to be written (relative or absolute path)",
+                                       false, false, NULL, &tmp);
+        if (orte_timing && NULL == tmp) {
+            /* send the timing output to stdout */
+            orte_timing_output = stdout;
+        } else if (NULL != tmp) {
+            /* make sure the timing flag is set */
+            orte_timing = true;
+            /* send the output to the indicated file */
+            orte_timing_output = fopen(tmp,  "w");
+            if (NULL == orte_timing_output) {
+                /* couldn't be opened */
+                opal_output(0, "File %s could not be opened", tmp);
+                orte_timing_output = stderr;
+            }
+        }        
+    }
     
     /* User-level debugger info string */
 
@@ -157,16 +225,21 @@ int orte_register_params(void)
                                 false, false, 1000, &orte_timeout_usec_per_proc);
     
     /* default hostfile */
+    asprintf(&orte_default_hostfile, "%s/openmpi-default-hostfile", opal_install_dirs.sysconfdir);
     mca_base_param_reg_string_name("orte", "default_hostfile",
-                                   "Name of the default hostfile (relative or absolute path)",
-                                   false, false, NULL, &orte_default_hostfile);
+                                   "Name of the default hostfile (relative or absolute path, \"none\" to ignore environmental or default MCA param setting)",
+                                   false, false, orte_default_hostfile, &orte_default_hostfile);
+    if (0 == strcmp(orte_default_hostfile, "none")) {
+        free(orte_default_hostfile);
+        orte_default_hostfile = NULL;
+    }
+
     /* rankfile */
     tmp = mca_base_param_reg_string_name("orte", "rankfile",
                                          "Name of the rankfile to be used for mapping processes (relative or absolute path)",
                                          false, false, NULL, NULL);
     mca_base_param_reg_syn_name(tmp, "rmaps", "rank_file_path", false);
     mca_base_param_lookup_string(tmp, &orte_rankfile);
-
     
 #ifdef __WINDOWS__
     mca_base_param_reg_string_name("orte", "ccp_headnode",
@@ -181,31 +254,32 @@ int orte_register_params(void)
                                 false, false, (int)false, &value);
     orte_keep_fqdn_hostnames = OPAL_INT_TO_BOOL(value);
     
-    /* whether or not contiguous nodenames are in use */
-    mca_base_param_reg_int_name("orte", "contiguous_nodes",
-                                "Number of nodes after which contiguous nodename encoding will automatically be used [default: INT_MAX]",
-                                false, false, INT32_MAX, &orte_contiguous_nodes);
-    
+    /* whether or not to use regular expressions for launch */
+    mca_base_param_reg_int_name("orte", "use_regexp",
+                                "Whether or not to use regular expressions for launch [default: no]",
+                                false, false, (int)false, &value);
+    orte_use_regexp = OPAL_INT_TO_BOOL(value);
+
     /* whether to tag output */
     mca_base_param_reg_int_name("orte", "tag_output",
                                 "Tag all output with [job,rank] (default: false)",
                                 false, false, (int) false, &value);
     orte_tag_output = OPAL_INT_TO_BOOL(value);
-
-    mca_base_param_reg_int_name("orte", "xml_output",
-                                "Display all output in XML format (default: false)",
-                                false, false, (int) false, &value);
-    orte_xml_output = OPAL_INT_TO_BOOL(value);
     /* if we requested xml output, be sure to tag the output as well */
     if (orte_xml_output) {
         orte_tag_output = true;
     }
     
+    mca_base_param_reg_int_name("orte", "xml_output",
+                                "Display all output in XML format (default: false)",
+                                false, false, (int) false, &value);
+    orte_xml_output = OPAL_INT_TO_BOOL(value);
+
     mca_base_param_reg_string_name("orte", "xml_file",
                                    "Provide all output in XML format to the specified file",
                                    false, false, NULL, &strval);
     if (NULL != strval) {
-        if (orte_process_info.hnp && NULL == orte_xml_fp) {
+        if (ORTE_PROC_IS_HNP && NULL == orte_xml_fp) {
             /* only the HNP opens this file! Make sure it only happens once */
             orte_xml_fp = fopen(strval, "w");
             if (NULL == orte_xml_fp) {
@@ -231,7 +305,7 @@ int orte_register_params(void)
     mca_base_param_reg_string_name("orte", "output_filename",
                                    "Redirect output from application processes into filename.rank [default: NULL]",
                                    false, false, NULL, &orte_output_filename);
-
+    
     mca_base_param_reg_int_name("orte", "show_resolved_nodenames",
                                 "Display any node names that are resolved to a different name (default: false)",
                                 false, false, (int) false, &value);
@@ -265,13 +339,29 @@ int orte_register_params(void)
         orte_leave_session_attached = true;
     }
 
+
     /* whether or not to forward SIGTSTP and SIGCONT signals */
     mca_base_param_reg_int_name("orte", "forward_job_control",
                                 "Forward SIGTSTP (after converting to SIGSTOP) and SIGCONT signals to the application procs [default: no]",
                                 false, false,
                                 (int) false, &value);
     orte_forward_job_control = OPAL_INT_TO_BOOL(value);
-        
+    
+    /* local rsh/ssh launch agent */
+    tmp = mca_base_param_reg_string_name("orte", "rsh_agent",
+                                         "The command used to launch executables on remote nodes (typically either \"ssh\" or \"rsh\")",
+                                         false, false, "ssh : rsh", NULL);
+    mca_base_param_reg_syn_name(tmp, "pls", "rsh_agent", true);
+    mca_base_param_reg_syn_name(tmp, "plm", "rsh_agent", true);
+    mca_base_param_lookup_string(tmp, &orte_rsh_agent);
+
+    tmp = mca_base_param_reg_int_name("orte", "assume_same_shell",
+                                      "If set to 1, assume that the shell on the remote node is the same as the shell on the local node.  Otherwise, probe for what the remote shell [default: 1]",
+                                      false, false, 1, NULL);
+    mca_base_param_reg_syn_name(tmp, "plm", "rsh_assume_same_shell", true);
+    mca_base_param_lookup_int(tmp, &value);
+    orte_assume_same_shell = OPAL_INT_TO_BOOL(value);
+    
     /* whether or not to report launch progress */
     mca_base_param_reg_int_name("orte", "report_launch_progress",
                                 "Output a brief periodic report on launch progress [default: no]",
@@ -284,6 +374,14 @@ int orte_register_params(void)
             orte_startup_timeout = 2000;  /* default to 2 seconds */
         }
     }
+    
+    /* cluster hardware info detected by orte only */
+    mca_base_param_reg_string_name("orte", "cpu_type",
+				   "cpu type detected in node",
+				   true, false, NULL, &orte_local_cpu_type);
+    mca_base_param_reg_string_name("orte", "cpu_model",
+                                   "cpu model detected in node",
+                                   true, false, NULL, &orte_local_cpu_model);
 
     /* cluster hardware info */
     mca_base_param_reg_int_name("orte", "num_boards",
@@ -300,11 +398,6 @@ int orte_register_params(void)
                                 "Number of cores/socket (1-256)",
                                 false, false, 0, &value);
     orte_default_num_cores_per_socket = (uint8_t)value;
-    
-    /* cpu allocation specification */
-    mca_base_param_reg_string_name("orte", "cpu_set",
-                                   "Comma-separated list of ranges specifying logical cpus allocated to this job [default: none]",
-                                   false, false, NULL, &orte_default_cpu_set);
     
     /* binding specification - this will be overridden by any cmd line directive, and
      * ignored unless opal_paffinity_alone is set
@@ -343,6 +436,28 @@ int orte_register_params(void)
         ORTE_XSET_BINDING_POLICY(ORTE_BIND_TO_CORE);
     }
     
+    /* whether or not to report bindings */
+    mca_base_param_reg_int_name("orte", "report_bindings",
+                                "Report bindings",
+                                false, false,
+                                (int) false, &value);
+    orte_report_bindings = OPAL_INT_TO_BOOL(value);
+    
+    /* tool communication controls */
+    mca_base_param_reg_string_name("orte", "report_events",
+                                   "URI to which events are to be reported (default: NULL)]",
+                                   false, false, NULL, &orte_report_events_uri);
+    if (NULL != orte_report_events_uri) {
+        orte_report_events = true;
+    }
+    
+    /* barrier control */
+    mca_base_param_reg_int_name("orte", "do_not_barrier",
+                                "Do not barrier in orte_init",
+                                true, false,
+                                (int) false, &value);
+    orte_do_not_barrier = OPAL_INT_TO_BOOL(value);
+
 #endif /* ORTE_DISABLE_FULL_SUPPORT */
     
     return ORTE_SUCCESS;

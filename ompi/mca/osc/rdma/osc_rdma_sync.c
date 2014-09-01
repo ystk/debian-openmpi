@@ -9,7 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2010      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2009      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -56,7 +56,7 @@ int
 ompi_osc_rdma_module_fence(int assert, ompi_win_t *win)
 {
     unsigned int incoming_reqs;
-    int ret = OMPI_SUCCESS, i;
+    int ret = OMPI_SUCCESS, i, len, started_send;
     ompi_osc_rdma_module_t *module = GET_MODULE(win);
     int num_outgoing = 0;
 
@@ -71,8 +71,6 @@ ompi_osc_rdma_module_fence(int assert, ompi_win_t *win)
         }
 
     } else {
-        opal_list_item_t *item;
-
         /* "atomically" copy all the data we're going to be modifying
            into the copy... */
         OPAL_THREAD_LOCK(&module->m_lock);
@@ -113,17 +111,46 @@ ompi_osc_rdma_module_fence(int assert, ompi_win_t *win)
         /* try to start all the requests.  We've copied everything we
            need out of pending_sendreqs, so don't need the lock
            here */
-        while (NULL != 
-               (item = opal_list_remove_first(&(module->m_copy_pending_sendreqs)))) {
-            ompi_osc_rdma_sendreq_t *req = 
-                (ompi_osc_rdma_sendreq_t*) item;
+        len = opal_list_get_size(&(module->m_copy_pending_sendreqs));
+        started_send = 0;
+        OPAL_OUTPUT_VERBOSE((40, ompi_osc_base_output,
+                             "fence: trying to start %d reqs",
+                             len));
+        for (i = 0 ; i < len ; ++i) {
+            ompi_osc_rdma_sendreq_t *req = (ompi_osc_rdma_sendreq_t*)
+                opal_list_remove_first(&(module->m_copy_pending_sendreqs));
 
             ret = ompi_osc_rdma_sendreq_send(module, req);
             if (OMPI_SUCCESS != ret) {
-                opal_list_append(&(module->m_copy_pending_sendreqs), item);
-                break;
+                opal_list_append(&(module->m_copy_pending_sendreqs), (opal_list_item_t*)req);
+            } else {
+                started_send = 1;
             }
         }
+
+        /* we need to start at least one send, so that the callback
+           will restart the rest. */
+        while (0 == started_send && len != 0) {
+            opal_progress();
+            OPAL_OUTPUT_VERBOSE((40, ompi_osc_base_output,
+                                 "fence: restarting %d reqs", len));
+            len = opal_list_get_size(&(module->m_copy_pending_sendreqs));
+            for (i = 0 ; i < len ; ++i) {
+                ompi_osc_rdma_sendreq_t *req = (ompi_osc_rdma_sendreq_t*)
+                    opal_list_remove_first(&(module->m_copy_pending_sendreqs));
+
+                ret = ompi_osc_rdma_sendreq_send(module, req);
+                if (OMPI_ERR_TEMP_OUT_OF_RESOURCE == ret) {
+                    opal_list_append(&(module->m_copy_pending_sendreqs), (opal_list_item_t*)req);
+                } else if (OMPI_SUCCESS != ret) {
+                    return ret;
+                } else {
+                    started_send = 1;
+                }
+            }
+        }
+        OPAL_OUTPUT_VERBOSE((40, ompi_osc_base_output,
+                             "fence: done with initial start"));
 
         if (module->m_use_rdma) {
             if (module->m_rdma_wait_completion) {
@@ -144,8 +171,7 @@ ompi_osc_rdma_module_fence(int assert, ompi_win_t *win)
                         if (OPAL_LIKELY(OMPI_SUCCESS == ret)) {
                             module->m_peer_info[i].peer_btls[j].num_sent = 0;
                         } else {
-                            /* BWB - fix me */
-                            abort();
+                            return ret;
                         }
                     }
                 }
@@ -168,7 +194,7 @@ ompi_osc_rdma_module_fence(int assert, ompi_win_t *win)
         module->m_num_pending_in += incoming_reqs;
         module->m_num_pending_out += num_outgoing;
 
-        OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_output,
+        OPAL_OUTPUT_VERBOSE((40, ompi_osc_base_output,
                              "fence: waiting on %d in and %d out, now %d, %d",
                              incoming_reqs,
                              num_outgoing,
@@ -307,8 +333,7 @@ ompi_osc_rdma_module_complete(ompi_win_t *win)
                     if (OPAL_LIKELY(OMPI_SUCCESS == ret)) {
                         module->m_peer_info[comm_rank].peer_btls[j].num_sent = 0;
                     } else {
-                        /* BWB - fix me */
-                        abort();
+                        return ret;
                     }
                 }
             }
@@ -330,9 +355,11 @@ ompi_osc_rdma_module_complete(ompi_win_t *win)
             (ompi_osc_rdma_sendreq_t*) item;
 
         ret = ompi_osc_rdma_sendreq_send(module, req);
-        if (OMPI_SUCCESS != ret) {
+        if (OMPI_ERR_TEMP_OUT_OF_RESOURCE == ret) {
             opal_list_append(&(module->m_copy_pending_sendreqs), item);
             break;
+        } else if (OMPI_SUCCESS != ret) {
+            return ret;
         }
     }
 
@@ -434,7 +461,7 @@ ompi_osc_rdma_module_test(ompi_win_t *win,
     ompi_group_t *group;
     ompi_osc_rdma_module_t *module = GET_MODULE(win);
 
-#if !OMPI_ENABLE_PROGRESS_THREADS
+#if !OPAL_ENABLE_PROGRESS_THREADS
     opal_progress();
 #endif
 
@@ -485,7 +512,7 @@ ompi_osc_rdma_module_lock(int lock_type,
     ompi_win_remove_mode(win, OMPI_WIN_FENCE);
     ompi_win_append_mode(win, OMPI_WIN_ACCESS_EPOCH | OMPI_WIN_LOCK_ACCESS);
 
-    OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_output,
+    OPAL_OUTPUT_VERBOSE((40, ompi_osc_base_output,
                          "%d sending lock request to %d", 
                          ompi_comm_rank(module->m_comm), target));
     /* generate a lock request */
@@ -533,7 +560,7 @@ ompi_osc_rdma_module_unlock(int target,
     OPAL_THREAD_UNLOCK(&module->m_lock);
 
     /* send the unlock request */
-    OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_output,
+    OPAL_OUTPUT_VERBOSE((40, ompi_osc_base_output,
                          "%d sending unlock request to %d with %d requests", 
                          ompi_comm_rank(module->m_comm), target,
                          out_count));
@@ -552,9 +579,11 @@ ompi_osc_rdma_module_unlock(int target,
             (ompi_osc_rdma_sendreq_t*) item;
 
         ret = ompi_osc_rdma_sendreq_send(module, req);
-        if (OMPI_SUCCESS != ret) {
+        if (OMPI_ERR_TEMP_OUT_OF_RESOURCE == ret) {
             opal_list_append(&(module->m_copy_pending_sendreqs), item);
             break;
+        } else if (OMPI_SUCCESS != ret) {
+            return ret;
         }
     }
 
@@ -601,7 +630,7 @@ ompi_osc_rdma_passive_lock(ompi_osc_rdma_module_t *module,
             ompi_win_append_mode(module->m_win, OMPI_WIN_EXPOSE_EPOCH);
             send_ack = true;
         } else {
-            OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_output,
+            OPAL_OUTPUT_VERBOSE((40, ompi_osc_base_output,
                                  "%d queuing lock request from %d (%d)", 
                                  ompi_comm_rank(module->m_comm), 
                                  origin, lock_type));
@@ -617,7 +646,7 @@ ompi_osc_rdma_passive_lock(ompi_osc_rdma_module_t *module,
             ompi_win_append_mode(module->m_win, OMPI_WIN_EXPOSE_EPOCH);
             send_ack = true;
         } else {
-            OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_output,
+            OPAL_OUTPUT_VERBOSE((40, ompi_osc_base_output,
                                  "queuing lock request from %d (%d) lock_type:%d", 
                                  ompi_comm_rank(module->m_comm), 
                                  origin, lock_type));
@@ -632,7 +661,7 @@ ompi_osc_rdma_passive_lock(ompi_osc_rdma_module_t *module,
     OPAL_THREAD_UNLOCK(&(module->m_lock));
 
     if (send_ack) {
-        OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_output,
+        OPAL_OUTPUT_VERBOSE((40, ompi_osc_base_output,
                              "%d sending lock ack to %d", 
                              ompi_comm_rank(module->m_comm), origin));
         ompi_osc_rdma_control_send(module, proc,
@@ -655,7 +684,7 @@ ompi_osc_rdma_passive_unlock(ompi_osc_rdma_module_t *module,
 
     assert(module->m_lock_status != 0);
 
-    OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_output,
+    OPAL_OUTPUT_VERBOSE((40, ompi_osc_base_output,
                          "received unlock request from %d with %d requests\n",
                          origin, count));
 
@@ -707,7 +736,7 @@ ompi_osc_rdma_passive_unlock_complete(ompi_osc_rdma_module_t *module)
     /* issue whichever unlock acks we should issue */
     while (NULL != (new_pending = (ompi_osc_rdma_pending_lock_t*)
                     opal_list_remove_first(&copy_unlock_acks))) {
-        OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_output,
+        OPAL_OUTPUT_VERBOSE((40, ompi_osc_base_output,
                              "sending unlock reply to proc"));
         ompi_osc_rdma_control_send(module,
                                    new_pending->proc,
@@ -738,7 +767,7 @@ ompi_osc_rdma_passive_unlock_complete(ompi_osc_rdma_module_t *module)
     OPAL_THREAD_UNLOCK(&(module->m_lock));
 
     if (NULL != new_pending) {
-        OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_output,
+        OPAL_OUTPUT_VERBOSE((40, ompi_osc_base_output,
                              "sending lock request to proc"));
         ompi_osc_rdma_control_send(module,
                                    new_pending->proc,

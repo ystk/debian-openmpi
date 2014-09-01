@@ -20,6 +20,7 @@
 #include "orte_config.h"
 #include "orte/constants.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #ifdef HAVE_UNISTD_H
@@ -31,7 +32,6 @@
 
 #include "opal/util/argv.h"
 
-#include "orte/util/name_fns.h"
 
 #include "orte/util/parse_options.h"
 
@@ -43,6 +43,11 @@ void orte_util_parse_range_options(char *inp, char ***output)
     char nstr[32];
     char *input, *bang;
     bool bang_option=false;
+    
+    /* protect against null input */
+    if (NULL == inp) {
+        return;
+    }
     
     /* protect the provided input */
     input = strdup(inp);

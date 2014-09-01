@@ -5,9 +5,6 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2009      High Performance Computing Center Stuttgart, 
- *                         University of Stuttgart.  All rights reserved.
- *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,6 +35,7 @@
 
 #include "orte/util/show_help.h"
 #include "opal/util/sys_limits.h"
+#include "opal/class/opal_pointer_array.h"
 
 #include "orte/runtime/orte_wait.h"
 #include "orte/runtime/orte_globals.h"
@@ -58,7 +56,7 @@ static bool odls_process_child_died( pid_t pid, unsigned int timeout,
     int error;
     HANDLE handle = OpenProcess( PROCESS_TERMINATE | SYNCHRONIZE, FALSE,
                                  (DWORD)pid );
-    if( INVALID_HANDLE_VALUE == handle ) {
+    if( 0 == pid || INVALID_HANDLE_VALUE == handle ) {
         error = GetLastError();
         /* Let's suppose that the process dissapear ... by now */
         return true;
@@ -70,17 +68,17 @@ static bool odls_process_child_died( pid_t pid, unsigned int timeout,
 
 static int odls_process_kill_local( pid_t pid, int sig_num )
 {
-    if( false == TerminateProcess( (HANDLE)pid, 1 ) ) {
+    if( 0 != pid && false == TerminateProcess( (HANDLE)pid, 1 ) ) {
         return (int)GetLastError();
     }
     return 0;
 }
 
-static int odls_process_kill_local_procs(orte_jobid_t job, bool set_state)
+static int odls_process_kill_local_procs(opal_pointer_array_t *procs, bool set_state)
 {
     int rc;
     
-    if (ORTE_SUCCESS != (rc = orte_odls_base_default_kill_local_procs(job, set_state,
+    if (ORTE_SUCCESS != (rc = orte_odls_base_default_kill_local_procs(procs, set_state,
                                     odls_process_kill_local, odls_process_child_died))) {
         ORTE_ERROR_LOG(rc);
         return rc;
@@ -122,7 +120,7 @@ static int odls_process_fork_local_proc(orte_app_context_t* context,
 
     /* should pull this information from MPIRUN instead of going with
        default */
-    opts.usepty = OMPI_ENABLE_PTY_SUPPORT;
+    opts.usepty = OPAL_ENABLE_PTY_SUPPORT;
 
     /* do we want to setup stdin? */
     if (jobdat->stdin_target == ORTE_VPID_WILDCARD || child->name->vpid == jobdat->stdin_target) {
@@ -167,13 +165,13 @@ static int odls_process_fork_local_proc(orte_app_context_t* context,
     child->state = ORTE_PROC_STATE_LAUNCHED;
     child->pid = pid;
     child->alive = true;
-
+        
     /* Windows automatically forwards IO, so we don't need to do so here. However,
      * we need to flag that IO termination conditions are met so that the daemon
      * knows the proc is done
      */
     orte_odls_base_notify_iof_complete(child->name);
-
+    
     return ORTE_SUCCESS;
 }
 
@@ -230,6 +228,5 @@ orte_odls_base_module_t orte_odls_process_module = {
     odls_process_kill_local_procs,
     odls_process_signal_local_proc,
     orte_odls_base_default_deliver_message,
-    orte_odls_base_default_require_sync,
-    orte_odls_base_default_collect_data
+    orte_odls_base_default_require_sync
 };

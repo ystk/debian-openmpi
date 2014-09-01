@@ -20,12 +20,20 @@
 #include "orte_config.h"
 #include "orte/constants.h"
 
-#include "orte/util/show_help.h"
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif
+#ifdef HAVE_ARPA_INET_H
+#include <arpa/inet.h>
+#endif
+
 #include "opal/mca/base/base.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/mca/backtrace/backtrace.h"
 
 #include "orte/mca/rml/base/base.h"
+#include "orte/mca/rml/rml_types.h"
 #include "orte/mca/routed/routed.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/util/name_fns.h"
@@ -500,7 +508,7 @@ rml_oob_recv_route_callback(int status,
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                  ORTE_NAME_PRINT(&next)));
             ORTE_RML_OOB_MSG_HEADER_NTOH(*hdr);
-            qmsg->payload[0].iov_base = (char *) malloc(iov[0].iov_len);
+            qmsg->payload[0].iov_base = (IOVBASE_TYPE*) malloc(iov[0].iov_len);
             if (NULL == qmsg->payload[0].iov_base) abort();
             qmsg->payload[0].iov_len = iov[0].iov_len;
             memcpy(qmsg->payload[0].iov_base, iov[0].iov_base, iov[0].iov_len);

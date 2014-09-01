@@ -11,7 +11,6 @@
  *                         All rights reserved.
  * Copyright (c) 2010      Oak Ridge National Laboratory.  
  *                         All rights reserved.
- * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2010      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  * 
@@ -34,15 +33,6 @@
 /*
 #define DEBUG
 */
-
-#if !defined(__linux__)
-/* This test currently only works on Linux */
-int main(int argc, char* argv[])
-{
-    return 77;
-}
-
-#else /* __linux__ */
 
 static void test(char* file, bool expect);
 static void get_mounts (int * num_dirs, char ** dirs[], bool ** nfs);
@@ -68,10 +58,15 @@ int main(int argc, char* argv[])
                     i, argv[i], opal_path_nfs (argv[i]) ? "Yes": "No");
     }
 
+#ifdef __linux__
     get_mounts (&num_dirs, &dirs, &nfs);
     while (num_dirs--) {
         test (dirs[num_dirs], nfs[num_dirs]);
     }
+#endif
+
+#ifdef __WINDOWS__
+#endif
 
     /* All done */
     return test_finalize();
@@ -134,8 +129,15 @@ void get_mounts (int * num_dirs, char ** dirs[], bool * nfs[])
          * Cannot distinguish it from NFS in opal_path_nfs, therefore just
          * disregard it, as it is NOT an parallel filesystem...
          */
-        if (0 == strcasecmp (fs, "rpc_pipefs"))
+        if (0 == strcasecmp (fs, "rpc_pipefs")) {
             continue;
+        }
+
+        /* If we get an fs type of "none", skip it (e.g.,
+           http://www.open-mpi.org/community/lists/devel/2012/09/11493.php) */
+        if (0 == strcasecmp(fs, "none")) {
+            continue;
+        }
 
         /*
          * Later mounts override earlier mounts
@@ -154,6 +156,7 @@ void get_mounts (int * num_dirs, char ** dirs[], bool * nfs[])
 
         nfs_tmp[mount_known] = false;
         if (0 == strcasecmp (fs, "nfs") ||
+            0 == strcasecmp (fs, "nfs4") ||
             0 == strcasecmp (fs, "lustre") ||
             0 == strcasecmp (fs, "panfs") ||
             0 == strcasecmp (fs, "gpfs"))
@@ -174,4 +177,3 @@ out:
     *nfs = nfs_tmp;
 }
 
-#endif /* __linux__ */

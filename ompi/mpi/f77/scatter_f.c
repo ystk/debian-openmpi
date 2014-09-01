@@ -21,7 +21,7 @@
 #include "ompi/mpi/f77/bindings.h"
 #include "ompi/mpi/f77/constants.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_SCATTER = mpi_scatter_f
 #pragma weak pmpi_scatter = mpi_scatter_f
 #pragma weak pmpi_scatter_ = mpi_scatter_f
@@ -36,14 +36,14 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_SCATTER,
                            (sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_SCATTER = mpi_scatter_f
 #pragma weak mpi_scatter = mpi_scatter_f
 #pragma weak mpi_scatter_ = mpi_scatter_f
 #pragma weak mpi_scatter__ = mpi_scatter_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_SCATTER,
                            mpi_scatter,
                            mpi_scatter_,
@@ -54,7 +54,7 @@ OMPI_GENERATE_F77_BINDINGS (MPI_SCATTER,
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
@@ -69,9 +69,9 @@ void mpi_scatter_f(char *sendbuf, MPI_Fint *sendcount,
     c_sendtype = MPI_Type_f2c(*sendtype);
     c_recvtype = MPI_Type_f2c(*recvtype);
 
-    sendbuf = OMPI_F2C_IN_PLACE(sendbuf);
-    sendbuf = OMPI_F2C_BOTTOM(sendbuf);
-    recvbuf = OMPI_F2C_BOTTOM(recvbuf);
+    sendbuf = (char *) OMPI_F2C_IN_PLACE(sendbuf);
+    sendbuf = (char *) OMPI_F2C_BOTTOM(sendbuf);
+    recvbuf = (char *) OMPI_F2C_BOTTOM(recvbuf);
 
     *ierr = OMPI_INT_2_FINT(MPI_Scatter(sendbuf,OMPI_FINT_2_INT(*sendcount),
 					c_sendtype, recvbuf, 

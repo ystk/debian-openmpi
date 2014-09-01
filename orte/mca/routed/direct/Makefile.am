@@ -10,8 +10,8 @@
 
 sources = \
 	routed_direct.h \
-	routed_direct_component.c \
-	routed_direct.c
+	routed_direct.c \
+	routed_direct_component.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la

@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2009 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2007 The University of Tennessee and The University
@@ -25,21 +25,17 @@
 
 #include "ompi_config.h"
 
-#include "opal/runtime/opal_cr.h"
 #include "ompi/class/ompi_free_list.h"
 #include "ompi/request/request.h"
 #include "ompi/mca/pml/pml.h"
 #include "ompi/mca/pml/base/pml_base_request.h"
 #include "ompi/mca/pml/base/pml_base_bsend.h"
 #include "ompi/mca/pml/base/pml_base_sendreq.h"
-#include "ompi/mca/btl/btl.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/mca/crcp/crcp.h"
 #include "ompi/mca/crcp/base/base.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
     /**
      * CRCPW PML module
@@ -64,6 +60,7 @@ extern "C" {
 
     /* Free list of PML states */
     OMPI_MODULE_DECLSPEC extern ompi_free_list_t pml_state_list;
+    OMPI_MODULE_DECLSPEC extern bool pml_crcpw_is_finalized;
 
     /*
      * PML module functions.
@@ -119,8 +116,6 @@ extern "C" {
     
     int mca_pml_crcpw_ft_event(int state);
     
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* MCA_PML_CRCPW_H */

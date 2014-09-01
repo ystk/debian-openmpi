@@ -24,6 +24,7 @@ EXTRA_DIST += tools/CMakeLists.txt
 # orte/Makefile.am
 
 SUBDIRS += \
+	tools/orte-bootproxy \
 	tools/orte-checkpoint \
 	tools/orte-clean \
 	tools/orte-iof \
@@ -31,9 +32,11 @@ SUBDIRS += \
 	tools/orte-restart \
 	tools/orted \
 	tools/orterun \
-	tools/wrappers
+	tools/wrappers \
+        tools/orte-top
 
 DIST_SUBDIRS += \
+	tools/orte-bootproxy \
 	tools/orte-checkpoint \
 	tools/orte-clean \
 	tools/orte-iof \
@@ -41,4 +44,6 @@ DIST_SUBDIRS += \
 	tools/orte-restart \
 	tools/orted \
 	tools/orterun \
-	tools/wrappers
+	tools/wrappers \
+        tools/orte-top
+

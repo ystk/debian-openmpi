@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -8,6 +9,10 @@
 
 #include "orte_config.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #include "opal/mca/mca.h"
 #include "opal/mca/base/mca_base_component_repository.h"
 #include "opal/util/output.h"
@@ -16,8 +21,6 @@
 
 #if !ORTE_DISABLE_FULL_SUPPORT
 
-#include "orte/util/show_help.h"
-#include "orte/mca/errmgr/errmgr.h"
 
 #endif
 
@@ -55,6 +58,26 @@ opal_list_t       orte_rml_base_components;
 orte_rml_component_t *orte_rml_component = NULL;
 
 static bool       component_open_called = false;
+
+/* instantiate the msg_pkt object */
+static void msg_pkt_constructor(orte_msg_packet_t *pkt)
+{
+    pkt->sender.jobid = ORTE_JOBID_INVALID;
+    pkt->sender.vpid = ORTE_VPID_INVALID;
+    pkt->buffer = NULL;
+}
+static void msg_pkt_destructor(orte_msg_packet_t *pkt)
+{
+    pkt->sender.jobid = ORTE_JOBID_INVALID;
+    pkt->sender.vpid = ORTE_VPID_INVALID;
+    if (NULL != pkt->buffer) {
+        OBJ_RELEASE(pkt->buffer);
+    }
+}
+OBJ_CLASS_INSTANCE(orte_msg_packet_t,
+                   opal_list_item_t,
+                   msg_pkt_constructor,
+                   msg_pkt_destructor);
 
 int
 orte_rml_base_open(void)
@@ -220,7 +243,7 @@ orte_rml_base_close(void)
     /* shutdown any remaining opened components */
     if (component_open_called) {
         mca_base_components_close(orte_rml_base_output, 
-                                  &orte_rml_base_components, NULL);
+                                  &orte_rml_base_components, NULL, true);
     }
 
     OBJ_DESTRUCT(&orte_rml_base_components);

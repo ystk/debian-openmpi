@@ -29,7 +29,6 @@
 #include <unistd.h>
 #endif
 
-#include "opal/runtime/opal_cr.h"
 
 #include "orte/util/show_help.h"
 #include "orte/mca/plm/base/base.h"
@@ -42,8 +41,9 @@
 #include "orte/mca/ess/base/base.h"
 #include "orte/mca/ess/tool/ess_tool.h"
 
-static int rte_init(char flags);
+static int rte_init(void);
 static void rte_abort(int status, bool report) __opal_attribute_noreturn__;
+static orte_vpid_t proc_get_daemon(orte_process_name_t *proc);
 
 
 orte_ess_base_module_t orte_ess_tool_module = {
@@ -51,16 +51,17 @@ orte_ess_base_module_t orte_ess_tool_module = {
     orte_ess_base_tool_finalize,
     rte_abort,
     NULL, /* don't need a local procs fn */
+    proc_get_daemon,
     NULL, /* don't need a proc_get_hostname fn */
-    NULL, /* don't need a proc_get_arch fn */
     NULL, /* don't need a proc_get_local_rank fn */
     NULL, /* don't need a proc_get_node_rank fn */
-    NULL, /* don't need to update_nidmap */
+    NULL,   /* don't need to update_pidmap */
+    NULL,   /* don't need to update_nidmap */
     NULL /* ft_event */
 };
 
 
-static int rte_init(char flags)
+static int rte_init(void)
 {
     int ret;
     char *error = NULL;
@@ -144,7 +145,11 @@ static void rte_abort(int status, bool report)
      */
     orte_proc_info_finalize();
     
-    /* Now abort */
-    abort();
+    /* Now just exit */
+    exit(0);
 }
 
+static orte_vpid_t proc_get_daemon(orte_process_name_t *proc)
+{
+    return ORTE_VPID_INVALID;
+}

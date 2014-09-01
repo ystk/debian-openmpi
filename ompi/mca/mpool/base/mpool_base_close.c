@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -25,11 +25,9 @@
 #include "ompi/constants.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
-#include "ompi/mca/mpool/mpool.h"
 #include "ompi/mca/mpool/base/base.h"
 #include "mpool_base_mem_cb.h"
 
-extern opal_pointer_array_t mca_mpool_base_mem_cb_array; 
 
 int mca_mpool_base_close(void)
 {
@@ -64,13 +62,12 @@ int mca_mpool_base_close(void)
      OMPI RTE program, or [possibly] multiple if this is ompi_info) */
 
   mca_base_components_close(mca_mpool_base_output, 
-                            &mca_mpool_base_components, NULL);
+                            &mca_mpool_base_components, NULL, true);
 
   /* deregister memory free callback */
   if( (modules_length > 0) && mca_mpool_base_used_mem_hooks && 
      0 != (OPAL_MEMORY_FREE_SUPPORT & opal_mem_hooks_support_level())) {
       opal_mem_hooks_unregister_release(mca_mpool_base_mem_cb);
-      OBJ_DESTRUCT(&mca_mpool_base_mem_cb_array);
   }
   /* All done */
 

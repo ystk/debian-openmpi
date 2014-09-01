@@ -24,7 +24,7 @@
 #include "ompi/errhandler/errhandler.h"
 #include "ompi/communicator/communicator.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_WAITSOME = mpi_waitsome_f
 #pragma weak pmpi_waitsome = mpi_waitsome_f
 #pragma weak pmpi_waitsome_ = mpi_waitsome_f
@@ -39,14 +39,14 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_WAITSOME,
                            (incount, array_of_requests, outcount, array_of_indices, array_of_statuses, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_WAITSOME = mpi_waitsome_f
 #pragma weak mpi_waitsome = mpi_waitsome_f
 #pragma weak mpi_waitsome_ = mpi_waitsome_f
 #pragma weak mpi_waitsome__ = mpi_waitsome_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_WAITSOME,
                            mpi_waitsome,
                            mpi_waitsome_,
@@ -57,7 +57,7 @@ OMPI_GENERATE_F77_BINDINGS (MPI_WAITSOME,
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
@@ -65,8 +65,8 @@ static const char FUNC_NAME[] = "MPI_WAITSOME";
 
 
 void mpi_waitsome_f(MPI_Fint *incount, MPI_Fint *array_of_requests,
-		    MPI_Fint *outcount, MPI_Fint *array_of_indices,
-		    MPI_Fint *array_of_statuses, MPI_Fint *ierr)
+                    MPI_Fint *outcount, MPI_Fint *array_of_indices,
+                    MPI_Fint *array_of_statuses, MPI_Fint *ierr)
 {
     MPI_Request *c_req;
     MPI_Status  *c_status;
@@ -74,7 +74,7 @@ void mpi_waitsome_f(MPI_Fint *incount, MPI_Fint *array_of_requests,
     OMPI_SINGLE_NAME_DECL(outcount);
     OMPI_ARRAY_NAME_DECL(array_of_indices);
 
-    c_req = malloc(OMPI_FINT_2_INT(*incount) *
+    c_req = (MPI_Request *) malloc(OMPI_FINT_2_INT(*incount) *
                    (sizeof(MPI_Request) + sizeof(MPI_Status)));
     if (NULL == c_req) {
         *ierr = OMPI_INT_2_FINT(OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD,
@@ -95,8 +95,8 @@ void mpi_waitsome_f(MPI_Fint *incount, MPI_Fint *array_of_requests,
                                          c_status));
 
     if (MPI_SUCCESS == OMPI_FINT_2_INT(*ierr)) {
-	OMPI_SINGLE_INT_2_FINT(outcount);
-	OMPI_ARRAY_INT_2_FINT(array_of_indices, *incount);
+        OMPI_SINGLE_INT_2_FINT(outcount);
+        OMPI_ARRAY_INT_2_FINT(array_of_indices, *incount);
 
         /* Increment indexes by one for fortran conventions */
 

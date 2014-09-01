@@ -7,6 +7,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -15,12 +16,17 @@
  */
 
 #include "orte_config.h"
+
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #include "orte/constants.h"
 
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/base.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/base/mca_base_param.h"
 
 #include "orte/mca/filem/filem.h"
@@ -35,9 +41,9 @@ static orte_filem_base_component_t none_component = {
         ORTE_FILEM_BASE_VERSION_2_0_0,
         /* Component name and version */
         "none",
-        OMPI_MAJOR_VERSION,
-        OMPI_MINOR_VERSION,
-        OMPI_RELEASE_VERSION,
+        ORTE_MAJOR_VERSION,
+        ORTE_MINOR_VERSION,
+        ORTE_RELEASE_VERSION,
         
         /* Component open and close functions */
         orte_filem_base_none_open,
@@ -96,9 +102,9 @@ int orte_filem_base_select(void)
 
         /* JJH: Todo: Check if none is in the list */
         /* Close all components since none will be used */
-        mca_base_components_close(0, /* Pass 0 to keep this from closing the output handle */
+        mca_base_components_close(orte_filem_base_output,
                                   &orte_filem_base_components_available,
-                                  NULL);
+                                  NULL, false);
         goto skip_select;
     }
 

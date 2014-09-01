@@ -24,7 +24,7 @@
 #include "ompi/communicator/communicator.h"
 #include "ompi/mpi/f77/f77_strings.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_INFO_GET_VALUELEN = mpi_info_get_valuelen_f
 #pragma weak pmpi_info_get_valuelen = mpi_info_get_valuelen_f
 #pragma weak pmpi_info_get_valuelen_ = mpi_info_get_valuelen_f
@@ -35,29 +35,29 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_INFO_GET_VALUELEN,
                             pmpi_info_get_valuelen_,
                             pmpi_info_get_valuelen__,
                             pmpi_info_get_valuelen_f,
-                            (MPI_Fint *info, char *key, MPI_Fint *valuelen, MPI_Flogical *flag, MPI_Fint *ierr, int key_len),
+                            (MPI_Fint *info, char *key, MPI_Fint *valuelen, ompi_fortran_logical_t *flag, MPI_Fint *ierr, int key_len),
                             (info, key, valuelen, flag, ierr, key_len) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_INFO_GET_VALUELEN = mpi_info_get_valuelen_f
 #pragma weak mpi_info_get_valuelen = mpi_info_get_valuelen_f
 #pragma weak mpi_info_get_valuelen_ = mpi_info_get_valuelen_f
 #pragma weak mpi_info_get_valuelen__ = mpi_info_get_valuelen_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_INFO_GET_VALUELEN,
                             mpi_info_get_valuelen,
                             mpi_info_get_valuelen_,
                             mpi_info_get_valuelen__,
                             mpi_info_get_valuelen_f,
-                            (MPI_Fint *info, char *key, MPI_Fint *valuelen, MPI_Flogical *flag, MPI_Fint *ierr, int key_len),
+                            (MPI_Fint *info, char *key, MPI_Fint *valuelen, ompi_fortran_logical_t *flag, MPI_Fint *ierr, int key_len),
                             (info, key, valuelen, flag, ierr, key_len) )
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
@@ -69,7 +69,7 @@ static const char FUNC_NAME[] = "MPI_INFO_GET_VALUELEN";
    string that we can use. */
 
 void mpi_info_get_valuelen_f(MPI_Fint *info, char *key,
-                             MPI_Fint *valuelen, MPI_Flogical *flag,
+                             MPI_Fint *valuelen, ompi_fortran_logical_t *flag,
                              MPI_Fint *ierr, int key_len)
 {
     int c_err, ret;

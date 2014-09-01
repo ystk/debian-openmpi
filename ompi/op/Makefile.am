@@ -10,6 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+# Copyright (c) 2008-2009 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -17,12 +18,9 @@
 # $HEADER$
 #
 
-# This makefile.am does not stand on its own - it is included from ompi/Makefile.am
+# This makefile.am does not stand on its own - it is included from
+# ompi/Makefile.am
 
-headers += \
-        op/op.h \
-        op/op_predefined.h
+headers += op/op.h
 
-libmpi_la_SOURCES += \
-        op/op.c \
-        op/op_predefined.c
+libmpi_la_SOURCES += op/op.c

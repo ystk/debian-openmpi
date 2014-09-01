@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,6 +23,7 @@
 #include "orte/constants.h"
 
 #include "opal/runtime/opal.h"
+#include "opal/util/output.h"
 
 #include "orte/mca/ess/ess.h"
 #include "orte/mca/ess/base/base.h"
@@ -63,6 +65,22 @@ int orte_finalize(void)
     
     /* cleanup the process info */
     orte_proc_info_finalize();
+
+#if !ORTE_DISABLE_FULL_SUPPORT
+    /* Free some MCA param strings */
+    if (NULL != orte_launch_agent) {
+        free(orte_launch_agent);
+    }
+    if (NULL != orte_rsh_agent) {
+        free(orte_rsh_agent);
+    }
+    if( NULL != orte_default_hostfile ) {
+        free(orte_default_hostfile);
+    }
+#endif
+
+    /* Close the general debug stream */
+    opal_output_close(orte_debug_output);
     
     /* finalize the opal utilities */
     opal_finalize();

@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -56,8 +56,6 @@
 #include "opal/util/output.h"
 #include "opal/util/argv.h"
 #include "opal/util/opal_environ.h"
-#include "opal/util/os_path.h"
-#include "opal/util/os_dirpath.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/mca/crs/crs.h"
@@ -70,13 +68,16 @@
 #include "orte/util/hnp_contact.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/util/name_fns.h"
-#include "orte/util/show_help.h"
+#include "opal/util/show_help.h"
+#include "orte/util/proc_info.h"
 #include "orte/mca/rml/rml.h"
 #include "orte/mca/rml/rml_types.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "opal/dss/dss.h"
 #include "orte/mca/snapc/snapc.h"
 #include "orte/mca/snapc/base/base.h"
+
+#include MCA_timer_IMPLEMENTATION_HEADER
 
 /******************
  * Local Functions
@@ -97,9 +98,11 @@ static void hnp_receiver(int status,
 static void process_ckpt_update_cmd(orte_process_name_t* sender,
                                     opal_buffer_t* buffer);
 
-static int notify_process_for_checkpoint(int term);
+static int notify_process_for_checkpoint(opal_crs_base_ckpt_options_t *options);
 static int pretty_print_status(void);
 static int pretty_print_reference(void);
+
+static int list_all_snapshots(void);
 
 static orte_hnp_contact_t *orterun_hnp = NULL;
 static char * global_snapshot_handle = NULL;
@@ -110,16 +113,24 @@ static int    global_sequence_num    = 0;
  *****************************************/
 static bool listener_started = false;
 
+static double timer_start = 0;
+static double timer_last  = 0;
+static double get_time(void);
+
 typedef struct {
     bool help;
     int  pid;
+    opal_crs_base_ckpt_options_t *options;
     bool term;
+    bool stop;
     bool verbose;
+    int  verbose_level;
     orte_jobid_t req_hnp; /**< User Requested HNP */
     bool nowait;  /* Do not wait for checkpoint to complete before returning */
     bool status;  /* Display status messages while checkpoint is progressing */
     int output;
     int ckpt_status;
+    bool list_only; /* List available checkpoints only */
 } orte_checkpoint_globals_t;
 
 orte_checkpoint_globals_t orte_checkpoint_globals;
@@ -138,10 +149,22 @@ opal_cmd_line_init_t cmd_line_opts[] = {
       "Be Verbose" },
 
     { NULL, NULL, NULL, 
+      'V', NULL, NULL, 
+      1,
+      &orte_checkpoint_globals.verbose_level, OPAL_CMD_LINE_TYPE_INT,
+      "Set the verbosity level (For additional debugging information)" },
+
+    { NULL, NULL, NULL, 
       '\0', NULL, "term", 
       0,
-      &orte_checkpoint_globals.term, OPAL_CMD_LINE_TYPE_BOOL,
-      "Terminate the application after checkpoint" },
+      &(orte_checkpoint_globals.term), OPAL_CMD_LINE_TYPE_BOOL,
+      "Terminate the application after checkpoint (Cannot be used with --stop)" },
+
+    { NULL, NULL, NULL, 
+      '\0', NULL, "stop", 
+      0,
+      &(orte_checkpoint_globals.stop), OPAL_CMD_LINE_TYPE_BOOL,
+      "Send SIGSTOP to application just after checkpoint (checkpoint will not finish until SIGCONT is sent) (Cannot be used with --term)" },
 
     { NULL, NULL, NULL, 
       'w', NULL, "nowait", 
@@ -168,7 +191,13 @@ opal_cmd_line_init_t cmd_line_opts[] = {
       &orte_checkpoint_globals.pid, OPAL_CMD_LINE_TYPE_INT,
       "This should be the pid of the mpirun whose applications you wish "
       "to checkpoint." },
-    
+
+    { NULL, NULL, NULL, 
+      'l', NULL, "list", 
+      0,
+      &orte_checkpoint_globals.list_only, OPAL_CMD_LINE_TYPE_BOOL,
+      "Display a list of checkpoint files available on this machine" },
+
     /* End of list */
     { NULL, NULL, NULL, '\0', NULL, NULL, 0,
       NULL, OPAL_CMD_LINE_TYPE_NULL,
@@ -184,7 +213,21 @@ main(int argc, char *argv[])
      * Initialize
      ***************/
     if (ORTE_SUCCESS != (ret = ckpt_init(argc, argv))) {
+        ORTE_ERROR_LOG(ret);
         exit_status = ret;
+        goto cleanup;
+    }
+
+    /*************************************
+     * Listing only Checkpoint References
+     *************************************/
+    if( orte_checkpoint_globals.list_only ) {
+        if (ORTE_SUCCESS != (ret = list_all_snapshots())) {
+            ORTE_ERROR_LOG(ret);
+            exit_status = ret;
+            goto cleanup;
+        }
+        exit_status = ORTE_SUCCESS;
         goto cleanup;
     }
 
@@ -217,15 +260,20 @@ main(int argc, char *argv[])
                             "\t Connected to Mpirun %s",
                             ORTE_NAME_PRINT(&orterun_hnp->name));
          
-        if(orte_checkpoint_globals.term) {
+        if(orte_checkpoint_globals.options->term) {
             opal_output_verbose(10, orte_checkpoint_globals.output,
                                 "\t Terminating after checkpoint\n");
         }
+        if(orte_checkpoint_globals.options->stop) {
+            opal_output_verbose(10, orte_checkpoint_globals.output,
+                                "\t Stopping after checkpoint\n");
+        }
     }
 
-    if(ORTE_SUCCESS != (ret = notify_process_for_checkpoint( orte_checkpoint_globals.term)) ) {
-        orte_show_help("help-orte-checkpoint.txt", "ckpt_failure", true,
+    if(ORTE_SUCCESS != (ret = notify_process_for_checkpoint( orte_checkpoint_globals.options)) ) {
+        opal_show_help("help-orte-checkpoint.txt", "ckpt_failure", true,
                        orte_checkpoint_globals.pid, ret);
+        ORTE_ERROR_LOG(ret);
         exit_status = ret;
         goto cleanup;
     }
@@ -235,6 +283,7 @@ main(int argc, char *argv[])
      */
     if(!orte_checkpoint_globals.nowait) { 
         while( ORTE_SNAPC_CKPT_STATE_FINISHED != orte_checkpoint_globals.ckpt_status &&
+               ORTE_SNAPC_CKPT_STATE_STOPPED  != orte_checkpoint_globals.ckpt_status &&
                ORTE_SNAPC_CKPT_STATE_NO_CKPT  != orte_checkpoint_globals.ckpt_status &&
                ORTE_SNAPC_CKPT_STATE_ERROR    != orte_checkpoint_globals.ckpt_status ) {
             opal_progress();
@@ -247,14 +296,13 @@ main(int argc, char *argv[])
     }
 
     if( ORTE_SNAPC_CKPT_STATE_ERROR == orte_checkpoint_globals.ckpt_status ) {
-        orte_show_help("help-orte-checkpoint.txt", "ckpt_failure", true,
+        opal_show_help("help-orte-checkpoint.txt", "ckpt_failure", true,
                        orte_checkpoint_globals.pid, ORTE_ERROR);
         exit_status = ORTE_ERROR;
         goto cleanup;
     }
 
     if( orte_checkpoint_globals.status ) {
-        orte_checkpoint_globals.ckpt_status = ORTE_SNAPC_CKPT_STATE_FINISHED;
         pretty_print_status();
     }
 
@@ -267,6 +315,7 @@ main(int argc, char *argv[])
      * Cleanup
      ***************/
     if (ORTE_SUCCESS != (ret = ckpt_finalize())) {
+        ORTE_ERROR_LOG(ret);
         return ret;
     }
 
@@ -283,13 +332,18 @@ static int parse_args(int argc, char *argv[]) {
     memset(&orte_checkpoint_globals, 0, sizeof(orte_checkpoint_globals_t));
     orte_checkpoint_globals.help     = false;
     orte_checkpoint_globals.pid      = -1;
-    orte_checkpoint_globals.term     = false;
     orte_checkpoint_globals.verbose  = false;
+    orte_checkpoint_globals.verbose_level  = 0;
     orte_checkpoint_globals.req_hnp  = ORTE_JOBID_INVALID;
     orte_checkpoint_globals.nowait   = false;
     orte_checkpoint_globals.status   = false;
     orte_checkpoint_globals.output   = -1;
     orte_checkpoint_globals.ckpt_status = ORTE_SNAPC_CKPT_STATE_NONE;
+    orte_checkpoint_globals.list_only  = false;
+
+    orte_checkpoint_globals.options = OBJ_NEW(opal_crs_base_ckpt_options_t);
+    orte_checkpoint_globals.term     = false;
+    orte_checkpoint_globals.stop     = false;
 
     /* Parse the command line options */
     opal_cmd_line_create(&cmd_line, cmd_line_opts);
@@ -325,12 +379,17 @@ static int parse_args(int argc, char *argv[]) {
     /* get the remaining bits */
     opal_cmd_line_get_tail(&cmd_line, &argc, &argv);
 
-#if OPAL_ENABLE_FT == 0
+    if(orte_checkpoint_globals.list_only ) {
+        exit_status = ORTE_SUCCESS;
+        goto cleanup;
+    }
+
+#if OPAL_ENABLE_FT_CR == 0
     /* Warn and exit if not configured with Checkpoint/Restart */
     {
         char *args = NULL;
         args = opal_cmd_line_get_usage_msg(&cmd_line);
-        orte_show_help("help-orte-checkpoint.txt", "usage-no-cr",
+        opal_show_help("help-orte-checkpoint.txt", "usage-no-cr",
                        true, args);
         free(args);
         exit_status = ORTE_ERROR;
@@ -343,11 +402,22 @@ static int parse_args(int argc, char *argv[]) {
         (0 >= argc && ORTE_JOBID_INVALID == orte_checkpoint_globals.req_hnp)) {
         char *args = NULL;
         args = opal_cmd_line_get_usage_msg(&cmd_line);
-        orte_show_help("help-orte-checkpoint.txt", "usage", true,
+        opal_show_help("help-orte-checkpoint.txt", "usage", true,
                        args);
         free(args);
         exit_status = ORTE_ERROR;
         goto cleanup;
+    }
+
+    orte_checkpoint_globals.options->term = orte_checkpoint_globals.term;
+    orte_checkpoint_globals.options->stop = orte_checkpoint_globals.stop;
+
+    if(orte_checkpoint_globals.verbose_level < 0 ) {
+        orte_checkpoint_globals.verbose_level = 0;
+    }
+
+    if(orte_checkpoint_globals.verbose_level > 0) {
+        orte_checkpoint_globals.verbose = true;
     }
 
     /*
@@ -362,7 +432,7 @@ static int parse_args(int argc, char *argv[]) {
 
     orte_checkpoint_globals.pid = atoi(argv[0]);
     if ( 0 >= orte_checkpoint_globals.pid ) {
-        orte_show_help("help-orte-checkpoint.txt", "invalid_pid", true,
+        opal_show_help("help-orte-checkpoint.txt", "invalid_pid", true,
                        orte_checkpoint_globals.pid);
         exit_status = ORTE_ERROR;
         goto cleanup;
@@ -373,7 +443,7 @@ static int parse_args(int argc, char *argv[]) {
      */
     if(orte_checkpoint_globals.nowait) {
         orte_checkpoint_globals.nowait = false;
-        orte_show_help("help-orte-checkpoint.txt", "not_impl",
+        opal_show_help("help-orte-checkpoint.txt", "not_impl",
                        true,
                        "Disconnected checkpoint");
     }
@@ -400,7 +470,7 @@ static int find_hnp(void) {
      */
     OBJ_CONSTRUCT(&hnp_list, opal_list_t);
     if (ORTE_SUCCESS != (ret = orte_list_local_hnps(&hnp_list, true) ) ) {
-        orte_show_help("help-orte-checkpoint.txt", "no_hnps", true,
+        opal_show_help("help-orte-checkpoint.txt", "no_hnps", true,
                        orte_checkpoint_globals.pid,
                        orte_process_info.tmpdir_base,
                        orte_process_info.top_session_dir,
@@ -422,11 +492,11 @@ static int find_hnp(void) {
     }
 
     /* If no match was found, error out */
-    orte_show_help("help-orte-checkpoint.txt", "no_universe", true,
+    opal_show_help("help-orte-checkpoint.txt", "no_universe", true,
                    orte_checkpoint_globals.pid,
                    orte_process_info.tmpdir_base,
                    orte_process_info.top_session_dir);
-    
+
 cleanup:
     while (NULL != (item = opal_list_remove_first(&hnp_list))) {
         OBJ_RELEASE(item);
@@ -451,7 +521,8 @@ static int ckpt_init(int argc, char *argv[]) {
      * to ensure installdirs is setup properly
      * before calling mca_base_open();
      */
-    if( ORTE_SUCCESS != (ret = opal_init_util()) ) {
+    if( ORTE_SUCCESS != (ret = opal_init_util(&argc, &argv)) ) {
+        ORTE_ERROR_LOG(ret);
         return ret;
     }
 
@@ -459,6 +530,7 @@ static int ckpt_init(int argc, char *argv[]) {
      * Parse Command Line Arguments
      */
     if (ORTE_SUCCESS != (ret = parse_args(argc, argv))) {
+        ORTE_ERROR_LOG(ret);
         return ret;
     }
 
@@ -480,7 +552,8 @@ static int ckpt_init(int argc, char *argv[]) {
      * We need all of OPAL and the TOOLS portion of ORTE - this
      * sets us up so we can talk to any HNP over the wire
      ***************************/
-    if (ORTE_SUCCESS != (ret = orte_init(ORTE_TOOL))) {
+    if (ORTE_SUCCESS != (ret = orte_init(&argc, &argv, ORTE_PROC_TOOL))) {
+        ORTE_ERROR_LOG(ret);
         exit_status = ret;
         goto cleanup;
     }
@@ -490,7 +563,7 @@ static int ckpt_init(int argc, char *argv[]) {
      */
     if( orte_checkpoint_globals.verbose ) {
         orte_checkpoint_globals.output = opal_output_open(NULL);
-        opal_output_set_verbosity(orte_checkpoint_globals.output, 10);
+        opal_output_set_verbosity(orte_checkpoint_globals.output, orte_checkpoint_globals.verbose_level);
     } else {
         orte_checkpoint_globals.output = 0; /* Default=STDERR */
     }
@@ -499,7 +572,9 @@ static int ckpt_init(int argc, char *argv[]) {
      * Start the listener
      */
     if( ORTE_SUCCESS != (ret = start_listener() ) ) {
+        ORTE_ERROR_LOG(ret);
         exit_status = ret;
+        goto cleanup;
     }
 
  cleanup:
@@ -513,6 +588,7 @@ static int ckpt_finalize(void) {
      * Stop the listener
      */
     if( ORTE_SUCCESS != (ret = stop_listener() ) ) {
+        ORTE_ERROR_LOG(ret);
         exit_status = ret;
     }
 
@@ -534,6 +610,7 @@ static int start_listener(void)
                                                        ORTE_RML_PERSISTENT,
                                                        hnp_receiver,
                                                        NULL))) {
+        ORTE_ERROR_LOG(ret);
         exit_status = ret;
         goto cleanup;
     }
@@ -555,6 +632,7 @@ static int stop_listener(void)
 
     if (ORTE_SUCCESS != (ret = orte_rml.recv_cancel(ORTE_NAME_WILDCARD,
                                                     ORTE_RML_TAG_CKPT))) {
+        ORTE_ERROR_LOG(ret);
         exit_status = ret;
         goto cleanup;
     }
@@ -618,20 +696,24 @@ static void process_ckpt_update_cmd(orte_process_name_t* sender,
      */
     count = 1;
     if ( ORTE_SUCCESS != (ret = opal_dss.unpack(buffer, &ckpt_status, &count, OPAL_INT)) ) {
+        ORTE_ERROR_LOG(ret);
         exit_status = ret;
         goto cleanup;
     }
     orte_checkpoint_globals.ckpt_status = ckpt_status;
 
     if( ORTE_SNAPC_CKPT_STATE_FINISHED == orte_checkpoint_globals.ckpt_status ||
+        ORTE_SNAPC_CKPT_STATE_STOPPED  == orte_checkpoint_globals.ckpt_status ||
         ORTE_SNAPC_CKPT_STATE_ERROR    == orte_checkpoint_globals.ckpt_status ) {
         count = 1;
         if ( ORTE_SUCCESS != (ret = opal_dss.unpack(buffer, &global_snapshot_handle, &count, OPAL_STRING)) ) {
+            ORTE_ERROR_LOG(ret);
             exit_status = ret;
             goto cleanup;
         }
         count = 1;
         if ( ORTE_SUCCESS != (ret = opal_dss.unpack(buffer, &global_sequence_num, &count, OPAL_INT)) ) {
+            ORTE_ERROR_LOG(ret);
             exit_status = ret;
             goto cleanup;
         }
@@ -641,7 +723,7 @@ static void process_ckpt_update_cmd(orte_process_name_t* sender,
      * If the job is not able to be checkpointed, then return
      */
     if( ORTE_SNAPC_CKPT_STATE_NO_CKPT == orte_checkpoint_globals.ckpt_status) {
-        orte_show_help("help-orte-checkpoint.txt", "non-ckptable", 
+        opal_show_help("help-orte-checkpoint.txt", "non-ckptable", 
                        true,
                        orte_checkpoint_globals.pid);
         exit_status = ORTE_ERROR;
@@ -651,7 +733,8 @@ static void process_ckpt_update_cmd(orte_process_name_t* sender,
      * If we are to display the status progression
      */
     if( orte_checkpoint_globals.status ) {
-        if(ORTE_SNAPC_CKPT_STATE_FINISHED != orte_checkpoint_globals.ckpt_status) {
+        if(ORTE_SNAPC_CKPT_STATE_FINISHED != orte_checkpoint_globals.ckpt_status &&
+           ORTE_SNAPC_CKPT_STATE_STOPPED  != orte_checkpoint_globals.ckpt_status) {
             pretty_print_status();
         }
     }
@@ -660,8 +743,7 @@ static void process_ckpt_update_cmd(orte_process_name_t* sender,
     return;
 }
 
-static int 
-notify_process_for_checkpoint(int term)
+static int notify_process_for_checkpoint(opal_crs_base_ckpt_options_t *options)
 {
     int ret, exit_status = ORTE_SUCCESS;
     opal_buffer_t *buffer = NULL;
@@ -677,29 +759,35 @@ notify_process_for_checkpoint(int term)
                         "orte_checkpoint: notify_hnp: Contact Head Node Process PID %d\n",
                         orte_checkpoint_globals.pid);
 
+    timer_start = get_time();
+
     /***********************************
      * Notify HNP of checkpoint request
      * Send:
      * - Command
-     * - term flag
+     * - options
      * - jobid
      ***********************************/
     if (ORTE_SUCCESS != (ret = opal_dss.pack(buffer, &command, 1, ORTE_SNAPC_CMD)) ) {
+        ORTE_ERROR_LOG(ret);
         exit_status = ret;
         goto cleanup;
     }
 
-    if (ORTE_SUCCESS != (ret = opal_dss.pack(buffer, &term, 1, OPAL_BOOL))) {
+    if( ORTE_SUCCESS != (ret = orte_snapc_base_pack_options(buffer, options)) ) {
+        ORTE_ERROR_LOG(ret);
         exit_status = ret;
         goto cleanup;
     }
 
     if (ORTE_SUCCESS != (ret = opal_dss.pack(buffer, &jobid, 1, ORTE_JOBID))) {
+        ORTE_ERROR_LOG(ret);
         exit_status = ret;
         goto cleanup;
     }
 
     if ( 0 > (ret = orte_rml.send_buffer(&(orterun_hnp->name), buffer, ORTE_RML_TAG_CKPT, 0)) ) {
+        ORTE_ERROR_LOG(ret);
         exit_status = ret;
         goto cleanup;
     }
@@ -715,7 +803,7 @@ notify_process_for_checkpoint(int term)
     }
 
     if( ORTE_SUCCESS != exit_status ) {
-        orte_show_help("help-orte-checkpoint.txt", "unable_to_connect", true,
+        opal_show_help("help-orte-checkpoint.txt", "unable_to_connect", true,
                        orte_checkpoint_globals.pid);
     }
 
@@ -725,18 +813,51 @@ notify_process_for_checkpoint(int term)
 /***************
  * Pretty Print
  ***************/
+static double get_time(void) {
+    double wtime;
+
+#if OPAL_TIMER_USEC_NATIVE
+    wtime = (double)opal_timer_base_get_usec() / 1000000.0;
+#else
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    wtime = tv.tv_sec;
+    wtime += (double)tv.tv_usec / 1000000.0;
+#endif
+
+    return wtime;
+}
+
 static int pretty_print_status(void) {
     char * state_str = NULL;
+    double cur_time;
 
-    state_str = orte_snapc_ckpt_state_str(orte_checkpoint_globals.ckpt_status);
+    cur_time = get_time();
 
-    opal_output(0,
-                "%*s - Global Snapshot Reference: %s\n", 
-                25, state_str, global_snapshot_handle);
+    if( timer_last == 0 ) {
+        timer_last = cur_time;
+    }
+
+    orte_snapc_ckpt_state_str(&state_str, orte_checkpoint_globals.ckpt_status);
+
+    if( NULL != global_snapshot_handle ) {
+        opal_output(0,
+                    "[%6.2f / %6.2f] %*s - %s\n", 
+                    (cur_time - timer_last), (cur_time - timer_start),
+                    25, state_str, global_snapshot_handle);
+    } else {
+        opal_output(0,
+                    "[%6.2f / %6.2f] %*s - ...\n", 
+                    (cur_time - timer_last), (cur_time - timer_start),
+                    25, state_str);
+    }
+
     if( NULL != state_str) {
         free(state_str);
     }
-    
+
+    timer_last = cur_time;
+
     return ORTE_SUCCESS;
 }
 
@@ -747,4 +868,65 @@ static int pretty_print_reference(void) {
            global_snapshot_handle);
     
     return ORTE_SUCCESS;
+}
+
+static int list_all_snapshots(void) {
+    int ret, exit_status = ORTE_SUCCESS;
+    char **snapshot_refs = NULL;
+    int i, num_snapshot_refs = 0;
+    int *snapshot_ref_seqs = NULL;
+    int s, num_snapshot_ref_seqs = 0;
+
+    /* Get all of the snapshot references */
+    if( ORTE_SUCCESS != (ret = orte_snapc_base_get_all_snapshot_refs(NULL, &num_snapshot_refs, &snapshot_refs) ) ) {
+        opal_output(0, "Error: Unable to list the checkpoints in the directory <%s>\n",
+                    orte_snapc_base_global_snapshot_dir);
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
+    /* For each snapshot reference, get a list of the valid seq numbers */
+    for(i = 0; i < num_snapshot_refs; ++i) {
+        if( ORTE_SUCCESS != (ret = orte_snapc_base_get_all_snapshot_ref_seqs(NULL, snapshot_refs[i],
+                                                                             &num_snapshot_ref_seqs,
+                                                                             &snapshot_ref_seqs) ) ) {
+            opal_output(0, "Error: Unable to list the sequence numbers for the checkpoint <%s> in directory <%s>\n",
+                        snapshot_refs[i],
+                        orte_snapc_base_global_snapshot_dir);
+            ORTE_ERROR_LOG(ret);
+            exit_status = ret;
+            goto cleanup;
+        }
+
+        /* Pretty print the result */
+        printf("Snapshot Ref.: %s\t[", snapshot_refs[i]);
+        if( 0 >= num_snapshot_ref_seqs ) {
+            printf("No Valid Checkpoints");
+        }
+        for(s = 0; s < num_snapshot_ref_seqs; ++s) {
+            if( s != 0 ) {
+                printf(",");
+            }
+            printf("%d", snapshot_ref_seqs[s]);
+        }
+        printf("]\n");
+
+        if( NULL != snapshot_ref_seqs ) {
+            free(snapshot_ref_seqs);
+            snapshot_ref_seqs = NULL;
+        }
+    }
+
+ cleanup:
+    if( NULL != snapshot_ref_seqs ) {
+        free(snapshot_ref_seqs);
+        snapshot_ref_seqs = NULL;
+    }
+    if( NULL != snapshot_refs ) {
+        free(snapshot_refs);
+        snapshot_refs = NULL;
+    }
+
+    return exit_status;
 }

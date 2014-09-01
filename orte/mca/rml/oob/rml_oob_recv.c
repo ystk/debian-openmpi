@@ -7,16 +7,14 @@
  */
 
 #include "orte_config.h"
-
-#include "orte/util/show_help.h"
+#include "opal/types.h"
 
 #include "orte/mca/rml/base/base.h"
+#include "orte/mca/rml/rml_types.h"
 #include "opal/dss/dss.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
 
-#include "orte/mca/oob/oob.h"
-#include "orte/mca/oob/base/base.h"
 #include "rml_oob.h"
 
 

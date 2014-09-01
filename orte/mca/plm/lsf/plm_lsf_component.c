@@ -10,6 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008      Institut National de Recherche en Informatique
+ *                         et Automatique. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -29,11 +31,8 @@
 #include <lsf/lsbatch.h>
 
 #include "opal/mca/base/mca_base_param.h"
-#include "opal/util/argv.h"
+#include "opal/util/output.h"
 
-#include "orte/util/show_help.h"
-#include "orte/util/proc_info.h"
-#include "orte/mca/errmgr/errmgr.h"
 
 #include "orte/mca/plm/plm.h"
 #include "orte/mca/plm/base/base.h"

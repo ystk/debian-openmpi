@@ -24,9 +24,8 @@
 #include "ompi_config.h"
 #include <errno.h> 
 #include <string.h>
-#include "orte/util/show_help.h"
+#include "opal/class/opal_bitmap.h"
 #include "opal/util/if.h"
-#include "ompi/mca/pml/pml.h"
 #include "ompi/mca/btl/btl.h"
 
 #include "btl_udapl.h"
@@ -34,8 +33,7 @@
 #include "btl_udapl_frag.h"
 #include "btl_udapl_mca.h"
 #include "btl_udapl_proc.h"
-#include "ompi/datatype/convertor.h" 
-#include "ompi/datatype/datatype.h" 
+#include "opal/datatype/opal_convertor.h" 
 #include "ompi/mca/mpool/base/base.h" 
 #include "ompi/mca/mpool/rdma/mpool_rdma.h"
 #include "ompi/mca/btl/base/btl_base_error.h"
@@ -858,7 +856,7 @@ int mca_btl_udapl_add_procs(
     size_t nprocs, 
     struct ompi_proc_t **ompi_procs, 
     struct mca_btl_base_endpoint_t** peers, 
-    ompi_bitmap_t* reachable)
+    opal_bitmap_t* reachable)
 {
     mca_btl_udapl_module_t* udapl_btl = (mca_btl_udapl_module_t*)btl;
     int i, rc;
@@ -896,7 +894,7 @@ int mca_btl_udapl_add_procs(
             continue;
         }
 
-        ompi_bitmap_set_bit(reachable, i);
+        opal_bitmap_set_bit(reachable, i);
         OPAL_THREAD_UNLOCK(&udapl_proc->proc_lock);
         peers[i] = udapl_endpoint;
     }
@@ -1022,7 +1020,7 @@ mca_btl_base_descriptor_t* mca_btl_udapl_prepare_src(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* endpoint,
     struct mca_mpool_base_registration_t* registration,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -1040,7 +1038,7 @@ mca_btl_base_descriptor_t* mca_btl_udapl_prepare_src(
     MCA_BTL_UDAPL_FRAG_CALC_ALIGNMENT_PAD(pad,
         (max_data + reserve + sizeof(mca_btl_udapl_footer_t)));
 
-    if(ompi_convertor_need_buffers(convertor) == false && 0 == reserve) {
+    if(opal_convertor_need_buffers(convertor) == false && 0 == reserve) {
         if(registration != NULL || max_data > btl->btl_max_send_size) {
 
             MCA_BTL_UDAPL_FRAG_ALLOC_USER(btl, frag, rc);
@@ -1051,7 +1049,7 @@ mca_btl_base_descriptor_t* mca_btl_udapl_prepare_src(
             iov.iov_len = max_data;
             iov.iov_base = NULL;
 
-            ompi_convertor_pack(convertor, &iov,
+            opal_convertor_pack(convertor, &iov,
                 &iov_count, &max_data );
 
             *size = max_data;
@@ -1108,7 +1106,7 @@ mca_btl_base_descriptor_t* mca_btl_udapl_prepare_src(
     iov.iov_len = max_data;
     iov.iov_base = (char *) frag->segment.seg_addr.pval + reserve;
     
-    rc = ompi_convertor_pack(convertor,
+    rc = opal_convertor_pack(convertor,
         &iov, &iov_count, &max_data );
     if(rc < 0) {
         MCA_BTL_UDAPL_FRAG_RETURN_MAX(btl, frag);
@@ -1152,7 +1150,7 @@ mca_btl_base_descriptor_t* mca_btl_udapl_prepare_dst(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* endpoint,
     struct mca_mpool_base_registration_t* registration,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -1167,7 +1165,7 @@ mca_btl_base_descriptor_t* mca_btl_udapl_prepare_dst(
     }
 
     frag->segment.seg_len = *size;
-    ompi_convertor_get_current_pointer( convertor, (void**)&(frag->segment.seg_addr.pval) );
+    opal_convertor_get_current_pointer( convertor, (void**)&(frag->segment.seg_addr.pval) );
 
     if(NULL == registration) {
         /* didn't get a memory registration passed in, so must

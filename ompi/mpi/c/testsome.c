@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,11 +21,13 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
-#include "ompi/mca/pml/pml.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/request/request.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Testsome = PMPI_Testsome
 #endif
 
@@ -59,10 +62,16 @@ int MPI_Testsome(int incount, MPI_Request *requests,
                 }
             }
         }
-        if ((NULL == outcount) || (NULL == indices) || (0 > incount)) {
-            rc = MPI_ERR_ARG;
+        if (((NULL == outcount || NULL == indices) && incount > 0) ||
+            incount < 0) {
+            return MPI_ERR_ARG;
         }
         OMPI_ERRHANDLER_CHECK(rc, MPI_COMM_WORLD, rc, FUNC_NAME);
+    }
+
+    if (OPAL_UNLIKELY(0 == incount)) {
+        *outcount = MPI_UNDEFINED;
+        return OMPI_SUCCESS;
     }
 
     OPAL_CR_ENTER_LIBRARY();

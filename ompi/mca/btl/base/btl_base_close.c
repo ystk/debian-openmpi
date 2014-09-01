@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -25,8 +25,6 @@
 #include "opal/event/event.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
-#include "ompi/mca/pml/pml.h"
-#include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
 
 int mca_btl_base_close(void)
@@ -36,10 +34,8 @@ int mca_btl_base_close(void)
 
     if( mca_btl_base_already_opened <= 0 ) {
         return OMPI_ERROR;
-    } else {
-        if( --mca_btl_base_already_opened > 0 ) {
-            return OMPI_SUCCESS;
-        }
+    } else if (--mca_btl_base_already_opened > 0) {
+        return OMPI_SUCCESS;
     }
     /* disable event processing while cleaning up btls */
     opal_event_disable();
@@ -64,7 +60,8 @@ int mca_btl_base_close(void)
   
     if (0 != opal_list_get_size(&mca_btl_base_components_opened)) {
         mca_base_components_close(mca_btl_base_output, 
-                                  &mca_btl_base_components_opened, NULL);
+                                  &mca_btl_base_components_opened, NULL,
+                                  true);
     }
 
     /* cleanup */

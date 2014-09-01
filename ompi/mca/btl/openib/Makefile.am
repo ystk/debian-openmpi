@@ -9,7 +9,9 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2007-2008 Cisco, Inc.  All rights reserved.
+# Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
+# Copyright (c) 2011      Mellanox Technologies.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -52,8 +54,8 @@ sources = \
     btl_openib_xrc.h \
     btl_openib_fd.h \
     btl_openib_fd.c \
-    btl_openib_iwarp.h \
-    btl_openib_iwarp.c \
+    btl_openib_ip.h \
+    btl_openib_ip.c \
     connect/base.h \
     connect/btl_openib_connect_base.c \
     connect/btl_openib_connect_oob.c \
@@ -62,20 +64,18 @@ sources = \
     connect/btl_openib_connect_empty.h \
     connect/connect.h
 
+# If we have failover support, build that file
+if MCA_btl_openib_enable_failover
+sources += \
+    btl_openib_failover.c \
+    btl_openib_failover.h
+endif
+
 # If we have XRC support, build that CPC
 if MCA_btl_openib_have_xrc
 sources += \
     connect/btl_openib_connect_xoob.c \
     connect/btl_openib_connect_xoob.h
-endif
-
-# If we have ibcm support, build that CPC
-if MCA_btl_openib_have_ibcm
-sources += \
-    connect/btl_openib_connect_ibcm.c \
-    connect/btl_openib_connect_ibcm.h
-
-dist_pkgdata_DATA += connect/help-mpi-btl-openib-cpc-ibcm.txt
 endif
 
 # If we have rdmacm support, build that CPC
@@ -85,6 +85,13 @@ sources += \
     connect/btl_openib_connect_rdmacm.h
 
 dist_pkgdata_DATA += connect/help-mpi-btl-openib-cpc-rdmacm.txt
+endif
+
+# If we have dynamic SL support, build those files
+if MCA_btl_openib_have_dynamic_sl
+sources += \
+    connect/btl_openib_connect_sl.c \
+    connect/btl_openib_connect_sl.h
 endif
 
 # Make the output library in this directory, and name it either

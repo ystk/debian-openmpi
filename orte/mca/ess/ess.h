@@ -5,7 +5,7 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2010 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -29,6 +29,8 @@
 
 #include "opal/mca/mca.h"
 
+#include "orte/util/proc_info.h"
+
 BEGIN_C_DECLS
 
 /*
@@ -38,7 +40,7 @@ BEGIN_C_DECLS
 /*
  * Initialize the RTE for this environment
  */
-typedef int (*orte_ess_base_module_init_fn_t)(char flags);
+typedef int (*orte_ess_base_module_init_fn_t)(void);
 
 /*
  * Finalize the RTE for this environment
@@ -56,19 +58,27 @@ typedef int (*orte_ess_base_module_finalize_fn_t)(void);
  * function should create an appropriate file to alert the local
  * orted that termination was abnormal.
  */
-typedef void (*orte_ess_base_module_abort_fn_t)(int status, bool report);
+typedef void (*orte_ess_base_module_abort_fn_t)(int status, bool report)
+    __opal_attribute_noreturn_funcptr__;
 
 /**
- * Determine if a process is local to me
+ * Get the locality flag of the specified process
  *
- * MPI procs need to know if a process is "local" or not - i.e.,
- * if they share the same node. Different environments are capable
- * of making that determination in different ways - e.g., they may
- * provide a callable utility to return the answer, or download
- * a map of information into each process. This API provides a
- * means for each environment to do the "right thing".
+ * MPI procs need to know whether a proc shares a common socket,
+ * board, node, computing unit, or cluster. This function provides
+ * a means for an MPI proc to query the locality of another proc.
  */
-typedef bool (*orte_ess_base_module_proc_is_local_fn_t)(orte_process_name_t *proc);
+typedef uint8_t (*orte_ess_base_module_get_proc_locality_fn_t)(orte_process_name_t *proc);
+
+/**
+ * Get the vpid of the daemon who hosts the specified proc
+ *
+ * In order to route messages to the correct place, the RML
+ * and routed modules need to know the vpid of the daemon
+ * that hosts the intended recipient. This API accesses
+ * the pidmap/nidmap to retrieve that info
+ */
+typedef orte_vpid_t (*orte_ess_base_module_proc_get_daemon_fn_t)(orte_process_name_t *proc);
 
 /**
  * Get the hostname where a proc resides
@@ -85,17 +95,6 @@ typedef bool (*orte_ess_base_module_proc_is_local_fn_t)(orte_process_name_t *pro
 typedef char* (*orte_ess_base_module_proc_get_hostname_fn_t)(orte_process_name_t *proc);
 
 /**
- * Determine the arch of the node where a specified proc resides
- *
- * MPI procs need to know the arch being used by a specified proc.
- * Different environments provide that info in different ways - e.g., they may
- * provide a callable utility to return the answer, or download
- * a map of information into each process. This API provides a
- * means for each environment to do the "right thing".
- */
-typedef uint32_t (*orte_ess_base_module_proc_get_arch_fn_t)(orte_process_name_t *proc);
-
-/**
  * Get the local rank of a remote process
  */
 typedef orte_local_rank_t (*orte_ess_base_module_proc_get_local_rank_fn_t)(orte_process_name_t *proc);
@@ -106,11 +105,26 @@ typedef orte_local_rank_t (*orte_ess_base_module_proc_get_local_rank_fn_t)(orte_
 typedef orte_node_rank_t (*orte_ess_base_module_proc_get_node_rank_fn_t)(orte_process_name_t *proc);
 
 /**
- * Update the arch of a remote process
+ * Update thr pidmap
+ *
+ * When a job is dynamically launched via comm_spawn, the pre-existing daemons need to
+ * update their knowledge of the process map within the job so they can properly do
+ * things like route messages. This API allows daemons - and anyone else who wants to - to
+ * add a pidmap for a new job
  */
-typedef int (*orte_ess_base_module_update_arch_fn_t)(orte_process_name_t *proc, uint32_t arch);
+typedef int (*orte_ess_base_module_update_pidmap_fn_t)(opal_byte_object_t *bo);
 
+/**
+ * Update a nidmap
+ *
+ * When a job is dynamically launched via comm_spawn, the pre-existing daemons need to
+ * update their knowledge of the node map that contains info on what daemon resides
+ * on which nodes
+ */
+typedef int (*orte_ess_base_module_update_nidmap_fn_t)(opal_byte_object_t *bo);
 
+    
+    
 /**
  * Handle fault tolerance updates
  *
@@ -128,12 +142,13 @@ struct orte_ess_base_module_1_0_0_t {
     orte_ess_base_module_init_fn_t                  init;
     orte_ess_base_module_finalize_fn_t              finalize;
     orte_ess_base_module_abort_fn_t                 abort;
-    orte_ess_base_module_proc_is_local_fn_t         proc_is_local;
+    orte_ess_base_module_get_proc_locality_fn_t     proc_get_locality;
+    orte_ess_base_module_proc_get_daemon_fn_t       proc_get_daemon;
     orte_ess_base_module_proc_get_hostname_fn_t     proc_get_hostname;
-    orte_ess_base_module_proc_get_arch_fn_t         proc_get_arch;
     orte_ess_base_module_proc_get_local_rank_fn_t   get_local_rank;
     orte_ess_base_module_proc_get_node_rank_fn_t    get_node_rank;
-    orte_ess_base_module_update_arch_fn_t           update_arch;
+    orte_ess_base_module_update_pidmap_fn_t         update_pidmap;
+    orte_ess_base_module_update_nidmap_fn_t         update_nidmap;
     orte_ess_base_module_ft_event_fn_t              ft_event;
 };
 typedef struct orte_ess_base_module_1_0_0_t orte_ess_base_module_1_0_0_t;

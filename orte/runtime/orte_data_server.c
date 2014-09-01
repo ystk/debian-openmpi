@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,13 +21,16 @@
 #include "orte/constants.h"
 #include "orte/types.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
 
 #include "opal/mca/base/mca_base_param.h"
-#include "opal/threads/mutex.h"
-#include "opal/threads/condition.h"
+#include "opal/util/output.h"
 #include "opal/class/opal_pointer_array.h"
 
 #include "opal/dss/dss.h"

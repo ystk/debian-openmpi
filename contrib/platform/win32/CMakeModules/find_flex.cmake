@@ -27,10 +27,10 @@ MACRO(FIND_FLEX)
       IF(FLEX_EXECUTABLE_SYS)
         SET(FLEX_EXECUTABLE ${FLEX_EXECUTABLE_SYS} CACHE FILEPATH "Flex")
       ELSE(FLEX_EXECUTABLE_SYS)
-        IF(EXISTS ${CMAKE_SOURCE_DIR}/contrib/platform/win32/bin/flex.exe) 
-          # in case that no flex is installed, use our own version 
-          SET(FLEX_EXECUTABLE "${CMAKE_SOURCE_DIR}/contrib/platform/win32/bin/flex.exe" CACHE FILEPATH "Flex") 
-        ENDIF(EXISTS ${CMAKE_SOURCE_DIR}/contrib/platform/win32/bin/flex.exe)  
+        IF(EXISTS ${CMAKE_SOURCE_DIR}/contrib/platform/win32/bin/flex.exe)
+          # in case that no flex is installed, use our own version
+          SET(FLEX_EXECUTABLE "${CMAKE_SOURCE_DIR}/contrib/platform/win32/bin/flex.exe" CACHE FILEPATH "Flex")
+        ENDIF(EXISTS ${CMAKE_SOURCE_DIR}/contrib/platform/win32/bin/flex.exe)
       ENDIF(FLEX_EXECUTABLE_SYS)
     ELSE(WIN32)
       # nothing to do here at moment.
@@ -66,8 +66,7 @@ MACRO(ADD_FLEX_FILE _sourcelist _source _prefix _output_dir)
 
   GET_FILENAME_COMPONENT(_in ${_source} ABSOLUTE)
   GET_FILENAME_COMPONENT(_basename ${_source} NAME_WE)
-  
-  MESSAGE(STATUS "parse ${_basename} with flex...")
+
 
   STRING(LENGTH "${_prefix}" _prefix_length)
   IF(NOT _prefix_length EQUAL 0)
@@ -79,19 +78,29 @@ MACRO(ADD_FLEX_FILE _sourcelist _source _prefix _output_dir)
 
   #MESSAGE("${FLEX_EXECUTABLE} -o${_out} ${_args} ${_in}")
 
-  FILE(MAKE_DIRECTORY ${_output_dir})
-  EXECUTE_PROCESS(
-    COMMAND ${FLEX_EXECUTABLE} -o${_out} ${_args} ${_in}
-    OUTPUT_VARIABLE    OUTPUT
-    RESULT_VARIABLE    RESULT
-    ERROR_VARIABLE     ERROR
-    )
+  IF(NOT DEFINED ${_basename}_DONE)
 
-  IF (NOT ${RESULT} STREQUAL "1")
-    MESSAGE(STATUS "${ERROR}parse ${_basename} with flex...done")
-  ELSE (NOT ${RESULT} STREQUAL "1")
-    MESSAGE(FATAL_ERROR "${ERROR}parse ${_basename} with flex...failed")
-  ENDIF (NOT ${RESULT} STREQUAL "1")
+    MESSAGE(STATUS "parse ${_basename} with flex...")
+
+    FILE(MAKE_DIRECTORY ${_output_dir})
+    EXECUTE_PROCESS(
+      COMMAND ${FLEX_EXECUTABLE} -o${_out} ${_args} ${_in}
+      OUTPUT_VARIABLE    OUTPUT
+      RESULT_VARIABLE    RESULT
+      ERROR_VARIABLE     ERROR
+      )
+
+    IF (NOT ${RESULT} STREQUAL "1")
+      MESSAGE(STATUS "${ERROR}parse ${_basename} with flex...done")
+    ELSE (NOT ${RESULT} STREQUAL "1")
+      MESSAGE(FATAL_ERROR "${ERROR}parse ${_basename} with flex...failed")
+    ENDIF (NOT ${RESULT} STREQUAL "1")
+
+    SET(${_basename}_DONE TRUE CACHE INTERNAL "${_basename} flex parse done")
+
+  ENDIF(NOT DEFINED ${_basename}_DONE)
 
   SET(${_sourcelist} ${${_sourcelist}} ${_out} )
+  SET_SOURCE_FILES_PROPERTIES(${_out} PROPERTIES COMPILE_DEFINITIONS YY_NO_UNISTD_H)
+
 ENDMACRO(ADD_FLEX_FILE)

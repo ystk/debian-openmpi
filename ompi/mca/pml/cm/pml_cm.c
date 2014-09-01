@@ -17,7 +17,6 @@
 #include "ompi_config.h"
 
 #include "ompi/communicator/communicator.h"
-#include "opal/class/opal_list.h"
 #include "ompi/mca/pml/base/pml_base_request.h"
 #include "ompi/mca/pml/base/pml_base_bsend.h"
 #include "ompi/mca/pml/base/base.h"
@@ -58,9 +57,9 @@ mca_pml_cm_enable(bool enable)
        maybe? */
     ompi_free_list_init_new(&mca_pml_base_send_requests,
                         sizeof(mca_pml_cm_hvy_send_request_t) + ompi_mtl->mtl_request_size,
-                        CACHE_LINE_SIZE,
+                        opal_cache_line_size,
                         OBJ_CLASS(mca_pml_cm_hvy_send_request_t),
-                        0,CACHE_LINE_SIZE,
+                        0,opal_cache_line_size,
                         ompi_pml_cm.free_list_num,
                         ompi_pml_cm.free_list_max,
                         ompi_pml_cm.free_list_inc,
@@ -68,9 +67,9 @@ mca_pml_cm_enable(bool enable)
 
     ompi_free_list_init_new(&mca_pml_base_recv_requests,
                         sizeof(mca_pml_cm_hvy_recv_request_t) + ompi_mtl->mtl_request_size,
-                        CACHE_LINE_SIZE,
+                        opal_cache_line_size,
                         OBJ_CLASS(mca_pml_cm_hvy_recv_request_t),
-                        0,CACHE_LINE_SIZE,
+                        0,opal_cache_line_size,
                         ompi_pml_cm.free_list_num,
                         ompi_pml_cm.free_list_max,
                         ompi_pml_cm.free_list_inc,
@@ -83,13 +82,21 @@ mca_pml_cm_enable(bool enable)
 int
 mca_pml_cm_add_comm(ompi_communicator_t* comm)
 {
+    int ret;
+
     /* should never happen, but it was, so check */
-    if (comm->c_contextid > (uint32_t) ompi_pml_cm.super.pml_max_contextid) {
+    if (comm->c_contextid > ompi_pml_cm.super.pml_max_contextid) {
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
 
-    /* setup our per-communicator data */
+    /* initialize per-communicator data. MTLs may override this. */
     comm->c_pml_comm = NULL;
+
+    /* notify the MTL about the added communicator */
+    if ((NULL != ompi_mtl->mtl_add_comm) &&
+        (OMPI_SUCCESS != (ret = OMPI_MTL_CALL(add_comm(ompi_mtl, comm))))) {
+        return ret;
+    }
 
     return OMPI_SUCCESS;
 }
@@ -98,8 +105,13 @@ mca_pml_cm_add_comm(ompi_communicator_t* comm)
 int
 mca_pml_cm_del_comm(ompi_communicator_t* comm)
 {
-    /* clean up our per-communicator data */
-    comm->c_pml_comm = NULL;
+    int ret;
+
+    /* notify the MTL about the deleted communicator */
+    if ((NULL != ompi_mtl->mtl_del_comm) &&
+        (OMPI_SUCCESS != (ret = OMPI_MTL_CALL(del_comm(ompi_mtl, comm))))) {
+        return ret;
+    }
 
     return OMPI_SUCCESS;
 }
@@ -112,7 +124,7 @@ mca_pml_cm_add_procs(struct ompi_proc_t** procs, size_t nprocs)
     size_t i;
     struct mca_mtl_base_endpoint_t **endpoints;
 
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     for (i = 0 ; i < nprocs ; ++i) {
         if (procs[i]->proc_arch != ompi_proc_local()->proc_arch) {
             return OMPI_ERR_NOT_SUPPORTED;
@@ -130,7 +142,7 @@ mca_pml_cm_add_procs(struct ompi_proc_t** procs, size_t nprocs)
     endpoints = (struct mca_mtl_base_endpoint_t**)malloc(nprocs * sizeof(struct mca_mtl_base_endpoint_t*));
     if (NULL == endpoints) return OMPI_ERROR;
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     for (i = 0 ; i < nprocs ; ++i) {
         endpoints[i] = NULL;
     }
@@ -143,7 +155,7 @@ mca_pml_cm_add_procs(struct ompi_proc_t** procs, size_t nprocs)
     }
 
     for (i = 0 ; i < nprocs ; ++i) {
-        procs[i]->proc_pml = (struct mca_pml_base_endpoint_t*) endpoints[i];
+        procs[i]->proc_pml = (struct mca_pml_endpoint_t*) endpoints[i];
     }
 
     free(endpoints);

@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,7 +21,7 @@
 
 #include "mpi.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
@@ -58,8 +59,8 @@ ompi_coll_tuned_bcast_intra_generic( void* buffer,
     rank = ompi_comm_rank(comm);
     assert( size > 1 );
 
-    ompi_ddt_get_extent (datatype, &lb, &extent);
-    ompi_ddt_type_size( datatype, &type_size );
+    ompi_datatype_get_extent (datatype, &lb, &extent);
+    ompi_datatype_type_size( datatype, &type_size );
     num_segments = (original_count + count_by_segment - 1) / count_by_segment;
     realsegsize = count_by_segment * extent;
     
@@ -128,9 +129,9 @@ ompi_coll_tuned_bcast_intra_generic( void* buffer,
            5) Send the last segment to children
          */
         req_index = 0;
-        MCA_PML_CALL(irecv(tmpbuf, count_by_segment, datatype,
-                           tree->tree_prev, MCA_COLL_BASE_TAG_BCAST,
-                           comm, &recv_reqs[req_index]));
+        err = MCA_PML_CALL(irecv(tmpbuf, count_by_segment, datatype,
+                                 tree->tree_prev, MCA_COLL_BASE_TAG_BCAST,
+                                 comm, &recv_reqs[req_index]));
         if (err != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
         
         for( segindex = 1; segindex < num_segments; segindex++ ) {
@@ -138,10 +139,10 @@ ompi_coll_tuned_bcast_intra_generic( void* buffer,
             req_index = req_index ^ 0x1;
             
             /* post new irecv */
-            MCA_PML_CALL(irecv( tmpbuf + realsegsize, count_by_segment,
-                                datatype, tree->tree_prev, 
-                                MCA_COLL_BASE_TAG_BCAST, 
-                                comm, &recv_reqs[req_index]));
+            err = MCA_PML_CALL(irecv( tmpbuf + realsegsize, count_by_segment,
+                                      datatype, tree->tree_prev, 
+                                      MCA_COLL_BASE_TAG_BCAST, 
+                                      comm, &recv_reqs[req_index]));
             if (err != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
             
             /* wait for and forward the previous segment to children */
@@ -272,7 +273,7 @@ ompi_coll_tuned_bcast_intra_bintree ( void* buffer,
     /**
      * Determine number of elements sent per operation.
      */
-    ompi_ddt_type_size( datatype, &typelng );
+    ompi_datatype_type_size( datatype, &typelng );
     COLL_TUNED_COMPUTED_SEGCOUNT( segsize, typelng, segcount );
 
     OPAL_OUTPUT((ompi_coll_tuned_stream,"coll:tuned:bcast_intra_binary rank %d ss %5d typelng %lu segcount %d",
@@ -301,7 +302,7 @@ ompi_coll_tuned_bcast_intra_pipeline( void* buffer,
     /**
      * Determine number of elements sent per operation.
      */
-    ompi_ddt_type_size( datatype, &typelng );
+    ompi_datatype_type_size( datatype, &typelng );
     COLL_TUNED_COMPUTED_SEGCOUNT( segsize, typelng, segcount );
 
     OPAL_OUTPUT((ompi_coll_tuned_stream,"coll:tuned:bcast_intra_pipeline rank %d ss %5d typelng %lu segcount %d",
@@ -330,7 +331,7 @@ ompi_coll_tuned_bcast_intra_chain( void* buffer,
     /**
      * Determine number of elements sent per operation.
      */
-    ompi_ddt_type_size( datatype, &typelng );
+    ompi_datatype_type_size( datatype, &typelng );
     COLL_TUNED_COMPUTED_SEGCOUNT( segsize, typelng, segcount );
 
     OPAL_OUTPUT((ompi_coll_tuned_stream,"coll:tuned:bcast_intra_chain rank %d fo %d ss %5d typelng %lu segcount %d",
@@ -359,7 +360,7 @@ ompi_coll_tuned_bcast_intra_binomial( void* buffer,
     /**
      * Determine number of elements sent per operation.
      */
-    ompi_ddt_type_size( datatype, &typelng );
+    ompi_datatype_type_size( datatype, &typelng );
     COLL_TUNED_COMPUTED_SEGCOUNT( segsize, typelng, segcount );
 
     OPAL_OUTPUT((ompi_coll_tuned_stream,"coll:tuned:bcast_intra_binomial rank %d ss %5d typelng %lu segcount %d",
@@ -407,14 +408,14 @@ ompi_coll_tuned_bcast_intra_split_bintree ( void* buffer,
     COLL_TUNED_UPDATE_BINTREE( comm, tuned_module, root );
     tree = data->cached_bintree;
 
-    err = ompi_ddt_type_size( datatype, &type_size );
+    err = ompi_datatype_type_size( datatype, &type_size );
 
     /* Determine number of segments and number of elements per segment */
     counts[0] = count/2;
     if (count % 2 != 0) counts[0]++;
     counts[1] = count - counts[0];
     if ( segsize > 0 ) {
-        /* Note that ompi_ddt_type_size() will never return a negative
+        /* Note that ompi_datatype_type_size() will never return a negative
            value in typelng; it returns an int [vs. an unsigned type]
            because of the MPI spec. */
     	if (segsize < ((uint32_t) type_size)) {
@@ -441,7 +442,7 @@ ompi_coll_tuned_bcast_intra_split_bintree ( void* buffer,
 						    segsize, 1 ));
     }
 
-    err = ompi_ddt_get_extent (datatype, &lb, &type_extent);
+    err = ompi_datatype_get_extent (datatype, &lb, &type_extent);
     
     /* Determine real segment size */
     realsegsize[0] = segcount[0] * type_extent;
@@ -500,9 +501,9 @@ ompi_coll_tuned_bcast_intra_split_bintree ( void* buffer,
          * and we disseminating the data to all children.
          */
         sendcount[lr] = segcount[lr];
-        MCA_PML_CALL(irecv(tmpbuf[lr], sendcount[lr], datatype,
-                           tree->tree_prev, MCA_COLL_BASE_TAG_BCAST,
-                           comm, &base_req));
+        err = MCA_PML_CALL(irecv(tmpbuf[lr], sendcount[lr], datatype,
+                                 tree->tree_prev, MCA_COLL_BASE_TAG_BCAST,
+                                 comm, &base_req));
         if (err != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
 
         for( segindex = 1; segindex < num_segments[lr]; segindex++ ) {
@@ -510,17 +511,17 @@ ompi_coll_tuned_bcast_intra_split_bintree ( void* buffer,
             if( segindex == (num_segments[lr] - 1)) 
                 sendcount[lr] = counts[lr] - segindex*segcount[lr];
             /* post new irecv */
-            MCA_PML_CALL(irecv( tmpbuf[lr] + realsegsize[lr], sendcount[lr],
-                                datatype, tree->tree_prev, MCA_COLL_BASE_TAG_BCAST, 
-                                comm, &new_req));
+            err = MCA_PML_CALL(irecv( tmpbuf[lr] + realsegsize[lr], sendcount[lr],
+                                      datatype, tree->tree_prev, MCA_COLL_BASE_TAG_BCAST, 
+                                      comm, &new_req));
             if (err != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
 
             /* wait for and forward current segment */
             err = ompi_request_wait_all( 1, &base_req, MPI_STATUSES_IGNORE );
             for( i = 0; i < tree->tree_nextsize; i++ ) {  /* send data to children (segcount[lr]) */
-                MCA_PML_CALL(send( tmpbuf[lr], segcount[lr], datatype,
-                                   tree->tree_next[i], MCA_COLL_BASE_TAG_BCAST,
-                                   MCA_PML_BASE_SEND_STANDARD, comm));
+                err = MCA_PML_CALL(send( tmpbuf[lr], segcount[lr], datatype,
+                                         tree->tree_next[i], MCA_COLL_BASE_TAG_BCAST,
+                                         MCA_PML_BASE_SEND_STANDARD, comm));
                 if (err != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
             } /* end of for each child */
 
@@ -533,9 +534,9 @@ ompi_coll_tuned_bcast_intra_split_bintree ( void* buffer,
         /* wait for the last segment and forward current segment */
         err = ompi_request_wait_all( 1, &base_req, MPI_STATUSES_IGNORE );
         for( i = 0; i < tree->tree_nextsize; i++ ) {  /* send data to children */
-            MCA_PML_CALL(send(tmpbuf[lr], sendcount[lr], datatype,
-                              tree->tree_next[i], MCA_COLL_BASE_TAG_BCAST,
-                              MCA_PML_BASE_SEND_STANDARD, comm));
+            err = MCA_PML_CALL(send(tmpbuf[lr], sendcount[lr], datatype,
+                                    tree->tree_next[i], MCA_COLL_BASE_TAG_BCAST,
+                                    MCA_PML_BASE_SEND_STANDARD, comm));
             if (err != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
         } /* end of for each child */
     } 
@@ -548,9 +549,9 @@ ompi_coll_tuned_bcast_intra_split_bintree ( void* buffer,
             /* determine how many elements to expect in this round */
             if (segindex == (num_segments[lr] - 1)) sendcount[lr] = counts[lr] - segindex*segcount[lr];
             /* receive segments */
-            MCA_PML_CALL(recv(tmpbuf[lr], sendcount[lr], datatype,
-                              tree->tree_prev, MCA_COLL_BASE_TAG_BCAST,
-                              comm, MPI_STATUS_IGNORE));
+            err = MCA_PML_CALL(recv(tmpbuf[lr], sendcount[lr], datatype,
+                                    tree->tree_prev, MCA_COLL_BASE_TAG_BCAST,
+                                    comm, MPI_STATUS_IGNORE));
             if (err != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
             /* update the initial pointer to the buffer */
             tmpbuf[lr] += realsegsize[lr];
@@ -587,17 +588,17 @@ ompi_coll_tuned_bcast_intra_split_bintree ( void* buffer,
     } else if ( (size%2) == 0 ) {
         /* root sends right buffer to the last node */
         if( rank == root ) {
-            MCA_PML_CALL(send(tmpbuf[1], counts[1], datatype,
-                              (root+size-1)%size, MCA_COLL_BASE_TAG_BCAST,
-                              MCA_PML_BASE_SEND_STANDARD, comm));
+            err = MCA_PML_CALL(send(tmpbuf[1], counts[1], datatype,
+                                    (root+size-1)%size, MCA_COLL_BASE_TAG_BCAST,
+                                    MCA_PML_BASE_SEND_STANDARD, comm));
             if (err != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
 
         } 
         /* last node receives right buffer from the root */
         else if (rank == (root+size-1)%size) {
-            MCA_PML_CALL(recv(tmpbuf[1], counts[1], datatype,
-                              root, MCA_COLL_BASE_TAG_BCAST,
-                              comm, MPI_STATUS_IGNORE));
+            err = MCA_PML_CALL(recv(tmpbuf[1], counts[1], datatype,
+                                    root, MCA_COLL_BASE_TAG_BCAST,
+                                    comm, MPI_STATUS_IGNORE));
             if (err != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
         } 
         /* everyone else exchanges buffers */
@@ -736,8 +737,11 @@ int ompi_coll_tuned_bcast_intra_check_forced_init (coll_tuned_force_algorithm_mc
                                  "bcast_algorithm",
                                  "Which bcast algorithm is used. Can be locked down to choice of: 0 ignore, 1 basic linear, 2 chain, 3: pipeline, 4: split binary tree, 5: binary tree, 6: binomial tree.",
                                  false, false, 0, NULL);
+    if (mca_param_indices->algorithm_param_index < 0) {
+        return mca_param_indices->algorithm_param_index;
+    }
     mca_base_param_lookup_int(mca_param_indices->algorithm_param_index, &(requested_alg));
-    if( requested_alg > max_alg ) {
+    if( 0 > requested_alg || requested_alg > max_alg ) {
         if( 0 == ompi_comm_rank( MPI_COMM_WORLD ) ) {
             opal_output( 0, "Broadcast algorithm #%d is not available (range [0..%d]). Switching back to ignore(0)\n",
                          requested_alg, max_alg );

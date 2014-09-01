@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2009 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -34,9 +34,7 @@
 
 #include "opal/class/opal_object.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /**
  * A set of flags that determine the type of the file
@@ -53,6 +51,13 @@ extern "C" {
 #define ORTE_FILEM_MOVE_TYPE_GET       1
 #define ORTE_FILEM_MOVE_TYPE_RM        2
 #define ORTE_FILEM_MOVE_TYPE_UNKNOWN   3
+
+/**
+ * Hints that describe the local or remote file target for
+ * optimization purposes.
+ */
+#define ORTE_FILEM_HINT_NONE   0
+#define ORTE_FILEM_HINT_SHARED 1
 
 /**
  * Define a Process Set
@@ -92,8 +97,14 @@ struct orte_filem_base_file_set_1_0_0_t {
     /* Local file reference */
     char * local_target;
 
+    /* Local file reference hints */
+    int local_hint;
+
     /* Remove file reference */
     char * remote_target;
+
+    /* Remote file reference hints */
+    int remote_hint;
 
     /* Type of file to move */
     int target_flag;
@@ -356,9 +367,7 @@ ORTE_DECLSPEC extern orte_filem_base_module_t orte_filem;
     MCA_BASE_VERSION_2_0_0, \
     "filem", 2, 0, 0
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* ORTE_FILEM_H */
 

@@ -12,12 +12,11 @@
  *
  */
 
-
 #include "orte_config.h"
 #include "orte/constants.h"
 #include "orte/types.h"
 
-#if HAVE_UNISTD_H
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 #include <signal.h>
@@ -40,15 +39,12 @@
 #include <comutil.h>
 
 #include "opal/mca/installdirs/installdirs.h"
-#include "opal/threads/condition.h"
 #include "opal/event/event.h"
 #include "opal/util/argv.h"
-#include "orte/util/show_help.h"
+#include "opal/util/output.h"
 #include "opal/util/opal_environ.h"
-#include "opal/util/path.h"
 #include "opal/util/basename.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "opal/runtime/opal_progress.h"
 
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
@@ -75,8 +71,7 @@
  */
 static int plm_ccp_init(void);
 static int plm_ccp_launch_job(orte_job_t *jdata);
-static int plm_ccp_terminate_job(orte_jobid_t jobid);
-static int plm_ccp_terminate_orteds(void);
+static int plm_ccp_terminate_orteds();
 static int plm_ccp_signal_job(orte_jobid_t jobid, int32_t signal);
 static int plm_ccp_finalize(void);
 
@@ -94,8 +89,9 @@ orte_plm_base_module_t orte_plm_ccp_module = {
     orte_plm_base_set_hnp_name,
     plm_ccp_launch_job,
     NULL,
-    plm_ccp_terminate_job,
+    orte_plm_base_orted_terminate_job,
     plm_ccp_terminate_orteds,
+    orte_plm_base_orted_kill_local_procs,
     plm_ccp_signal_job,
     plm_ccp_finalize
 };
@@ -117,6 +113,10 @@ static int plm_ccp_init(void)
     if (ORTE_SUCCESS != (rc = orte_plm_base_comm_start())) {
         ORTE_ERROR_LOG(rc);
     }
+
+    /* we don't need a barrier to exit */
+    orte_orted_exit_with_barrier = false;
+
     return rc;
 }
 
@@ -157,7 +157,7 @@ static int plm_ccp_launch_job(orte_job_t *jdata)
     JobPriority job_priority = JobPriority_Normal;
 
  	orte_jobid_t failed_job; 
-    orte_job_state_t job_state = ORTE_JOB_STATE_UNDEF;
+    orte_job_state_t job_state = ORTE_JOB_NEVER_LAUNCHED;
 
  	/* default to declaring the daemon launch failed */ 
  	failed_job = ORTE_PROC_MY_NAME->jobid; 
@@ -181,8 +181,8 @@ static int plm_ccp_launch_job(orte_job_t *jdata)
         goto GETMAP;
     }
     
-    /* create a jobid for this job */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_create_jobid(&jdata->jobid))) {
+    /* setup the job */
+    if (ORTE_SUCCESS != (rc = orte_plm_base_setup_job(jdata))) {
         ORTE_ERROR_LOG(rc);
         goto cleanup;
     }
@@ -191,12 +191,6 @@ static int plm_ccp_launch_job(orte_job_t *jdata)
                          "%s plm:ccp: launching job %s",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          ORTE_JOBID_PRINT(jdata->jobid)));
-    
-    /* setup the job */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_setup_job(jdata))) {
-        ORTE_ERROR_LOG(rc);
-        goto cleanup;
-    }
 
 GETMAP:
     /* Get the map for this job */
@@ -222,7 +216,7 @@ GETMAP:
     /* Add basic orted command line options */
     orte_plm_base_orted_append_basic_args(&argc, &argv, "env",
                                           &proc_vpid_index,
-                                          false);
+                                          false, NULL);
 
     if (0 < opal_output_get_verbosity(orte_plm_globals.output)) {
         param = opal_argv_join(argv, ' ');
@@ -346,6 +340,12 @@ GETMAP:
                 num_processors += idle_processors;
             }
         }
+    }
+
+    if(NULL != mca_plm_ccp_component.job_name){
+        pJob->put_Name(_bstr_t(mca_plm_ccp_component.job_name));
+    } else {
+        pJob->put_Name(_bstr_t((*(*apps)).app));
     }
 
     pJob->put_MinimumNumberOfProcessors(num_processors);
@@ -600,28 +600,15 @@ launch_apps:
 }
 
 
-static int plm_ccp_terminate_job(orte_jobid_t jobid)
-{
-    int rc;
-    
-   /* order all of the daemons to kill their local procs for this job */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_kill_local_procs(jobid))) {
-        ORTE_ERROR_LOG(rc);
-    }
-
-    return rc;
-}
-
-
 /**
  * Terminate the orteds for a given job
  */
-int plm_ccp_terminate_orteds(void)
+int plm_ccp_terminate_orteds()
 {
     int rc;
     
     /* now tell them to die! */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_EXIT_WITH_REPLY_CMD))) {
+    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_EXIT_CMD))) {
         ORTE_ERROR_LOG(rc);
     }
     
@@ -706,7 +693,7 @@ static int plm_ccp_disconnect(void)
 static char *plm_ccp_commandline(char *prefix, char *node_name, int argc, char **argv)
 {
     char *commandline;
-    size_t i, len = 0;
+    int i, len = 0;
 
     for( i = 0; i < argc; i++ ) {
         len += strlen(argv[i]) + 1;
@@ -723,9 +710,6 @@ static char *plm_ccp_commandline(char *prefix, char *node_name, int argc, char *
         memset(commandline, 0, len + 1);
     }
 
-    commandline[0] = '"';
-    strcat(commandline, prefix);
-    strcat(commandline, "\\bin\"\\");
 
     for(i=0;i<argc;i++) {
 

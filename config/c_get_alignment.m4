@@ -10,6 +10,7 @@ dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
+dnl Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl 
 dnl Additional copyrights may follow
@@ -24,21 +25,16 @@ dnl
 AC_DEFUN([OMPI_C_GET_ALIGNMENT],[
     AC_CACHE_CHECK([alignment of $1],
                    [AS_TR_SH([ompi_cv_c_align_$1])],
-                   [AC_TRY_RUN([
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-struct foo { char c; $1 x; };
-int main()
-{
+		   [AC_RUN_IFELSE([AC_LANG_PROGRAM([AC_INCLUDES_DEFAULT],
+[[
+    struct foo { char c; $1 x; };
     struct foo *p = (struct foo *) malloc(sizeof(struct foo));
     int diff;
     FILE *f=fopen("conftestval", "w");
     if (!f) exit(1);
     diff = ((char *)&p->x) - ((char *)&p->c);
     fprintf(f, "%d\n", (diff >= 0) ? diff : -diff);
-    return 0;
-}],                            [AS_TR_SH([ompi_cv_c_align_$1])=`cat conftestval`],
+]])],                         [AS_TR_SH([ompi_cv_c_align_$1])=`cat conftestval`],
                                [AC_MSG_WARN([*** Problem running configure test!])
                                 AC_MSG_WARN([*** See config.log for details.])
                                 AC_MSG_ERROR([*** Cannot continue.])],

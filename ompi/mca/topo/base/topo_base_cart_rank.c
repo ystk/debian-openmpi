@@ -20,7 +20,6 @@
 #include "ompi_config.h"
 #include "ompi/mca/topo/base/base.h"
 #include "ompi/communicator/communicator.h"
-#include "ompi/mca/topo/topo.h"
 
 /*
  * function - Determines process rank in communicator given Cartesian
@@ -37,7 +36,7 @@
  * @retval MPI_ERR_ARG
  */                   
 
-int mca_topo_base_cart_rank (MPI_Comm comm, 
+int mca_topo_base_cart_rank (ompi_communicator_t* comm, 
                          int *coords, 
                          int *rank){
    int prank;

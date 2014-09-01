@@ -23,10 +23,10 @@
 #include "ompi/communicator/communicator.h"
 #include "ompi/file/file.h"
 #include "opal/class/opal_list.h"
+#include "opal/util/output.h"
 #include "ompi/runtime/params.h"
 #include "ompi/mca/io/base/base.h"
 #include "ompi/info/info.h"
-#include "orte/util/show_help.h"
 
 /*
  * Table for Fortran <-> C file handle conversion
@@ -143,8 +143,6 @@ int ompi_file_open(struct ompi_communicator_t *comm, char *filename,
 int ompi_file_close(ompi_file_t **file) 
 {
     (*file)->f_flags |= OMPI_FILE_ISCLOSED;
-    mca_io_base_component_del(&((*file)->f_io_selected_component));
-    mca_io_base_request_return(*file);
     OBJ_RELEASE(*file);
     *file = &ompi_mpi_file_null.file;
 
@@ -254,12 +252,6 @@ static void file_constructor(ompi_file_t *file)
            sizeof(file->f_io_selected_module));
     file->f_io_selected_data = NULL;
 
-    /* Construct the io request freelist */
-    OBJ_CONSTRUCT(&file->f_io_requests, opal_list_t);
-
-    /* Construct the per-module io request freelist */
-    OBJ_CONSTRUCT(&file->f_io_requests_lock, opal_mutex_t);
-
     /* If the user doesn't want us to ever free it, then add an extra
        RETAIN here */
 
@@ -280,7 +272,6 @@ static void file_destructor(ompi_file_t *file)
     case MCA_IO_BASE_V_2_0_0:
         file->f_io_selected_module.v2_0_0.io_module_file_close(file);
         break;
-
     default:
         /* Should never get here */
         break;
@@ -290,37 +281,31 @@ static void file_destructor(ompi_file_t *file)
 
     if (NULL != file->f_comm) {
         OBJ_RELEASE(file->f_comm);
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
         file->f_comm = NULL;
 #endif
     }
 
     if (NULL != file->f_filename) {
         free(file->f_filename);
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
         file->f_filename = NULL;
 #endif
     }
 
     if (NULL != file->error_handler) {
         OBJ_RELEASE(file->error_handler);
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
         file->error_handler = NULL;
 #endif
     }
 
     if (NULL != file->f_info) {
         OBJ_RELEASE(file->f_info);
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
         file->f_info = NULL;
 #endif
     }
-
-    /* Destruct the io request freelist */
-    OBJ_DESTRUCT(&file->f_io_requests);
-
-    /* Destruct the io requests lock  */
-    OBJ_DESTRUCT(&file->f_io_requests_lock);
 
     /* Reset the f_to_c table entry */
 

@@ -21,7 +21,7 @@
 #include "ompi/mpi/f77/bindings.h"
 #include "ompi/mpi/f77/constants.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_SCATTERV = mpi_scatterv_f
 #pragma weak pmpi_scatterv = mpi_scatterv_f
 #pragma weak pmpi_scatterv_ = mpi_scatterv_f
@@ -36,14 +36,14 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_SCATTERV,
                            (sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_SCATTERV = mpi_scatterv_f
 #pragma weak mpi_scatterv = mpi_scatterv_f
 #pragma weak mpi_scatterv_ = mpi_scatterv_f
 #pragma weak mpi_scatterv__ = mpi_scatterv_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_SCATTERV,
                            mpi_scatterv,
                            mpi_scatterv_,
@@ -54,7 +54,7 @@ OMPI_GENERATE_F77_BINDINGS (MPI_SCATTERV,
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
@@ -78,9 +78,9 @@ void mpi_scatterv_f(char *sendbuf, MPI_Fint *sendcounts,
     OMPI_ARRAY_FINT_2_INT(sendcounts, size);
     OMPI_ARRAY_FINT_2_INT(displs, size);
 
-    sendbuf = OMPI_F2C_IN_PLACE(sendbuf);
-    sendbuf = OMPI_F2C_BOTTOM(sendbuf);
-    recvbuf = OMPI_F2C_BOTTOM(recvbuf);
+    sendbuf = (char *) OMPI_F2C_IN_PLACE(sendbuf);
+    sendbuf = (char *) OMPI_F2C_BOTTOM(sendbuf);
+    recvbuf = (char *) OMPI_F2C_BOTTOM(recvbuf);
 
     *ierr = OMPI_INT_2_FINT(MPI_Scatterv(sendbuf, 
 					 OMPI_ARRAY_NAME_CONVERT(sendcounts),

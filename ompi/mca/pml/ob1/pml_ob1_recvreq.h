@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart, 
@@ -29,7 +29,6 @@
 #include "ompi/mca/pml/ob1/pml_ob1_comm.h"
 #include "ompi/mca/mpool/base/base.h"
 #include "ompi/mca/pml/base/pml_base_recvreq.h"
-#include "ompi/datatype/datatype.h"
 
 BEGIN_C_DECLS
 
@@ -39,7 +38,7 @@ struct mca_pml_ob1_recv_request_t {
     int32_t req_lock;
     size_t  req_pipeline_depth;
     size_t  req_bytes_received;  /**< amount of data transferred into the user buffer */
-    size_t  req_bytes_delivered; /**< local size of the data as suggested by the user */
+    size_t  req_bytes_expected; /**< local size of the data as suggested by the user */
     size_t  req_rdma_offset;
     size_t  req_send_offset;
     uint32_t req_rdma_cnt;
@@ -138,7 +137,7 @@ do {                                                                \
  *
  *  @param recvreq (IN)  Receive request.
  */
-void static inline
+static inline void
 recv_request_pml_complete(mca_pml_ob1_recv_request_t *recvreq)
 {
     size_t i;
@@ -164,11 +163,11 @@ recv_request_pml_complete(mca_pml_ob1_recv_request_t *recvreq)
     } else {
         /* initialize request status */
         recvreq->req_recv.req_base.req_pml_complete = true;
-        recvreq->req_recv.req_base.req_ompi.req_status._count =
-            (int)recvreq->req_bytes_received;
-        if (recvreq->req_recv.req_bytes_packed > recvreq->req_bytes_delivered) {
-            recvreq->req_recv.req_base.req_ompi.req_status._count =
-                (int)recvreq->req_recv.req_bytes_packed;
+        recvreq->req_recv.req_base.req_ompi.req_status._ucount =
+            recvreq->req_bytes_received;
+        if (recvreq->req_recv.req_bytes_packed > recvreq->req_bytes_expected) {
+            recvreq->req_recv.req_base.req_ompi.req_status._ucount =
+                recvreq->req_recv.req_bytes_packed;
             recvreq->req_recv.req_base.req_ompi.req_status.MPI_ERROR =
                 MPI_ERR_TRUNCATE;
         }
@@ -177,10 +176,10 @@ recv_request_pml_complete(mca_pml_ob1_recv_request_t *recvreq)
     OPAL_THREAD_UNLOCK(&ompi_request_lock);
 }
 
-bool static inline
+static inline bool
 recv_request_pml_complete_check(mca_pml_ob1_recv_request_t *recvreq)
 {
-#if OMPI_HAVE_THREAD_SUPPORT
+#if OPAL_HAVE_THREAD_SUPPORT
     opal_atomic_rmb();
 #endif
     if(recvreq->req_match_received &&
@@ -198,16 +197,16 @@ extern void mca_pml_ob1_recv_req_start(mca_pml_ob1_recv_request_t *req);
 
 static inline void prepare_recv_req_converter(mca_pml_ob1_recv_request_t *req)
 {
-    if( req->req_recv.req_base.req_datatype->size | req->req_recv.req_base.req_count ) {
-        ompi_convertor_copy_and_prepare_for_recv(
+    if( req->req_recv.req_base.req_datatype->super.size | req->req_recv.req_base.req_count ) {
+        opal_convertor_copy_and_prepare_for_recv(
                 req->req_recv.req_base.req_proc->proc_convertor,
-                req->req_recv.req_base.req_datatype,
+                &(req->req_recv.req_base.req_datatype->super),
                 req->req_recv.req_base.req_count,
                 req->req_recv.req_base.req_addr,
                 0,
                 &req->req_recv.req_base.req_convertor);
-        ompi_convertor_get_unpacked_size(&req->req_recv.req_base.req_convertor,
-                &req->req_bytes_delivered);
+        opal_convertor_get_unpacked_size(&req->req_recv.req_base.req_convertor,
+                                         &req->req_bytes_expected);
     }
 }
 
@@ -220,18 +219,18 @@ static inline void recv_req_matched(mca_pml_ob1_recv_request_t *req,
     req->req_recv.req_base.req_ompi.req_status.MPI_SOURCE = hdr->hdr_src;
     req->req_recv.req_base.req_ompi.req_status.MPI_TAG = hdr->hdr_tag;
     req->req_match_received = true;
-#if OMPI_HAVE_THREAD_SUPPORT
+#if OPAL_HAVE_THREAD_SUPPORT
     opal_atomic_wmb();
 #endif
     if(req->req_recv.req_bytes_packed > 0) {
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
         if(MPI_ANY_SOURCE == req->req_recv.req_base.req_peer) {
             /* non wildcard prepared during post recv */
             prepare_recv_req_converter(req);
         }
-#endif  /* OMPI_ENABLE_HETEROGENEOUS_SUPPORT */
+#endif  /* OPAL_ENABLE_HETEROGENEOUS_SUPPORT */
         PERUSE_TRACE_COMM_EVENT(PERUSE_COMM_REQ_XFER_BEGIN,
-                &req->req_recv.req_base, PERUSE_RECV);
+                                &req->req_recv.req_base, PERUSE_RECV);
     }
 }
 
@@ -271,9 +270,9 @@ do {                                                                            
         PERUSE_TRACE_COMM_OMPI_EVENT (PERUSE_COMM_REQ_XFER_CONTINUE,              \
                                       &(recvreq->req_recv.req_base), max_data,    \
                                       PERUSE_RECV);                               \
-        ompi_convertor_set_position( &(request->req_recv.req_base.req_convertor), \
+        opal_convertor_set_position( &(request->req_recv.req_base.req_convertor), \
                                      &data_offset );                              \
-        ompi_convertor_unpack( &(request)->req_recv.req_base.req_convertor,       \
+        opal_convertor_unpack( &(request)->req_recv.req_base.req_convertor,       \
                                iov,                                               \
                                &iov_count,                                        \
                                &max_data );                                       \

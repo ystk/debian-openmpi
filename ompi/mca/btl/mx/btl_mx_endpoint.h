@@ -21,16 +21,12 @@
 
 #include "opal/class/opal_list.h"
 #include "opal/event/event.h"
-#include "ompi/mca/pml/pml.h"
-#include "ompi/mca/btl/btl.h"
 #include "btl_mx_frag.h"
 #include "btl_mx.h"
 
 #include <myriexpress.h>
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 #define MCA_BTL_MX_NOT_CONNECTED       0x0000
 #define MCA_BTL_MX_NOT_REACHEABLE      0x0001
@@ -92,7 +88,5 @@ typedef mca_btl_base_endpoint_t  mca_btl_mx_endpoint_t;
 
 OBJ_CLASS_DECLARATION(mca_btl_mx_endpoint_t);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif

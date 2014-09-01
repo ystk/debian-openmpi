@@ -20,13 +20,15 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/runtime/params.h"
+#include "ompi/errhandler/errhandler.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/file/file.h"
 #include "ompi/mca/io/io.h"
 #include "ompi/mca/io/base/io_base_request.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_File_iread_shared = PMPI_File_iread_shared
 #endif
 
@@ -41,7 +43,6 @@ int MPI_File_iread_shared(MPI_File fh, void *buf, int count,
                           MPI_Datatype datatype, MPI_Request *request)
 {
     int rc;
-    mca_io_base_request_t *io_request;
 
     MEMCHECKER(
         memchecker_datatype(datatype);
@@ -55,6 +56,8 @@ int MPI_File_iread_shared(MPI_File fh, void *buf, int count,
             rc = MPI_ERR_FILE;
         } else if (count < 0) {
             rc = MPI_ERR_COUNT;
+        } else if (NULL == request) {
+            rc = MPI_ERR_REQUEST;
         } else {
            OMPI_CHECK_DATATYPE_FOR_RECV(rc, datatype, count);
         }
@@ -63,20 +66,11 @@ int MPI_File_iread_shared(MPI_File fh, void *buf, int count,
 
     OPAL_CR_ENTER_LIBRARY();
 
-    /* Get a request */
-
-    if (OMPI_SUCCESS != mca_io_base_request_alloc(fh, &io_request)) {
-        OPAL_CR_EXIT_LIBRARY();
-        return OMPI_ERRHANDLER_INVOKE(fh, MPI_ERR_NO_MEM, FUNC_NAME);
-    }
-    *request = (ompi_request_t*) io_request;
-
     /* Call the back-end io component function */
-
     switch (fh->f_io_version) {
     case MCA_IO_BASE_V_2_0_0:
         rc = fh->f_io_selected_module.v2_0_0.
-            io_module_file_iread_shared(fh, buf, count, datatype, io_request);
+            io_module_file_iread_shared(fh, buf, count, datatype, request);
         break;
 
     default:

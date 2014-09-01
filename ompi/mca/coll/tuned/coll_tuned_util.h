@@ -23,14 +23,11 @@
 
 #include "mpi.h"
 #include "opal/mca/mca.h"
-#include "ompi/datatype/datatype.h"
-#include "ompi/mca/coll/coll.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/request/request.h"
 #include "ompi/mca/pml/pml.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /* prototypes */
 int ompi_coll_tuned_sendrecv_actual( void* sendbuf, int scount, 
@@ -54,7 +51,7 @@ ompi_coll_tuned_sendrecv( void* sendbuf, int scount, ompi_datatype_t* sdatatype,
                           ompi_status_public_t* status, int myid )
 {
     if ((dest == myid) && (source == myid)) {
-        return (int) ompi_ddt_sndrcv(sendbuf, (int32_t) scount, sdatatype, 
+        return (int) ompi_datatype_sndrcv(sendbuf, (int32_t) scount, sdatatype, 
                                      recvbuf, (int32_t) rcount, rdatatype);
     }
     return ompi_coll_tuned_sendrecv_actual (sendbuf, scount, sdatatype, 
@@ -87,7 +84,7 @@ ompi_coll_tuned_sendrecv_localcompleted( void* sendbuf, int scount,
                                          ompi_status_public_t* status, int myid )
 {
     if ((dest == myid) && (source == myid)) {
-        return (int) ompi_ddt_sndrcv(sendbuf, (int32_t) scount, sdatatype, 
+        return (int) ompi_datatype_sndrcv(sendbuf, (int32_t) scount, sdatatype, 
                                      recvbuf, (int32_t) rcount, rdatatype);
     }
     return ompi_coll_tuned_sendrecv_actual_localcompleted (sendbuf, scount, 
@@ -122,9 +119,7 @@ ompi_coll_tuned_isendrecv( void* sendbuf, int scount, ompi_datatype_t* sdtype,
    return ret;
 }
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif /* MCA_COLL_TUNED_UTIL_EXPORT_H */
 
 

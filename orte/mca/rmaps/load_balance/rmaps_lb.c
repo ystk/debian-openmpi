@@ -10,6 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -53,12 +55,12 @@ static int loadbalance(orte_job_t *jdata);
 static int switchyard(orte_job_t *jdata)
 {
     int rc;
-    
-    if (0 < orte_rmaps_base.npernode) {
+
+    if (0 < jdata->map->npernode) {
         rc = npernode(jdata);
-    } else if (0 < orte_rmaps_base.nperboard) {
+    } else if (0 < jdata->map->nperboard) {
         rc = nperboard(jdata);
-    } else if (0 < orte_rmaps_base.npersocket) {
+    } else if (0 < jdata->map->npersocket) {
         rc = npersocket(jdata);
     } else {
         rc = loadbalance(jdata);
@@ -90,7 +92,7 @@ static int switchyard(orte_job_t *jdata)
 static int npernode(orte_job_t *jdata)
 {
     orte_app_context_t *app;
-    int j, rc=ORTE_SUCCESS;
+    int i, j, rc=ORTE_SUCCESS;
     opal_list_t node_list;
     opal_list_item_t *item;
     orte_std_cntr_t num_slots;
@@ -101,72 +103,73 @@ static int npernode(orte_job_t *jdata)
     /* setup the node list */
     OBJ_CONSTRUCT(&node_list, opal_list_t);
    
-    /* can only have one app_context here */
-    if (NULL == (app = (orte_app_context_t*)opal_pointer_array_get_item(jdata->apps, 0))) {
-        ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-        return ORTE_ERR_NOT_FOUND;
-    }
-    /* use the number of procs if one was given */
-    if (0 < app->num_procs) {
-        np = app->num_procs;
-    } else {
-        np = INT_MAX;
-    }
-    /* for each app_context, we have to get the list of nodes that it can
-     * use since that can now be modified with a hostfile and/or -host
-     * option
-     */
-    if(ORTE_SUCCESS != (rc = orte_rmaps_base_get_target_nodes(&node_list, &num_slots, app,
-                                                              jdata->map->policy))) {
-        ORTE_ERROR_LOG(rc);
-        goto error;
-    }
-    /* loop through the list of nodes */
-    num_nodes = opal_list_get_size(&node_list);
-    nprocs = 0;
-    while (NULL != (item = opal_list_remove_first(&node_list))) {
-        node = (orte_node_t*)item;
-        /* put the specified number of procs on each node */
-        for (j=0; j < orte_rmaps_base.npernode && nprocs < np; j++) {
-            if (ORTE_SUCCESS != (rc = orte_rmaps_base_claim_slot(jdata, node,
-                                                                 jdata->map->cpus_per_rank, app->idx,
-                                                                 &node_list, jdata->map->oversubscribe,
-                                                                 false, NULL))) {
-                /** if the code is ORTE_ERR_NODE_FULLY_USED, and we still have
-                 * more procs to place, then that is an error
-                 */
-                if (ORTE_ERR_NODE_FULLY_USED != rc ||
-                    j < orte_rmaps_base.npernode-1) {
-                    ORTE_ERROR_LOG(rc);
-                    OBJ_RELEASE(node);
-                    goto error;
-                }
-            }
-            nprocs++;
+    /* loop through the app_contexts */
+    for(i=0; i < jdata->apps->size; i++) {
+        if (NULL == (app = (orte_app_context_t*)opal_pointer_array_get_item(jdata->apps, i))) {
+            continue;
         }
-        OBJ_RELEASE(node);
-    }
-    /* if the user requested a specific number of procs and
-     * the total number of procs we were able to assign
-     * doesn't equal the number requested, then we have a
-     * problem
-     */
-    if (0 < app->num_procs && nprocs < app->num_procs) {
-        orte_show_help("help-orte-rmaps-base.txt", "rmaps:too-many-procs", true,
-                       app->app, app->num_procs,
-                       "number of nodes", num_nodes,
-                       "npernode", orte_rmaps_base.npernode);
-        return ORTE_ERR_SILENT;
-    }
-    /* update the number of procs in the job */
-    jdata->num_procs += nprocs;
-    /* compute vpids and add proc objects to the job - this has to be
-     * done after each app_context is mapped in order to keep the
-     * vpids contiguous within an app_context
-     */
-    if (ORTE_SUCCESS != (rc = orte_rmaps_base_compute_vpids(jdata))) {
-        ORTE_ERROR_LOG(rc);
-        return rc;
+        /* use the number of procs if one was given */
+        if (0 < app->num_procs) {
+            np = app->num_procs;
+        } else {
+            np = INT_MAX;
+        }
+        /* for each app_context, we have to get the list of nodes that it can
+         * use since that can now be modified with a hostfile and/or -host
+         * option
+         */
+        if(ORTE_SUCCESS != (rc = orte_rmaps_base_get_target_nodes(&node_list, &num_slots, app,
+                                                                  jdata->map->policy))) {
+            ORTE_ERROR_LOG(rc);
+            goto error;
+        }
+        /* loop through the list of nodes */
+        num_nodes = opal_list_get_size(&node_list);
+        nprocs = 0;
+        while (NULL != (item = opal_list_remove_first(&node_list))) {
+            node = (orte_node_t*)item;
+            /* put the specified number of procs on each node */
+            for (j=0; j < jdata->map->npernode && nprocs < np; j++) {
+                if (ORTE_SUCCESS != (rc = orte_rmaps_base_claim_slot(jdata, node,
+                                                                     jdata->map->cpus_per_rank, app->idx,
+                                                                     &node_list, jdata->map->oversubscribe,
+                                                                     false, NULL))) {
+                    /** if the code is ORTE_ERR_NODE_FULLY_USED, and we still have
+                     * more procs to place, then that is an error
+                     */
+                    if (ORTE_ERR_NODE_FULLY_USED != rc ||
+                        j < jdata->map->npernode-1) {
+                        ORTE_ERROR_LOG(rc);
+                        OBJ_RELEASE(node);
+                        goto error;
+                    }
+                }
+                nprocs++;
+            }
+            OBJ_RELEASE(node);
+        }
+        /* update the number of procs in the job */
+        jdata->num_procs += nprocs;
+        /* if the user requested a specific number of procs and
+         * the total number of procs we were able to assign
+         * doesn't equal the number requested, then we have a
+         * problem
+         */
+        if (0 < app->num_procs && nprocs < app->num_procs) {
+            orte_show_help("help-orte-rmaps-base.txt", "rmaps:too-many-procs", true,
+                           app->app, app->num_procs,
+                           "number of nodes", num_nodes,
+                           "npernode", jdata->map->npernode);
+            return ORTE_ERR_SILENT;
+        }
+        /* compute vpids and add proc objects to the job - this has to be
+         * done after each app_context is mapped in order to keep the
+         * vpids contiguous within an app_context
+         */
+        if (ORTE_SUCCESS != (rc = orte_rmaps_base_compute_vpids(jdata))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
     }
 
 error:
@@ -180,86 +183,87 @@ error:
 static int nperboard(orte_job_t *jdata)
 {
     orte_app_context_t *app;
-    int j, k, rc=ORTE_SUCCESS;
+    int i, j, k, rc=ORTE_SUCCESS;
     opal_list_t node_list;
     opal_list_item_t *item;
     orte_std_cntr_t num_slots;
     orte_node_t *node;
     int np, nprocs;
-    int num_boards=orte_default_num_boards;
+    int num_boards=0;
 
     /* setup the node list */
     OBJ_CONSTRUCT(&node_list, opal_list_t);
     
-    /* can only have one app_context here */
-    if (NULL == (app = (orte_app_context_t*)opal_pointer_array_get_item(jdata->apps, 0))) {
-        ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-        return ORTE_ERR_NOT_FOUND;
-    }
-    /* use the number of procs if one was given */
-    if (0 < app->num_procs) {
-        np = app->num_procs;
-    } else {
-        np = INT_MAX;
-    }
-    /* for each app_context, we have to get the list of nodes that it can
-     * use since that can now be modified with a hostfile and/or -host
-     * option
-     */
-    if(ORTE_SUCCESS != (rc = orte_rmaps_base_get_target_nodes(&node_list, &num_slots, app,
-                                                              jdata->map->policy))) {
-        ORTE_ERROR_LOG(rc);
-        goto error;
-    }
-    /* loop through the list of nodes */
-    nprocs = 0;
-    while (NULL != (item = opal_list_remove_first(&node_list))) {
-        node = (orte_node_t*)item;
-        num_boards = node->boards;
-        /* loop through the number of boards in this node */
-        for (k=0; k < node->boards && nprocs < np; k++) {
-            /* put the specified number of procs on each board */
-            for (j=0; j < orte_rmaps_base.nperboard && nprocs < np; j++) {
-                if (ORTE_SUCCESS != (rc = orte_rmaps_base_claim_slot(jdata, node,
-                                                                     jdata->map->cpus_per_rank, app->idx,
-                                                                     &node_list, jdata->map->oversubscribe,
-                                                                     false, NULL))) {
-                    /** if the code is ORTE_ERR_NODE_FULLY_USED, and we still have
-                     * more procs to place, then that is an error
-                     */
-                    if (ORTE_ERR_NODE_FULLY_USED != rc ||
-                        j < orte_rmaps_base.nperboard-1) {
-                        ORTE_ERROR_LOG(rc);
-                        OBJ_RELEASE(node);
-                        goto error;
-                    }
-                }
-                nprocs++;
-            }
+    /* loop through the app_contexts */
+    for(i=0; i < jdata->apps->size; i++) {
+        if (NULL == (app = (orte_app_context_t*)opal_pointer_array_get_item(jdata->apps, i))) {
+            continue;
         }
-        OBJ_RELEASE(node);
-    }
-    /* if the user requested a specific number of procs and
-     * the total number of procs we were able to assign
-     * doesn't equal the number requested, then we have a
-     * problem
-     */
-    if (0 < app->num_procs && nprocs < app->num_procs) {
-        orte_show_help("help-orte-rmaps-base.txt", "rmaps:too-many-procs", true,
-                       app->app, app->num_procs,
-                       "number of boards", num_boards,
-                       "nperboard", orte_rmaps_base.nperboard);
-        return ORTE_ERR_SILENT;
-    }
-    /* update the number of procs in the job */
-    jdata->num_procs += nprocs;
-    /* compute vpids and add proc objects to the job - this has to be
-     * done after each app_context is mapped in order to keep the
-     * vpids contiguous within an app_context
-     */
-    if (ORTE_SUCCESS != (rc = orte_rmaps_base_compute_vpids(jdata))) {
-        ORTE_ERROR_LOG(rc);
-        return rc;
+        /* use the number of procs if one was given */
+        if (0 < app->num_procs) {
+            np = app->num_procs;
+        } else {
+            np = INT_MAX;
+        }
+        /* for each app_context, we have to get the list of nodes that it can
+         * use since that can now be modified with a hostfile and/or -host
+         * option
+         */
+        if(ORTE_SUCCESS != (rc = orte_rmaps_base_get_target_nodes(&node_list, &num_slots, app,
+                                                                  jdata->map->policy))) {
+            ORTE_ERROR_LOG(rc);
+            goto error;
+        }
+        /* loop through the list of nodes */
+        nprocs = 0;
+        while (NULL != (item = opal_list_remove_first(&node_list))) {
+            node = (orte_node_t*)item;
+            num_boards = node->boards;
+            /* loop through the number of boards in this node */
+            for (k=0; k < node->boards && nprocs < np; k++) {
+                /* put the specified number of procs on each board */
+                for (j=0; j < jdata->map->nperboard && nprocs < np; j++) {
+                    if (ORTE_SUCCESS != (rc = orte_rmaps_base_claim_slot(jdata, node,
+                                                                         jdata->map->cpus_per_rank, app->idx,
+                                                                         &node_list, jdata->map->oversubscribe,
+                                                                         false, NULL))) {
+                        /** if the code is ORTE_ERR_NODE_FULLY_USED, and we still have
+                         * more procs to place, then that is an error
+                         */
+                        if (ORTE_ERR_NODE_FULLY_USED != rc ||
+                            j < jdata->map->nperboard-1) {
+                            ORTE_ERROR_LOG(rc);
+                            OBJ_RELEASE(node);
+                            goto error;
+                        }
+                    }
+                    nprocs++;
+                }
+            }
+            OBJ_RELEASE(node);
+        }
+        /* update the number of procs in the job */
+        jdata->num_procs += nprocs;
+        /* if the user requested a specific number of procs and
+         * the total number of procs we were able to assign
+         * doesn't equal the number requested, then we have a
+         * problem
+         */
+        if (0 < app->num_procs && nprocs < app->num_procs) {
+            orte_show_help("help-orte-rmaps-base.txt", "rmaps:too-many-procs", true,
+                           app->app, app->num_procs,
+                           "number of boards", num_boards,
+                           "nperboard", jdata->map->nperboard);
+            return ORTE_ERR_SILENT;
+        }
+        /* compute vpids and add proc objects to the job - this has to be
+         * done after each app_context is mapped in order to keep the
+         * vpids contiguous within an app_context
+         */
+        if (ORTE_SUCCESS != (rc = orte_rmaps_base_compute_vpids(jdata))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
     }
 
 error:
@@ -274,90 +278,91 @@ error:
 static int npersocket(orte_job_t *jdata)
 {
     orte_app_context_t *app;
-    int j, k, n, rc=ORTE_SUCCESS;
+    int i, j, k, n, rc=ORTE_SUCCESS;
     opal_list_t node_list;
     opal_list_item_t *item;
     orte_std_cntr_t num_slots;
     orte_node_t *node;
     int np, nprocs;
-    int num_sockets=orte_default_num_sockets_per_board;
+    int num_sockets=0;
 
     /* setup the node list */
     OBJ_CONSTRUCT(&node_list, opal_list_t);
    
-    /* can only have one app_context here */
-    if (NULL == (app = (orte_app_context_t*)opal_pointer_array_get_item(jdata->apps, 0))) {
-        ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-        return ORTE_ERR_NOT_FOUND;
-    }
-    /* use the number of procs if one was given */
-    if (0 < app->num_procs) {
-        np = app->num_procs;
-    } else {
-        np = INT_MAX;
-    }
-    /* for each app_context, we have to get the list of nodes that it can
-     * use since that can now be modified with a hostfile and/or -host
-     * option
-     */
-    if(ORTE_SUCCESS != (rc = orte_rmaps_base_get_target_nodes(&node_list, &num_slots, app,
-                                                              jdata->map->policy))) {
-        ORTE_ERROR_LOG(rc);
-        goto error;
-    }
-    /* loop through the list of nodes */
-    nprocs = 0;
-    while (NULL != (item = opal_list_remove_first(&node_list))) {
-        node = (orte_node_t*)item;
-        num_sockets = node->sockets_per_board;
-        /* loop through the number of boards in this node */
-        for (k=0; k < node->boards && nprocs < np; k++) {
-            /* loop through the number of sockets/board */
-            for (n=0; n < node->sockets_per_board && nprocs < np; n++) {
-                /* put the specified number of procs on each socket */
-                for (j=0; j < orte_rmaps_base.npersocket && nprocs < np; j++) {
-                    if (ORTE_SUCCESS != (rc = orte_rmaps_base_claim_slot(jdata, node,
-                                                                         jdata->map->cpus_per_rank, app->idx,
-                                                                         &node_list, jdata->map->oversubscribe,
-                                                                         false, NULL))) {
-                        /** if the code is ORTE_ERR_NODE_FULLY_USED, and we still have
-                         * more procs to place, then that is an error
-                         */
-                        if (ORTE_ERR_NODE_FULLY_USED != rc ||
-                            j < orte_rmaps_base.npersocket-1) {
-                            ORTE_ERROR_LOG(rc);
-                            OBJ_RELEASE(node);
-                            goto error;
+    /* loop through the app_contexts */
+    for(i=0; i < jdata->apps->size; i++) {
+        if (NULL == (app = (orte_app_context_t*)opal_pointer_array_get_item(jdata->apps, i))) {
+            continue;
+        }
+        /* use the number of procs if one was given */
+        if (0 < app->num_procs) {
+            np = app->num_procs;
+        } else {
+            np = INT_MAX;
+        }
+        /* for each app_context, we have to get the list of nodes that it can
+         * use since that can now be modified with a hostfile and/or -host
+         * option
+         */
+        if(ORTE_SUCCESS != (rc = orte_rmaps_base_get_target_nodes(&node_list, &num_slots, app,
+                                                                  jdata->map->policy))) {
+            ORTE_ERROR_LOG(rc);
+            goto error;
+        }
+        /* loop through the list of nodes */
+        nprocs = 0;
+        while (NULL != (item = opal_list_remove_first(&node_list))) {
+            node = (orte_node_t*)item;
+            num_sockets = node->sockets_per_board;
+            /* loop through the number of boards in this node */
+            for (k=0; k < node->boards && nprocs < np; k++) {
+                /* loop through the number of sockets/board */
+                for (n=0; n < node->sockets_per_board && nprocs < np; n++) {
+                    /* put the specified number of procs on each socket */
+                    for (j=0; j < jdata->map->npersocket && nprocs < np; j++) {
+                        if (ORTE_SUCCESS != (rc = orte_rmaps_base_claim_slot(jdata, node,
+                                                                             jdata->map->cpus_per_rank, app->idx,
+                                                                             &node_list, jdata->map->oversubscribe,
+                                                                             false, NULL))) {
+                            /** if the code is ORTE_ERR_NODE_FULLY_USED, and we still have
+                             * more procs to place, then that is an error
+                             */
+                            if (ORTE_ERR_NODE_FULLY_USED != rc ||
+                                j < jdata->map->npersocket-1) {
+                                ORTE_ERROR_LOG(rc);
+                                OBJ_RELEASE(node);
+                                goto error;
+                            }
                         }
+                        /* track the number of procs */
+                        nprocs++;
                     }
-                    /* track the number of procs */
-                    nprocs++;
                 }
             }
+            OBJ_RELEASE(node);
         }
-        OBJ_RELEASE(node);
-    }
-    /* if the user requested a specific number of procs and
-     * the total number of procs we were able to assign
-     * doesn't equal the number requested, then we have a
-     * problem
-     */
-    if (0 < app->num_procs && nprocs < app->num_procs) {
-        orte_show_help("help-orte-rmaps-base.txt", "rmaps:too-many-procs", true,
-                       app->app, app->num_procs,
-                       "number of sockets", num_sockets,
-                       "npersocket", orte_rmaps_base.npersocket);
-        return ORTE_ERR_SILENT;
-    }
-    /* update the number of procs in the job */
-    jdata->num_procs += nprocs;
-    /* compute vpids and add proc objects to the job - this has to be
-     * done after each app_context is mapped in order to keep the
-     * vpids contiguous within an app_context
-     */
-    if (ORTE_SUCCESS != (rc = orte_rmaps_base_compute_vpids(jdata))) {
-        ORTE_ERROR_LOG(rc);
-        return rc;
+        /* update the number of procs in the job */
+        jdata->num_procs += nprocs;
+        /* if the user requested a specific number of procs and
+         * the total number of procs we were able to assign
+         * doesn't equal the number requested, then we have a
+         * problem
+         */
+        if (0 < app->num_procs && nprocs < app->num_procs) {
+            orte_show_help("help-orte-rmaps-base.txt", "rmaps:too-many-procs", true,
+                           app->app, app->num_procs,
+                           "number of sockets", num_sockets,
+                           "npersocket", jdata->map->npersocket);
+            return ORTE_ERR_SILENT;
+        }
+        /* compute vpids and add proc objects to the job - this has to be
+         * done after each app_context is mapped in order to keep the
+         * vpids contiguous within an app_context
+         */
+        if (ORTE_SUCCESS != (rc = orte_rmaps_base_compute_vpids(jdata))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
     }
     
 error:
@@ -472,6 +477,8 @@ static int loadbalance(orte_job_t *jdata)
         }
         /* save the bookmark */
         jdata->bookmark = node;
+        /* update the number of procs in the job */
+        jdata->num_procs += nprocs;
         
         /* cleanup */
         while (NULL != (item = opal_list_remove_first(&node_list))) {
@@ -489,8 +496,6 @@ static int loadbalance(orte_job_t *jdata)
                            "number of nodes", num_nodes);
             return ORTE_ERR_SILENT;
         }
-        /* update the number of procs in the job */
-        jdata->num_procs += nprocs;
         /* compute vpids and add proc objects to the job - this has to be
          * done after each app_context is mapped in order to keep the
          * vpids contiguous within an app_context

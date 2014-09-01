@@ -24,27 +24,31 @@
  * includes
  */
 #include "orte_config.h"
-#include "orte/constants.h"
-#include "orte/types.h"
 
-#if HAVE_SYS_TYPES_H
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
-#if HAVE_SYS_STAT_H
+#ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
-#if HAVE_UNISTD_H
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
-#include "orte/util/show_help.h"
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/mca_base_param.h"
 
 #include "opal/dss/dss.h"
+#include "orte/constants.h"
+#include "orte/types.h"
 #include "orte/util/proc_info.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rml/rml.h"
+#include "orte/mca/rml/rml_types.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/runtime/orte_wait.h"
@@ -67,7 +71,7 @@ int orte_filem_base_comm_start(void)
     int rc;
 
     /* Only active in HNP and daemons */
-    if( !orte_process_info.hnp && !orte_process_info.daemon ) {
+    if( !ORTE_PROC_IS_HNP && !ORTE_PROC_IS_DAEMON ) {
         return ORTE_SUCCESS;
     }
     if ( recv_issued ) {
@@ -97,7 +101,7 @@ int orte_filem_base_comm_stop(void)
     int rc;
 
     /* Only active in HNP and daemons */
-    if( !orte_process_info.hnp && !orte_process_info.daemon ) {
+    if( !ORTE_PROC_IS_HNP && !ORTE_PROC_IS_DAEMON ) {
         return ORTE_SUCCESS;
     }
     if ( recv_issued ) {
@@ -234,7 +238,7 @@ static void filem_base_process_get_remote_path_cmd(orte_process_name_t* sender,
     orte_std_cntr_t count;
     char *filename = NULL;
     char *tmp_name = NULL;
-    char cwd[OMPI_PATH_MAX];
+    char cwd[OPAL_PATH_MAX];
     int file_type = ORTE_FILEM_TYPE_UNKNOWN;
     struct stat file_status;
     int rc;

@@ -2,14 +2,16 @@
 # Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
-# Copyright (c) 2004-2005 The University of Tennessee and The University
+# Copyright (c) 2004-2008 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
 # Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2007-2009 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2008      Institut National de Recherche en Informatique
+#                         et Automatique. All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -31,24 +33,20 @@ sources = \
 # (for static builds).
 
 if OMPI_BUILD_plm_lsf_DSO
-lib =
-lib_sources = 
-component = mca_plm_lsf.la
-component_sources = $(sources)
+component_noinst = 
+component_install = mca_plm_lsf.la
 else
-lib = libmca_plm_lsf.la
-lib_sources = $(sources)
-component =
-component_sources =
+component_noinst = libmca_plm_lsf.la
+component_install =
 endif
 
 mcacomponentdir = $(pkglibdir)
-mcacomponent_LTLIBRARIES = $(component)
-mca_plm_lsf_la_SOURCES = $(component_sources)
+mcacomponent_LTLIBRARIES = $(component_install)
+mca_plm_lsf_la_SOURCES = $(sources)
 mca_plm_lsf_la_LDFLAGS = -module -avoid-version $(plm_lsf_LDFLAGS)
 mca_plm_lsf_la_LIBADD = $(plm_lsf_LIBS)
 
-noinst_LTLIBRARIES = $(lib)
-libmca_plm_lsf_la_SOURCES = $(lib_sources)
+noinst_LTLIBRARIES = $(component_noinst)
+libmca_plm_lsf_la_SOURCES = $(sources)
 libmca_plm_lsf_la_LDFLAGS = -module -avoid-version $(plm_lsf_LDFLAGS)
 libmca_plm_lsf_la_LIBADD = $(plm_lsf_LIBS)

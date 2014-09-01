@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -17,7 +17,7 @@
  * $HEADER$
  */
 
-#include "ompi_config.h"
+#include "opal_config.h"
 
 #include <stdio.h>
 #include <time.h>
@@ -30,7 +30,7 @@
 #include "opal/sys/atomic.h"
 
 
-#if !OMPI_HAVE_THREAD_SUPPORT
+#if !OPAL_HAVE_THREAD_SUPPORT
 
 /* If we don't have thread support, there's no point in running this
    test */
@@ -99,7 +99,7 @@ int main(int argc, char** argv)
 
     test_init("opal_condition_t");
 
-    rc = opal_init();
+    rc = opal_init(&argc, &argv);
     test_verify_int(OPAL_SUCCESS, rc);
     if (OPAL_SUCCESS != rc) {
         test_finalize();
@@ -135,4 +135,4 @@ int main(int argc, char** argv)
     return test_finalize();
 }
 
-#endif /* OMPI_HAVE_THREAD_SUPPORT */
+#endif /* OPAL_HAVE_THREAD_SUPPORT */

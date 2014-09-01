@@ -118,6 +118,15 @@ orte_err2str(int errnum)
     case ORTE_ERR_SYS_LIMITS_SOCKETS:
         retval = "The system limit on number of network connections a process can open was reached";
         break;
+    case ORTE_ERR_SOCKET_NOT_AVAILABLE:
+        retval = "Unable to open a TCP socket for out-of-band communications";
+        break;
+    case ORTE_ERR_SYSTEM_WILL_BOOTSTRAP:
+        retval = "System will determine resources during bootstrap of daemons";
+        break;
+    case ORTE_ERR_COMM_DISABLED:
+        retval = "Communications have been disabled";
+        break;
     default:
         retval = NULL;
     }

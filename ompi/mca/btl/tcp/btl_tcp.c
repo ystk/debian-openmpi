@@ -21,17 +21,14 @@
 
 #include "ompi_config.h"
 #include <string.h>
-#include "orte/util/show_help.h"
-#include "opal/util/if.h"
-#include "ompi/mca/pml/pml.h"
+#include "opal/class/opal_bitmap.h"
 #include "ompi/mca/btl/btl.h"
 
 #include "btl_tcp.h"
 #include "btl_tcp_frag.h" 
 #include "btl_tcp_proc.h"
 #include "btl_tcp_endpoint.h"
-#include "ompi/datatype/convertor.h" 
-#include "ompi/datatype/datatype.h" 
+#include "opal/datatype/opal_convertor.h" 
 #include "ompi/mca/mpool/base/base.h" 
 #include "ompi/mca/mpool/mpool.h" 
 #include "ompi/proc/proc.h"
@@ -76,7 +73,7 @@ int mca_btl_tcp_add_procs( struct mca_btl_base_module_t* btl,
                            size_t nprocs, 
                            struct ompi_proc_t **ompi_procs, 
                            struct mca_btl_base_endpoint_t** peers, 
-                           ompi_bitmap_t* reachable )
+                           opal_bitmap_t* reachable )
 {
     mca_btl_tcp_module_t* tcp_btl = (mca_btl_tcp_module_t*)btl;
     ompi_proc_t* my_proc; /* pointer to caller's proc structure */
@@ -128,7 +125,7 @@ int mca_btl_tcp_add_procs( struct mca_btl_base_module_t* btl,
             continue;
         }
 
-        ompi_bitmap_set_bit(reachable, i);
+        opal_bitmap_set_bit(reachable, i);
         OPAL_THREAD_UNLOCK(&tcp_proc->proc_lock);
         peers[i] = tcp_endpoint;
         opal_list_append(&tcp_btl->tcp_endpoints, (opal_list_item_t*)tcp_endpoint);
@@ -225,7 +222,7 @@ mca_btl_base_descriptor_t* mca_btl_tcp_prepare_src(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* endpoint,
     struct mca_mpool_base_registration_t* registration,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -261,7 +258,7 @@ mca_btl_base_descriptor_t* mca_btl_tcp_prepare_src(
     frag->segments[0].seg_len = reserve;
 
     frag->base.des_src_cnt = 1;
-    if(ompi_convertor_need_buffers(convertor)) {
+    if(opal_convertor_need_buffers(convertor)) {
 
         if (max_data + reserve > frag->size) {
             max_data = frag->size - reserve;
@@ -269,7 +266,7 @@ mca_btl_base_descriptor_t* mca_btl_tcp_prepare_src(
         iov.iov_len = max_data;
         iov.iov_base = (IOVBASE_TYPE*)(((unsigned char*)(frag->segments[0].seg_addr.pval)) + reserve);
         
-        rc = ompi_convertor_pack(convertor, &iov, &iov_count, &max_data );
+        rc = opal_convertor_pack(convertor, &iov, &iov_count, &max_data );
         if( OPAL_UNLIKELY(rc < 0) ) {
             mca_btl_tcp_free(btl, &frag->base);
             return NULL;
@@ -282,7 +279,7 @@ mca_btl_base_descriptor_t* mca_btl_tcp_prepare_src(
         iov.iov_len = max_data;
         iov.iov_base = NULL;
 
-        rc = ompi_convertor_pack(convertor, &iov, &iov_count, &max_data );
+        rc = opal_convertor_pack(convertor, &iov, &iov_count, &max_data );
         if( OPAL_UNLIKELY(rc < 0) ) {
             mca_btl_tcp_free(btl, &frag->base);
             return NULL;
@@ -321,7 +318,7 @@ mca_btl_base_descriptor_t* mca_btl_tcp_prepare_dst(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* endpoint,
     struct mca_mpool_base_registration_t* registration,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -339,7 +336,7 @@ mca_btl_base_descriptor_t* mca_btl_tcp_prepare_dst(
     }
 
     frag->segments->seg_len = *size;
-    ompi_convertor_get_current_pointer( convertor, (void**)&(frag->segments->seg_addr.pval) );
+    opal_convertor_get_current_pointer( convertor, (void**)&(frag->segments->seg_addr.pval) );
 
     frag->base.des_src = NULL;
     frag->base.des_src_cnt = 0;

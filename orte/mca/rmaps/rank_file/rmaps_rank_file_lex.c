@@ -998,7 +998,7 @@ YY_RULE_SETUP
 case 14:
 YY_RULE_SETUP
 #line 83 "rmaps_rank_file_lex.l"
-{ orte_rmaps_rank_file_value.sval = orte_rmaps_rank_file_text; 
+{ orte_rmaps_rank_file_value.sval = orte_rmaps_rank_file_text;  
                      return ORTE_RANKFILE_SLOT; }
 	YY_BREAK
 case 15:

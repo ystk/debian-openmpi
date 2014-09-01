@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Sandia National Laboratories. All rights
  *                         reserved.
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,10 +23,10 @@
 #include <string.h>
 
 #include "ompi_config.h"
+#include "opal/class/opal_bitmap.h"
 #include "opal/prefetch.h"
-#include "orte/util/show_help.h"
-#include "ompi/datatype/convertor.h"
-#include "ompi/datatype/datatype.h"
+#include "opal/util/output.h"
+#include "opal/datatype/opal_convertor.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/btl_base_error.h"
 #include "ompi/mca/mpool/base/base.h"
@@ -80,7 +81,7 @@ int mca_btl_ud_add_procs(struct mca_btl_base_module_t* btl,
                          size_t nprocs,
                          struct ompi_proc_t **ompi_procs,
                          struct mca_btl_base_endpoint_t** peers,
-                         ompi_bitmap_t* reachable)
+                         opal_bitmap_t* reachable)
 {
     mca_btl_ud_module_t* ud_btl = (mca_btl_ud_module_t*)btl;
     struct ibv_ah_attr ah_attr;
@@ -149,7 +150,7 @@ int mca_btl_ud_add_procs(struct mca_btl_base_module_t* btl,
                 ib_peer);
 #endif
 
-        ompi_bitmap_set_bit(reachable, i);
+        opal_bitmap_set_bit(reachable, i);
         OPAL_THREAD_UNLOCK(&ib_proc->proc_lock);
         peers[i] = ib_peer;
     }
@@ -277,7 +278,7 @@ mca_btl_base_descriptor_t* mca_btl_ud_prepare_src(
                                     struct mca_btl_base_module_t* btl,
                                     struct mca_btl_base_endpoint_t* endpoint,
                                     mca_mpool_base_registration_t* registration,
-                                    struct ompi_convertor_t* convertor,
+                                    struct opal_convertor_t* convertor,
                                     uint8_t order,
                                     size_t reserve,
                                     size_t* size,
@@ -289,7 +290,7 @@ mca_btl_base_descriptor_t* mca_btl_ud_prepare_src(
     size_t max_data = *size;
     int rc;
 
-    if(ompi_convertor_need_buffers(convertor) == 0 && reserve == 0 &&
+    if(opal_convertor_need_buffers(convertor) == 0 && reserve == 0 &&
             (registration != NULL || max_data > btl->btl_max_send_size)) {
         /* The user buffer is contigous and we are asked to send more than
            the max send size. */
@@ -302,7 +303,7 @@ mca_btl_base_descriptor_t* mca_btl_ud_prepare_src(
         iov.iov_len = max_data;
         iov.iov_base = NULL;
 
-        ompi_convertor_pack(convertor, &iov, &iov_count, &max_data);
+        opal_convertor_pack(convertor, &iov, &iov_count, &max_data);
 
         frag->segment.seg_len = max_data;
         frag->segment.seg_addr.pval = iov.iov_base;
@@ -343,7 +344,7 @@ mca_btl_base_descriptor_t* mca_btl_ud_prepare_src(
     iov.iov_len = max_data;
     iov.iov_base = (unsigned char*)frag->segment.seg_addr.pval + reserve;
 
-    rc = ompi_convertor_pack(convertor, &iov, &iov_count, &max_data);
+    rc = opal_convertor_pack(convertor, &iov, &iov_count, &max_data);
     if(OPAL_UNLIKELY(rc < 0)) {
         MCA_BTL_UD_RETURN_FRAG(btl, frag);
         return NULL;
@@ -483,7 +484,7 @@ static int mca_btl_ud_init_qp(mca_btl_ud_module_t* ud_btl,
         BTL_ERROR(("ibv_create_qp: returned 0 byte(s) for max inline data"));
     }
 
-    BTL_VERBOSE((0, "ib_inline_max %d\n", ud_btl->ib_inline_max));
+    BTL_VERBOSE(("ib_inline_max %lu\n", (unsigned long) ud_btl->ib_inline_max));
 
     qp_attr.qp_state = IBV_QPS_INIT;
     qp_attr.pkey_index = mca_btl_ofud_component.ib_pkey_ix;
@@ -596,9 +597,9 @@ int mca_btl_ud_module_init(mca_btl_ud_module_t *ud_btl)
 
     ompi_free_list_init_new(&ud_btl->recv_frags,
                         length + sizeof(mca_btl_ud_ib_header_t),
-                        CACHE_LINE_SIZE,
+                        opal_cache_line_size,
                         OBJ_CLASS(mca_btl_ud_recv_frag_t),
-                        length_payload,CACHE_LINE_SIZE,
+                        length_payload,opal_cache_line_size,
                         mca_btl_ofud_component.rd_num,
                         mca_btl_ofud_component.rd_num,
                         mca_btl_ofud_component.rd_num,
@@ -606,9 +607,9 @@ int mca_btl_ud_module_init(mca_btl_ud_module_t *ud_btl)
 #if 0
     ompi_free_list_init_new(&ud_btl->recv_frags,
                         length + sizeof(mca_btl_ud_ib_header_t),
-                        CACHE_LINE_SIZE,
+                        opal_cache_line_size,
                         OBJ_CLASS(mca_btl_ud_recv_frag_t),
-                        length_payload,CACHE_LINE_SIZE,
+                        length_payload,opal_cache_line_size,
                          mca_btl_ofud_component.rd_num_init,
                          mca_btl_ofud_component.rd_num_max,
                          mca_btl_ofud_component.rd_num_inc,
@@ -643,9 +644,9 @@ int mca_btl_ud_module_init(mca_btl_ud_module_t *ud_btl)
 
     ompi_free_list_init_new(&ud_btl->send_frags,
                         length,
-                        CACHE_LINE_SIZE,
+                        opal_cache_line_size,
                         OBJ_CLASS(mca_btl_ud_send_frag_t),
-                        length_payload,CACHE_LINE_SIZE,
+                        length_payload,opal_cache_line_size,
                         mca_btl_ofud_component.sd_num >> 1,
                         -1,
                         mca_btl_ofud_component.sd_num << 2,
@@ -661,9 +662,9 @@ int mca_btl_ud_module_init(mca_btl_ud_module_t *ud_btl)
 
     ompi_free_list_init_new(&ud_btl->user_frags,
                         length,
-                        CACHE_LINE_SIZE,
+                        opal_cache_line_size,
                         OBJ_CLASS(mca_btl_ud_user_frag_t),
-                        length_payload,CACHE_LINE_SIZE,
+                        length_payload,opal_cache_line_size,
                         mca_btl_ofud_component.sd_num >> 1,
                         -1,
                         mca_btl_ofud_component.sd_num << 2,

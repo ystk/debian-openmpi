@@ -23,15 +23,12 @@
 
 #include "opal/mca/mca.h"
 
-#include "orte/util/show_help.h" 
 
 /*
  * Global functions for the BML
  */
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /* forward declarations */
 struct mca_bml_base_btl_array_t;
@@ -39,8 +36,6 @@ struct mca_bml_base_btl_array_t;
 OMPI_DECLSPEC int mca_bml_base_btl_array_reserve(struct mca_bml_base_btl_array_t* array, size_t size);
 
     
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif /* MCA_BML_BASE_H */
 

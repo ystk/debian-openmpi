@@ -7,6 +7,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,7 +21,6 @@
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/base/mca_base_param.h"
 
 #include "orte/mca/snapc/snapc.h"
@@ -37,7 +37,7 @@ int orte_snapc_base_close(void)
     /* Close all available modules that are open */
     mca_base_components_close(orte_snapc_base_output,
                               &orte_snapc_base_components_available,
-                              NULL);
+                              NULL, true);
     
     return ORTE_SUCCESS;
 }

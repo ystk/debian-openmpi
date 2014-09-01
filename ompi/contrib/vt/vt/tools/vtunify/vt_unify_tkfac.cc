@@ -2,7 +2,7 @@
  * VampirTrace
  * http://www.tu-dresden.de/zih/vampirtrace
  *
- * Copyright (c) 2005-2008, ZIH, TU Dresden, Federal Republic of Germany
+ * Copyright (c) 2005-2013, ZIH, TU Dresden, Federal Republic of Germany
  *
  * Copyright (c) 1998-2005, Forschungszentrum Juelich, Juelich Supercomputing
  *                          Centre, Federal Republic of Germany
@@ -12,410 +12,245 @@
 
 #include "vt_unify_tkfac.h"
 
-#include "vt_inttypes.h"
+TokenFactoryC * theTokenFactory = 0; // instance of class TokenFactoryC
 
-#include <map>
-#include <string>
-#include <vector>
+//////////////////// class TokenFactoryC ////////////////////
 
-// array of token factories
-TokenFactory * theTokenFactory[TKFAC_NUM];
+// public methods
+//
+
+TokenFactoryC::TokenFactoryC()
+{
+   // Empty
+}
+
+TokenFactoryC::~TokenFactoryC()
+{
+   // Empty
+}
 
 void
-TokenFactory::setTranslation( uint32_t mCpuId,
-			      uint32_t localToken, uint32_t globalToken )
+TokenFactoryC::addScope( const DefRecTypeT & type, TokenFactoryScopeI * scope )
 {
-   // search local/global token mapping by cpu id
-   std::map<uint32_t, std::map<uint32_t, uint32_t>* >::iterator it_cpu =
-      m_mapLocGlobToken.find( mCpuId );
+   vt_assert( type < DEF_REC_TYPE__Num );
+   vt_assert( scope );
 
-   // cpu id not found
-   //
-   if( it_cpu == m_mapLocGlobToken.end() )
+   // search for already added scope instance
+   std::map<DefRecTypeT, TokenFactoryScopeI*>::const_iterator it = m_def2scope.find( type );
+
+   // add scope instance to map, if not found
+   if( it == m_def2scope.end() )
+      m_def2scope[type] = scope;
+}
+
+void
+TokenFactoryC::deleteScope( const DefRecTypeT & type )
+{
+   vt_assert( type < DEF_REC_TYPE__Num );
+
+   // search scope instance
+   std::map<DefRecTypeT, TokenFactoryScopeI*>::iterator it = m_def2scope.find( type );
+
+   // erase map entry, if found
+   if( it != m_def2scope.end() )
    {
-      // create local/global token mapping for cpu
+      delete it->second;
+      m_def2scope.erase( it );
+   }
+}
+
+TokenFactoryScopeI *
+TokenFactoryC::getScope( const DefRecTypeT & type ) const
+{
+   vt_assert( type < DEF_REC_TYPE__Num );
+
+   // search scope instance
+   std::map<DefRecTypeT, TokenFactoryScopeI*>::const_iterator it_scope =
+      m_def2scope.find( type );
+
+   // if found, return scope instance; otherwise, return 0
+   return ( it_scope != m_def2scope.end() ) ? it_scope->second : 0;
+}
+
+#ifdef VT_MPI
+
+bool
+TokenFactoryC::distTranslations( const VT_MPI_INT & destRank,
+   const bool wait )
+{
+   bool error = false;
+
+   vt_assert( NumRanks > 1 );
+
+   // message tag to use for p2p communication
+   const VT_MPI_INT msg_tag = 200;
+
+   VT_MPI_INT buffer_pos;
+   VT_MPI_INT buffer_size;
+   MPI_Status status;
+
+   MASTER
+   {
+      vt_assert( destRank != 0 );
+
+      // send token translation tables to given destination rank
       //
-      std::map<uint32_t, uint32_t> * p_map_loc_glob_token =
-	 new std::map<uint32_t, uint32_t>();
 
-      p_map_loc_glob_token->insert( std::make_pair( localToken, globalToken ) );
+      PVPrint( 3, "  Sending token translation tables to rank %d\n", destRank );
 
-      m_mapLocGlobToken.insert( std::make_pair( mCpuId, p_map_loc_glob_token ) );
+      // request handle for non-blocking send
+      static MPI_Request request = MPI_REQUEST_NULL;
+
+      // send buffer
+      static char * buffer = 0;
+
+      // get stream ids associated with given destination rank
+      const std::set<uint32_t> & stream_ids = Rank2StreamIds[destRank];
+
+      // convert stream ids to master process ids
+      // (=keys of token translation tables)
+      //
+      std::set<uint32_t> mprocess_ids;
+      for( std::set<uint32_t>::const_iterator stream_it = stream_ids.begin();
+           stream_it != stream_ids.end(); ++stream_it )
+         mprocess_ids.insert( *stream_it & VT_TRACEID_BITMASK );
+
+      // get size needed for the send buffer
+      //
+
+      VT_MPI_INT size;
+
+      buffer_size = 0;
+
+      for( std::map<DefRecTypeT, TokenFactoryScopeI*>::const_iterator scope_it =
+           m_def2scope.begin(); scope_it != m_def2scope.end(); ++scope_it )
+      {
+         // get scope
+         TokenFactoryScopeC<DefRec_BaseS> * scope =
+            static_cast<TokenFactoryScopeC<DefRec_BaseS>*>( scope_it->second );
+
+         // get size needed to pack the number of translation tables into
+         // the send buffer
+         //
+         CALL_MPI( MPI_Pack_size( 1, MPI_UNSIGNED, MPI_COMM_WORLD, &size ) );
+         buffer_size += size;
+
+         // get size needed to pack the token translation tables into the
+         // send buffer
+         //
+         for( std::set<uint32_t>::const_iterator proc_it = mprocess_ids.begin();
+              proc_it != mprocess_ids.end(); ++proc_it )
+            buffer_size += scope->getPackSize( *proc_it );
+      }
+
+      // wait until previous send is completed and free memory of the
+      // send buffer
+      //
+      if( request != MPI_REQUEST_NULL )
+      {
+         vt_assert( buffer );
+
+         CALL_MPI( MPI_Wait( &request, &status ) );
+         delete [] buffer;
+      }
+
+      // allocate memory for the send buffer
+      //
+      buffer = new char[buffer_size];
+      vt_assert( buffer );
+
+      // pack send buffer
+      //
+
+      buffer_pos = 0;
+
+      for( std::map<DefRecTypeT, TokenFactoryScopeI*>::const_iterator scope_it =
+           m_def2scope.begin(); scope_it != m_def2scope.end(); ++scope_it )
+      {
+         // get scope
+         TokenFactoryScopeC<DefRec_BaseS> * scope =
+            static_cast<TokenFactoryScopeC<DefRec_BaseS>*>( scope_it->second );
+
+         // pack number of token translation tables into the send buffer
+         //
+         uint32_t mprocess_size = mprocess_ids.size();
+         CALL_MPI( MPI_Pack( &mprocess_size, 1, MPI_UNSIGNED, buffer,
+                             buffer_size, &buffer_pos, MPI_COMM_WORLD ) );
+
+         // pack token translation tables into the send buffer
+         //
+         for( std::set<uint32_t>::const_iterator proc_it = mprocess_ids.begin();
+              proc_it != mprocess_ids.end(); ++proc_it )
+            scope->pack( *proc_it, buffer, buffer_size, buffer_pos );
+      }
+
+      // send buffer
+      CALL_MPI( MPI_Isend( buffer, buffer_size, MPI_PACKED, destRank, msg_tag,
+                           MPI_COMM_WORLD, &request ) );
+
+      // if it's the last send, wait until completion and free memory of the
+      // send buffer
+      //
+      if( wait )
+      {
+         CALL_MPI( MPI_Wait( &request, &status ) );
+         delete [] buffer;
+      }
    }
-   // cpu id found
-   //
-   else
+   else // SLAVE
    {
-      // search local token
-      std::map<uint32_t, uint32_t>::iterator it_local_token =
-	 it_cpu->second->find( localToken );
+      // receive token translation tables from rank 0
+      //
 
-      // add local/global token
-      if( it_local_token == it_cpu->second->end() )
-	 it_cpu->second->insert( std::make_pair( localToken, globalToken ) );
+      PVPrint( 3, "  Receiving token translation tables from rank 0\n" );
+
+      // receive buffer
+      char * buffer;
+
+      // test for a message from rank 0
+      CALL_MPI( MPI_Probe( 0, msg_tag, MPI_COMM_WORLD, &status ) );
+
+      // get size needed for the receive buffer
+      CALL_MPI( MPI_Get_count( &status, MPI_PACKED, &buffer_size ) );
+
+      // allocate memory for the receive buffer
+      //
+      buffer = new char[buffer_size];
+      vt_assert( buffer );
+
+      // receive buffer
+      CALL_MPI( MPI_Recv( buffer, buffer_size, MPI_PACKED, 0, msg_tag,
+                          MPI_COMM_WORLD, &status ) );
+
+      // unpack receive buffer
+      //
+
+      buffer_pos = 0;
+
+      for( std::map<DefRecTypeT, TokenFactoryScopeI*>::const_iterator scope_it =
+           m_def2scope.begin(); scope_it != m_def2scope.end(); ++scope_it )
+      {
+         // get scope
+         TokenFactoryScopeC<DefRec_BaseS> * scope =
+            static_cast<TokenFactoryScopeC<DefRec_BaseS>*>( scope_it->second );
+
+         // unpack the number of token translation tables from the
+         // receive buffer
+         uint32_t mprocess_size;
+         CALL_MPI( MPI_Unpack( buffer, buffer_size, &buffer_pos, &mprocess_size, 1,
+                               MPI_UNSIGNED, MPI_COMM_WORLD ) );
+
+         // unpack token translation tables from the receive buffer
+         //
+         for( uint32_t i = 0; i < mprocess_size; i++ )
+            scope->unpack( buffer, buffer_size, buffer_pos );
+      }
+
+      // free memory of the receive buffer
+      delete [] buffer;
    }
+
+   return !error;
 }
 
-uint32_t
-TokenFactory::translateLocalToken( uint32_t mCpuId, uint32_t localToken )
-{
-   // search local/global token mapping by cpu id
-   std::map<uint32_t, std::map<uint32_t, uint32_t>* >::iterator it_cpu =
-      m_mapLocGlobToken.find( mCpuId );
-
-   // cpu id found
-   //
-   if( it_cpu != m_mapLocGlobToken.end() )
-   {
-      // search local token
-      std::map<uint32_t, uint32_t>::iterator it_local_token =
-	 it_cpu->second->find( localToken ); 
-
-      // return global token if local token found
-      if( it_local_token != it_cpu->second->end() )
-	 return it_local_token->second;
-   }
-
-   return 0;
-}
-
-//
-// TokenFactory_DefSclFile
-//
-
-uint32_t
-TokenFactory_DefSclFile::getGlobalToken( std::string filename )
-{
-   std::map<std::string, uint32_t>::iterator it =
-      m_mapDefSclFileGlobToken.find( filename );
-   
-   if( it != m_mapDefSclFileGlobToken.end() )
-      return it->second;
-   else
-      return 0;
-}
-
-uint32_t
-TokenFactory_DefSclFile::createGlobalToken( uint32_t mCpuId, uint32_t localToken,
-					    std::string filename )
-{
-   uint32_t global_token = m_SeqToken++;
-
-   m_mapDefSclFileGlobToken.insert( std::make_pair( filename,
-						    global_token ) );
-  
-   setTranslation( mCpuId, localToken, global_token );
-
-   return global_token;
-}
-
-//
-// TokenFactory_DefScl
-//
-
-uint32_t
-TokenFactory_DefScl::getGlobalToken( uint32_t sclfile, uint32_t sclline )
-{
-   std::vector<DefScl_struct>::iterator it =
-      std::find_if( m_vecDefScl.begin(), m_vecDefScl.end(),
-		    DefScl_eq( sclfile, sclline ) );
-	       
-   if( it != m_vecDefScl.end() )
-      return it->global_token;
-   else
-      return 0;
-}
-
-uint32_t
-TokenFactory_DefScl::createGlobalToken( uint32_t mCpuId, uint32_t localToken,
-					uint32_t sclfile, uint32_t sclline )
-{
-   uint32_t global_token = m_SeqToken++;
-
-   DefScl_struct defscl;
-
-   defscl.global_token = global_token;
-   defscl.sclfile = sclfile;
-   defscl.sclline = sclline;
-
-   m_vecDefScl.push_back( defscl );
-
-   setTranslation( mCpuId, localToken, global_token );
-
-   return global_token;
-}
-
-//
-// TokenFactory_DefFileGroup
-//
-
-uint32_t
-TokenFactory_DefFileGroup::getGlobalToken( std::string name )
-{
-   std::map<std::string, uint32_t>::iterator it =
-      m_mapDefFileGroupGlobToken.find( name );
-   
-   if( it != m_mapDefFileGroupGlobToken.end() )
-      return it->second;
-   else
-      return 0;
-}
-
-uint32_t
-TokenFactory_DefFileGroup::createGlobalToken( uint32_t mCpuId, uint32_t localToken, std::string name )
-{
-   uint32_t global_token = m_SeqToken++;
-
-   m_mapDefFileGroupGlobToken.insert( std::make_pair( name,
-						      global_token ) );
-  
-   setTranslation( mCpuId, localToken, global_token );
-
-   return global_token;
-}
-
-//
-// TokenFactory_DefFile
-//
-
-uint32_t
-TokenFactory_DefFile::getGlobalToken( std::string name, uint32_t group )
-{
-   std::vector<DefFile_struct>::iterator it =
-      find_if( m_vecDefFile.begin(), m_vecDefFile.end(),
-	       DefFile_eq( name, group ) );
-	       
-   if( it != m_vecDefFile.end() )
-      return it->global_token;
-   else
-      return 0;
-}
-
-uint32_t
-TokenFactory_DefFile::createGlobalToken( uint32_t mCpuId, uint32_t localToken, std::string name, uint32_t group )
-{
-   uint32_t global_token = m_SeqToken++;
-
-   DefFile_struct deffile;
-
-   deffile.global_token = global_token;
-   deffile.name = name;
-   deffile.group = group;
-
-   m_vecDefFile.push_back( deffile );
-
-   setTranslation( mCpuId, localToken, global_token );
-
-   return global_token;
-}
-
-//
-// TokenFactory_DefFunctionGroup
-//
-
-uint32_t
-TokenFactory_DefFunctionGroup::getGlobalToken( std::string name )
-{
-   std::map<std::string, uint32_t>::iterator it =
-      m_mapDefFunctionGroupGlobToken.find( name );
-   
-   if( it != m_mapDefFunctionGroupGlobToken.end() )
-      return it->second;
-   else
-      return 0;
-}
-
-uint32_t
-TokenFactory_DefFunctionGroup::createGlobalToken( uint32_t mCpuId, uint32_t localToken,
-						  std::string name )
-{
-   uint32_t global_token = m_SeqToken++;
-
-   m_mapDefFunctionGroupGlobToken.insert( std::make_pair( name,
-							  global_token ) );
-  
-   setTranslation( mCpuId, localToken, global_token );
-
-   return global_token;
-}
-
-//
-// TokenFactory_DefFunction
-//
-
-uint32_t
-TokenFactory_DefFunction::getGlobalToken( std::string name, uint32_t group, uint32_t scltoken )
-{
-   std::vector<DefFunction_struct>::iterator it =
-      std::find_if( m_vecDefFunction.begin(), m_vecDefFunction.end(),
-		    DefFunction_eq( name, group, scltoken ) );
-	       
-   if( it != m_vecDefFunction.end() )
-      return it->global_token;
-   else
-      return 0;
-}
-
-uint32_t
-TokenFactory_DefFunction::createGlobalToken( uint32_t mCpuId, uint32_t localToken,
-					     std::string name, uint32_t group, uint32_t scltoken )
-{
-   uint32_t global_token = m_SeqToken++;
-
-   DefFunction_struct deffunction;
-
-   deffunction.global_token = global_token;
-   deffunction.name = name;
-   deffunction.group = group;
-   deffunction.scltoken = scltoken;
-
-   m_vecDefFunction.push_back( deffunction );
-
-   setTranslation( mCpuId, localToken, global_token );
-
-   return global_token;
-}
-
-//
-// TokenFactory_DefCollectiveOperation
-//
-
-uint32_t
-TokenFactory_DefCollectiveOperation::getGlobalToken( std::string name, uint32_t type )
-{
-   std::vector<DefCollectiveOperation_struct>::iterator it =
-      std::find_if( m_vecDefCollectiveOperation.begin(), m_vecDefCollectiveOperation.end(),
-		    DefCollectiveOperation_eq( name, type ) );
-	       
-   if( it != m_vecDefCollectiveOperation.end() )
-      return it->global_token;
-   else
-      return 0;
-}
-
-uint32_t
-TokenFactory_DefCollectiveOperation::createGlobalToken( uint32_t mCpuId, uint32_t localToken,
-							std::string name, uint32_t type )
-{
-   uint32_t global_token = m_SeqToken++;
-
-   DefCollectiveOperation_struct defcollop;
-
-   defcollop.global_token = global_token;
-   defcollop.name = name;
-   defcollop.type = type;
-
-   m_vecDefCollectiveOperation.push_back( defcollop );
-
-   setTranslation( mCpuId, localToken, global_token );
-
-   return global_token;
-}
-
-//
-// TokenFactory_DefCounterGroup
-//
-
-uint32_t
-TokenFactory_DefCounterGroup::getGlobalToken( std::string name )
-{
-   std::map<std::string, uint32_t>::iterator it =
-      m_mapDefCounterGroupGlobToken.find( name );
-   
-   if( it != m_mapDefCounterGroupGlobToken.end() )
-      return it->second;
-   else
-      return 0;
-}
-
-uint32_t
-TokenFactory_DefCounterGroup::createGlobalToken( uint32_t mCpuId, uint32_t localToken,
-						 std::string name )
-{
-   uint32_t global_token = m_SeqToken++;
-
-   m_mapDefCounterGroupGlobToken.insert( std::make_pair( name,
-							 global_token ) );
-  
-   setTranslation( mCpuId, localToken, global_token );
-
-   return global_token;
-}
-
-//
-// TokenFactory_DefCounter
-//
-
-uint32_t
-TokenFactory_DefCounter::getGlobalToken( std::string name, uint32_t properties,
-					 uint32_t countergroup, std::string unit )
-{
-   std::vector<DefCounter_struct>::iterator it =
-      std::find_if( m_vecDefCounter.begin(), m_vecDefCounter.end(),
-		    DefCounter_eq( name, properties, countergroup, unit ) );
-	       
-   if( it != m_vecDefCounter.end() )
-      return it->global_token;
-   else
-      return 0;
-}
-
-uint32_t
-TokenFactory_DefCounter::createGlobalToken( uint32_t mCpuId, uint32_t localToken,
-					    std::string name, uint32_t properties,
-					    uint32_t countergroup, std::string unit )
-{
-   uint32_t global_token = m_SeqToken++;
-
-   DefCounter_struct defcounter;
-
-   defcounter.global_token = global_token;
-   defcounter.name = name;
-   defcounter.properties = properties;
-   defcounter.countergroup = countergroup;
-   defcounter.unit = unit;
-
-   m_vecDefCounter.push_back( defcounter );
-
-   setTranslation( mCpuId, localToken, global_token );
-
-   return global_token;
-}
-
-//
-// TokenFactory_DefProcessGroup
-//
-
-uint32_t
-TokenFactory_DefProcessGroup::getGlobalToken( std::string name,
-					      std::vector<uint32_t> vecMembers )
-{
-   std::vector<DefProcessGroup_struct>::iterator it =
-      std::find_if( m_vecDefProcessGroup.begin(), m_vecDefProcessGroup.end(),
-		    DefProcessGroup_eq( name, vecMembers ) );
-	       
-   if( it != m_vecDefProcessGroup.end() )
-      return it->global_token;
-   else
-      return 0;
-}
-
-uint32_t
-TokenFactory_DefProcessGroup::createGlobalToken( uint32_t mCpuId, uint32_t localToken,
-						 std::string name,
-						 std::vector<uint32_t> vecMembers )
-{
-   uint32_t global_token = m_SeqToken++;
-
-   DefProcessGroup_struct defprocessgroup;
-
-   defprocessgroup.global_token = global_token;
-   defprocessgroup.name = name;
-   defprocessgroup.members = vecMembers;
-
-   m_vecDefProcessGroup.push_back( defprocessgroup );
-
-   setTranslation( mCpuId, localToken, global_token );
-
-   return global_token;
-}
+#endif // VT_MPI

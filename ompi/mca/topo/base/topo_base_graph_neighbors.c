@@ -19,7 +19,6 @@
 #include "ompi_config.h"
 #include "ompi/mca/topo/base/base.h"
 #include "ompi/communicator/communicator.h"
-#include "ompi/mca/topo/topo.h"
 
 /*
  * function - returns the neighbors of a node associated
@@ -34,7 +33,7 @@
  * @retval MPI_SUCCESS
  */
 
-int mca_topo_base_graph_neighbors (MPI_Comm comm,
+int mca_topo_base_graph_neighbors (ompi_communicator_t* comm,
                                int rank,
                                int maxneighbors,
                                int *neighbors){

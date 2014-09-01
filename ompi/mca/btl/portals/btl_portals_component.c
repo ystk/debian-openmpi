@@ -25,7 +25,6 @@
 
 #include "ompi/constants.h"
 
-#include "opal/threads/threads.h"
 #include "opal/mca/base/mca_base_param.h"
 
 #include "ompi/mca/common/portals/common_portals.h"
@@ -258,9 +257,9 @@ mca_btl_portals_component_init(int *num_btls,
     ompi_free_list_init_new(&(mca_btl_portals_module.portals_frag_eager),
                         sizeof(mca_btl_portals_frag_eager_t) + 
                         mca_btl_portals_module.super.btl_eager_limit,
-                        CACHE_LINE_SIZE,
+                        opal_cache_line_size,
                         OBJ_CLASS(mca_btl_portals_frag_eager_t),
-                        0,CACHE_LINE_SIZE,
+                        0,opal_cache_line_size,
                         mca_btl_portals_component.portals_free_list_init_num,
                         mca_btl_portals_component.portals_free_list_eager_max_num,
                         mca_btl_portals_component.portals_free_list_inc_num,
@@ -270,9 +269,9 @@ mca_btl_portals_component_init(int *num_btls,
     ompi_free_list_init_new(&(mca_btl_portals_module.portals_frag_max),
                         sizeof(mca_btl_portals_frag_max_t) + 
                         mca_btl_portals_module.super.btl_max_send_size,
-                        CACHE_LINE_SIZE,
+                        opal_cache_line_size,
                         OBJ_CLASS(mca_btl_portals_frag_max_t),
-                        0,CACHE_LINE_SIZE,
+                        0,opal_cache_line_size,
                         mca_btl_portals_component.portals_free_list_init_num,
                         mca_btl_portals_component.portals_free_list_max_num,
                         mca_btl_portals_component.portals_free_list_inc_num,
@@ -281,9 +280,9 @@ mca_btl_portals_component_init(int *num_btls,
     /* user frags */
     ompi_free_list_init_new(&(mca_btl_portals_module.portals_frag_user),
                         sizeof(mca_btl_portals_frag_user_t),
-                        CACHE_LINE_SIZE,
+                        opal_cache_line_size,
                         OBJ_CLASS(mca_btl_portals_frag_user_t),
-                        0,CACHE_LINE_SIZE,
+                        0,opal_cache_line_size,
                         mca_btl_portals_component.portals_free_list_init_num,
                         mca_btl_portals_component.portals_free_list_max_num,
                         mca_btl_portals_component.portals_free_list_inc_num,
@@ -365,7 +364,7 @@ mca_btl_portals_component_progress(void)
                                      "PTL_EVENT_PUT_START for 0x%lx, %d",
                                      (unsigned long) frag, (int) tag));
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
                 if (ev.ni_fail_type != PTL_NI_OK) {
                     opal_output(mca_btl_portals_component.portals_output,
                                 "Failure to start event\n");
@@ -387,7 +386,7 @@ mca_btl_portals_component_progress(void)
                                      "PTL_EVENT_PUT_END for 0x%lx, %d",
                                      (unsigned long) frag, (int) tag));
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
                 if (ev.ni_fail_type != PTL_NI_OK) {
                     opal_output(mca_btl_portals_component.portals_output,
                                 "Failure to end event\n");
@@ -421,7 +420,7 @@ mca_btl_portals_component_progress(void)
                                              tag
                                              ));
                         
-                        OPAL_OUTPUT_VERBOSE((90, mca_btl_portals_component.portals_output,"received %d bytes \n", ev.mlength));
+                        OPAL_OUTPUT_VERBOSE((90, mca_btl_portals_component.portals_output,"received %d bytes \n", (int) ev.mlength));
                         frag->segments[0].seg_addr.pval = &frag->data;
                         frag->segments[0].seg_len = header_size;
                         if(ev.mlength) {
@@ -499,7 +498,7 @@ mca_btl_portals_component_progress(void)
             case PTL_EVENT_SEND_START:
                 /* generated on source (origin) when put starts sending */
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
                 OPAL_OUTPUT_VERBOSE((90, mca_btl_portals_component.portals_output,
                                      "PTL_EVENT_SEND_START for 0x%lx, %d",
                                      (unsigned long) frag, (int) ev.hdr_data));
@@ -521,7 +520,7 @@ mca_btl_portals_component_progress(void)
 
             case PTL_EVENT_SEND_END:
                 /* generated on source (origin) when put stops sending */
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
                 OPAL_OUTPUT_VERBOSE((90, mca_btl_portals_component.portals_output,
                                      "PTL_EVENT_SEND_END for 0x%lx, %d",
                                      (unsigned long) frag, (int) ev.hdr_data));
@@ -572,7 +571,7 @@ mca_btl_portals_component_progress(void)
                                      "PTL_EVENT_ACK for 0x%lx",
                                      (unsigned long) frag));
                 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
                 if(!mca_btl_portals_component.portals_need_ack) { 
                     opal_output(mca_btl_portals_component.portals_output, 
                                 "Received PTL_EVENT_ACK but ACK's are disabled!\n");
@@ -594,14 +593,19 @@ mca_btl_portals_component_progress(void)
                 } else
 #endif
 
-                if (ev.rlength != ev.mlength) {
+                if ((ev.rlength != ev.mlength) || (ev.rlength == 0)) {
                     /* other side received message but truncated to 0.
                        This should only happen for unexpected
                        messages, and only when the other side has no
                        buffer space available for receiving */
-                    opal_output_verbose(50,
-                                        mca_btl_portals_component.portals_output,
-                                        "message was dropped.  Trying again");
+
+                    if (ev.rlength == 0)
+                        opal_output_verbose(10, mca_btl_portals_component.portals_output,
+                                            "PTL_EVENT_ACK: ev.rlength=%lu ev.mlength=%lu: requeueing request",
+                                            (unsigned long)ev.rlength, (unsigned long)ev.mlength);
+                    else
+                        opal_output_verbose(50, mca_btl_portals_component.portals_output,
+                                            "message was dropped.  Trying again");
                     
                     mca_btl_portals_send(&mca_btl_portals_module.super,
                                          frag->endpoint,

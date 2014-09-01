@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -23,9 +23,9 @@
  * Checkpoint functionality for Open MPI
  */
 
+#include "opal_config.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/event/event.h"
-#include "opal/runtime/opal_progress.h"
 #include "opal/util/output.h"
 #include "opal/prefetch.h"
 
@@ -33,9 +33,7 @@
 #define OPAL_CR_H
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /*
  * Some defines shared with opal-[checkpoint|restart] commands
@@ -151,7 +149,7 @@ typedef enum opal_cr_ckpt_cmd_state_t opal_cr_ckpt_cmd_state_t;
     /* 
      * If not using FT then make the #defines noops
      */
-#if OPAL_ENABLE_FT == 0
+#if OPAL_ENABLE_FT == 0 || OPAL_ENABLE_FT_CR == 0
 #define OPAL_CR_TEST_CHECKPOINT_READY() ;
 #define OPAL_CR_TEST_CHECKPOINT_READY_STALL() ;
 #define OPAL_CR_INIT_LIBRARY() ;
@@ -160,12 +158,12 @@ typedef enum opal_cr_ckpt_cmd_state_t opal_cr_ckpt_cmd_state_t;
 #define OPAL_CR_ENTER_LIBRARY() ;
 #define OPAL_CR_EXIT_LIBRARY() ;
 #define OPAL_CR_NOOP_PROGRESS() ;
-#endif /* #if OPAL_ENABLE_FT == 0 */
+#endif /* #if OPAL_ENABLE_FT == 0 || OPAL_ENABLE_FT_CR == 0 */
 
     /*
      * If using FT
      */
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
 #define OPAL_CR_TEST_CHECKPOINT_READY()      \
   {                                          \
     if(OPAL_UNLIKELY(opal_cr_is_enabled) ) { \
@@ -218,7 +216,7 @@ typedef enum opal_cr_ckpt_cmd_state_t opal_cr_ckpt_cmd_state_t;
  }
 #endif /* OPAL_ENABLE_FT_THREAD == 1 */
 
-#endif /* OPAL_ENABLE_FT == 1 */
+#endif /* OPAL_ENABLE_FT_CR == 1 */
 
     /*******************************
      * Notification Routines
@@ -244,9 +242,17 @@ typedef enum opal_cr_ckpt_cmd_state_t opal_cr_ckpt_cmd_state_t;
      * - Call Registered INC_Coord(state)
      */
     OPAL_DECLSPEC int opal_cr_inc_core(pid_t pid, 
-                                       opal_crs_base_snapshot_t *snapshot, 
-                                       bool term, int *state);
+                                       opal_crs_base_snapshot_t *snapshot,
+                                       opal_crs_base_ckpt_options_t *options,
+                                       int *state);
     
+    OPAL_DECLSPEC int opal_cr_inc_core_prep(void);
+    OPAL_DECLSPEC int opal_cr_inc_core_ckpt(pid_t pid,
+                                            opal_crs_base_snapshot_t *snapshot,
+                                            opal_crs_base_ckpt_options_t *options,
+                                            int *state);
+    OPAL_DECLSPEC int opal_cr_inc_core_recover(int state);
+
     /*******************************
      * Coordination Routines
      *******************************/
@@ -326,9 +332,7 @@ typedef enum opal_cr_ckpt_cmd_state_t opal_cr_ckpt_cmd_state_t;
         }                                               \
     }
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OPAL_CR_H */
 

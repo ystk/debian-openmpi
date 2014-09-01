@@ -5,7 +5,7 @@
  * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2010 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -22,6 +22,10 @@
 #define OPAL_PATH_H
 
 #include "opal_config.h"
+
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
 
 BEGIN_C_DECLS
 
@@ -45,7 +49,7 @@ BEGIN_C_DECLS
  * The caller is responsible for freeing the returned string.
  */
 OPAL_DECLSPEC char *opal_path_find(char *fname, char **pathv, int mode,
-                                   char **envv);
+                                   char **envv) __opal_attribute_malloc__ __opal_attribute_warn_unused_result__;
 
 /**
  *  Locates a file with certain permissions from a list of search
@@ -66,7 +70,7 @@ OPAL_DECLSPEC char *opal_path_find(char *fname, char **pathv, int mode,
  * The caller is responsible for freeing the returned string.
  */
 OPAL_DECLSPEC char *opal_path_findv(char *fname, int mode, 
-                                    char **envv, char *wrkdir);
+                                    char **envv, char *wrkdir) __opal_attribute_malloc__ __opal_attribute_warn_unused_result__;
 /**
  *  Detect if the requested path is absolute or relative.
  *
@@ -98,7 +102,7 @@ OPAL_DECLSPEC bool opal_path_is_absolute( const char *path );
  * function will return NULL. Otherwise, an newly allocated string
  * will be returned.
  */
-OPAL_DECLSPEC char* opal_find_absolute_path( char* app_name );
+OPAL_DECLSPEC char* opal_find_absolute_path( char* app_name ) __opal_attribute_warn_unused_result__;
 
 /**
  * Forms a complete pathname and checks it for existance and
@@ -110,10 +114,13 @@ OPAL_DECLSPEC char* opal_find_absolute_path( char* app_name );
  *
  * @retval NULL Failure
  * @retval Full pathname of the located file on Success
+ *
+ * The caller is responsible for freeing the returned string.
  */
-OPAL_DECLSPEC char *opal_path_access(char *fname, char *path, int mode);
+OPAL_DECLSPEC char *opal_path_access(char *fname, char *path, int mode) __opal_attribute_malloc__ __opal_attribute_warn_unused_result__;
 
-/** 
+
+/**
  * @brief Figure out, whether fname is on network file system
  *
  * Try to figure out, whether the file name specified through fname is
@@ -131,3 +138,4 @@ OPAL_DECLSPEC bool opal_path_nfs(char *fname) __opal_attribute_warn_unused_resul
 
 END_C_DECLS
 #endif /* OPAL_PATH_H */
+

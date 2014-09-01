@@ -12,15 +12,10 @@
 
 #include "orte_config.h"
 #include "orte/constants.h"
-#include "orte/types.h"
 
-#include "orte/util/show_help.h"
-#include "opal/class/opal_hash_table.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 
-#include "orte/mca/errmgr/errmgr.h"
-#include "orte/runtime/orte_globals.h"
 
 #include "orte/mca/routed/base/base.h"
 #include "routed_binomial.h"

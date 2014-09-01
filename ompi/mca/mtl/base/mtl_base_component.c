@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -19,10 +20,9 @@
 #include "ompi_config.h"
 
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/base.h"
-#include "orte/util/show_help.h"
 
-#include "orte/util/show_help.h"
 
 #include "ompi/constants.h"
 #include "ompi/mca/mtl/mtl.h"
@@ -125,7 +125,8 @@ ompi_mtl_base_select(bool enable_progress_threads,
        contain only the selected component. */
     mca_base_components_close(ompi_mtl_base_output, 
                               &ompi_mtl_base_components_opened, 
-                              (mca_base_component_t *) ompi_mtl_base_selected_component);
+                              (mca_base_component_t *) ompi_mtl_base_selected_component,
+                              false);
 
     /* All done */
     if (NULL == module) {
@@ -148,7 +149,7 @@ ompi_mtl_base_close(void)
     /* Close all remaining available modules (may be one if this is a
        OMPI RTE program, or [possibly] multiple if this is ompi_info) */
     mca_base_components_close(ompi_mtl_base_output, 
-                              &ompi_mtl_base_components_opened, NULL);
+                              &ompi_mtl_base_components_opened, NULL, true);
 
     /* All done */
     return OMPI_SUCCESS;

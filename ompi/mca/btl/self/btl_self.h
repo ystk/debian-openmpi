@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2006 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -21,22 +21,20 @@
 #ifndef MCA_BTL_SELF_H
 #define MCA_BTL_SELF_H
 
+#include "ompi_config.h"
+
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
 #endif  /* HAVE_STDLIB_H */
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif  /* HAVE_SYS_TYPES_H */
-#include "ompi/class/ompi_free_list.h"
-#include "ompi/class/ompi_bitmap.h"
 #include "opal/event/event.h"
-#include "ompi/mca/pml/pml.h"
+#include "ompi/class/ompi_free_list.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h" 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /**
  * Shared Memory (SELF) BTL module.
@@ -112,7 +110,7 @@ int mca_btl_self_add_procs(
     size_t nprocs,
     struct ompi_proc_t **procs,
     struct mca_btl_base_endpoint_t** peers,
-    struct ompi_bitmap_t* reachability
+    struct opal_bitmap_t* reachability
 );
 
 
@@ -168,7 +166,7 @@ struct mca_btl_base_descriptor_t* mca_btl_self_prepare_src(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* endpoint,
     struct mca_mpool_base_registration_t* registration,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -185,7 +183,7 @@ struct mca_btl_base_descriptor_t* mca_btl_self_prepare_dst(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* endpoint,
     struct mca_mpool_base_registration_t* registration,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -225,9 +223,7 @@ int mca_btl_self_rdma(
  */
 int mca_btl_self_ft_event(int state);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif
 

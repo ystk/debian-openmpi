@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -31,6 +31,7 @@
 #include "opal/event/event.h"
 #include "orte/util/show_help.h"
 #include "opal/util/os_path.h"
+#include "opal/util/output.h"
 #include "opal/runtime/opal.h"
 #include "opal/runtime/opal_cr.h"
 
@@ -40,7 +41,7 @@
 #include "orte/mca/grpcomm/base/base.h"
 #include "orte/mca/plm/plm.h"
 #include "orte/mca/filem/base/base.h"
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
 #include "orte/mca/snapc/base/base.h"
 #endif
 #include "orte/util/proc_info.h"
@@ -99,11 +100,8 @@ int orte_ess_base_app_setup(void)
         goto error;
     }
     
-    /* although only the HNP and orteds open/select the PLM, everyone
-     * else has access to the PLM env proxy.
-     * We now provide a chance for the PLM
-     * to perform any module-specific init functions - non-HNP/orted
-     * procs will simply perform the PLM proxy init
+    /* non-daemon/HNP apps can only have the default proxy PLM
+     * module open - provide a chance for it to initialize
      */
     if (ORTE_SUCCESS != (ret = orte_plm.init())) {
         ORTE_ERROR_LOG(ret);
@@ -154,7 +152,7 @@ int orte_ess_base_app_setup(void)
     }
     
     
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     /*
      * Setup the SnapC
      */
@@ -163,7 +161,7 @@ int orte_ess_base_app_setup(void)
         error = "orte_snapc_base_open";
         goto error;
     }
-    if (ORTE_SUCCESS != (ret = orte_snapc_base_select(orte_process_info.hnp, !orte_process_info.daemon))) {
+    if (ORTE_SUCCESS != (ret = orte_snapc_base_select(ORTE_PROC_IS_HNP, !ORTE_PROC_IS_DAEMON))) {
         ORTE_ERROR_LOG(ret);
         error = "orte_snapc_base_select";
         goto error;
@@ -197,6 +195,26 @@ int orte_ess_base_app_setup(void)
         goto error;
     }
     
+    /* if we are an ORTE app - and not an MPI app - then
+     * we need to barrier here. MPI_Init has its own barrier,
+     * so we don't need to do two of them. However, if we
+     * don't do a barrier at all, then one process could
+     * finalize before another one called orte_init. This
+     * causes ORTE to believe that the proc abnormally
+     * terminated
+     *
+     * NOTE: only do this when the process originally launches.
+     * Cannot do this on a restart as the rest of the processes
+     * in the job won't be executing this step, so we would hang
+     */
+    if (ORTE_PROC_IS_NON_MPI && !orte_do_not_barrier) {
+        if (ORTE_SUCCESS != (ret = orte_grpcomm.barrier())) {
+            ORTE_ERROR_LOG(ret);
+            error = "orte barrier";
+            goto error;
+        }
+    }
+    
     return ORTE_SUCCESS;
     
 error:
@@ -213,7 +231,7 @@ int orte_ess_base_app_finalize(void)
     
     orte_cr_finalize();
     
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     orte_snapc_base_close();
 #endif
     orte_filem_base_close();

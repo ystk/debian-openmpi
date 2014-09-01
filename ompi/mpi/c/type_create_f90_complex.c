@@ -21,10 +21,13 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 
 #include <float.h>
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Type_create_f90_complex = PMPI_Type_create_f90_complex
 #endif
 
@@ -87,18 +90,21 @@ int MPI_Type_create_f90_complex(int p, int r, MPI_Datatype *newtype)
         /* Create the duplicate type corresponding to selected type, then
          * set the argument to be a COMBINER with the correct value of r
          * and add it to the hash table. */
-        if (OMPI_SUCCESS != ompi_ddt_duplicate( *newtype, &datatype)) {
+        if (OMPI_SUCCESS != ompi_datatype_duplicate( *newtype, &datatype)) {
             OMPI_ERRHANDLER_RETURN (MPI_ERR_INTERN, MPI_COMM_WORLD,
                                     MPI_ERR_INTERN, FUNC_NAME );
         }
         /* Make sure the user is not allowed to free this datatype as specified
          * in the MPI standard.
          */
-        datatype->flags |= DT_FLAG_PREDEFINED;
+        datatype->super.flags |= OMPI_DATATYPE_FLAG_PREDEFINED;
+        /* Mark the datatype as a special F90 convenience type */
+        snprintf(datatype->name, MPI_MAX_OBJECT_NAME, "COMBINER %s",
+                 (*newtype)->name);
 
         a_i[0] = &r;
         a_i[1] = &p;
-        ompi_ddt_set_args( datatype, 1, a_i, 0, NULL, 0, NULL, MPI_COMBINER_F90_COMPLEX );
+        ompi_datatype_set_args( datatype, 1, a_i, 0, NULL, 0, NULL, MPI_COMBINER_F90_COMPLEX );
 
         rc = opal_hash_table_set_value_uint64( &ompi_mpi_f90_complex_hashtable, key, datatype );
         if (OMPI_SUCCESS != rc) {

@@ -19,9 +19,9 @@
 #ifndef OPAL_UTIL_ERROR_H
 #define OPAL_UTIL_ERROR_H
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+#include "opal_config.h"
+
+BEGIN_C_DECLS
 
 /**
  * Prints error message for errnum on stderr
@@ -82,8 +82,6 @@ OPAL_DECLSPEC int opal_error_register(const char *project,
                                       int err_base, int err_max,
                                       opal_err2str_fn_t converter);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OPAL_UTIL_ERROR_H */

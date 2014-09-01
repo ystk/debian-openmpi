@@ -1,16 +1,17 @@
 /*
- * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2009      IBM Corporation.  All rights reserved.
- * $COPYRIGHT$
+ * Copyright (c) 2011      Oracle and/or its affiliates.  All rights reserved. * $COPYRIGHT$
+ * Copyright (c)      2011 Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * 
  * Additional copyrights may follow
  * 
@@ -35,13 +36,16 @@
 #include "opal/runtime/opal_cr.h"
 
 #include "opal/util/os_path.h"
+#include "opal/util/output.h"
 #include "opal/util/malloc.h"
 #include "opal/util/basename.h"
+#include "opal/mca/pstat/base/base.h"
 #include "opal/mca/paffinity/base/base.h"
+#include "opal/mca/sysinfo/base/base.h"
 
 #include "orte/util/show_help.h"
 #include "orte/mca/rml/base/base.h"
-#include "orte/mca/rml/base/rml_contact.h"
+#include "orte/mca/rml/rml_types.h"
 #include "orte/mca/routed/base/base.h"
 #include "orte/mca/routed/routed.h"
 #include "orte/mca/errmgr/base/base.h"
@@ -53,7 +57,7 @@
 #include "orte/mca/notifier/base/base.h"
 
 #include "orte/mca/rmaps/base/base.h"
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
 #include "orte/mca/snapc/base/base.h"
 #endif
 #include "orte/mca/filem/base/base.h"
@@ -62,6 +66,7 @@
 #include "orte/util/hnp_contact.h"
 #include "orte/util/name_fns.h"
 #include "orte/util/show_help.h"
+#include "orte/util/comm/comm.h"
 
 #include "orte/runtime/runtime.h"
 #include "orte/runtime/orte_wait.h"
@@ -72,32 +77,34 @@
 #include "orte/mca/ess/base/base.h"
 #include "orte/mca/ess/hnp/ess_hnp.h"
 
-static int rte_init(char flags);
+static int rte_init(void);
 static int rte_finalize(void);
 static void rte_abort(int status, bool report) __opal_attribute_noreturn__;
-static bool proc_is_local(orte_process_name_t *proc);
+static uint8_t proc_get_locality(orte_process_name_t *proc);
+static orte_vpid_t proc_get_daemon(orte_process_name_t *proc);
 static char* proc_get_hostname(orte_process_name_t *proc);
-static uint32_t proc_get_arch(orte_process_name_t *proc);
 static orte_local_rank_t proc_get_local_rank(orte_process_name_t *proc);
 static orte_node_rank_t proc_get_node_rank(orte_process_name_t *proc);
-static int update_arch(orte_process_name_t *proc, uint32_t arch);
+static int update_pidmap(opal_byte_object_t *bo);
+static int update_nidmap(opal_byte_object_t *bo);
 
 
 orte_ess_base_module_t orte_ess_hnp_module = {
     rte_init,
     rte_finalize,
     rte_abort,
-    proc_is_local,
+    proc_get_locality,
+    proc_get_daemon,
     proc_get_hostname,
-    proc_get_arch,
     proc_get_local_rank,
     proc_get_node_rank,
-    update_arch,
+    update_pidmap,
+    update_nidmap,
     NULL /* ft_event */
 };
 
 
-static int rte_init(char flags)
+static int rte_init(void)
 {
     int ret;
     char *error = NULL;
@@ -105,7 +112,6 @@ static int rte_init(char flags)
     orte_job_t *jdata;
     orte_node_t *node;
     orte_proc_t *proc;
-    int value;
     
     /* initialize the global list of local children and job data */
     OBJ_CONSTRUCT(&orte_local_children, opal_list_t);
@@ -117,39 +123,42 @@ static int rte_init(char flags)
         goto error;
     }
     
-    /* if we are using xml for output, put a basename start tag */
+    /* if we are using xml for output, put an mpirun start tag */
     if (orte_xml_output) {
-        fprintf(orte_xml_fp, "<%s>\n", orte_cmd_basename);
+        fprintf(orte_xml_fp, "<mpirun>\n");
         fflush(orte_xml_fp);
     }
-    
-    /* determine the topology info */
-    if (0 == orte_default_num_sockets_per_board) {
-        /* we weren't given a number, so try to determine it */
-        if (OPAL_SUCCESS != opal_paffinity_base_get_socket_info(&value)) {
-            /* can't get any info - default to 1 */
-            value = 1;
-        }
-        orte_default_num_sockets_per_board = (uint8_t)value;
+
+    /* open and setup the opal_pstat framework so we can provide
+     * process stats if requested
+     */
+    if (ORTE_SUCCESS != (ret = opal_pstat_base_open())) {
+        ORTE_ERROR_LOG(ret);
+        error = "opal_pstat_base_open";
+        goto error;
+    }
+    if (ORTE_SUCCESS != (ret = opal_pstat_base_select())) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_pstat_base_select";
+        goto error;
     }
 
-    if (0 == orte_default_num_cores_per_socket) {
-        /* we weren't given a number, so try to determine it */
-        if (OPAL_SUCCESS != (ret = opal_paffinity_base_get_core_info(0, &value))) {
-            /* don't have topo info - can we at least get #processors? */
-            if (OPAL_SUCCESS != opal_paffinity_base_get_processor_info(&value)) {
-                /* can't get any info - default to 1 */
-                value = 1;
-            }
-        }
-        orte_default_num_cores_per_socket = (uint8_t)value;
+    /* open and setup the local resource discovery framework */
+    if (ORTE_SUCCESS != (ret = opal_sysinfo_base_open())) {
+        ORTE_ERROR_LOG(ret);
+        error = "opal_sysinfo_base_open";
+        goto error;
     }
-    
+    if (ORTE_SUCCESS != (ret = opal_sysinfo_base_select())) {
+        ORTE_ERROR_LOG(ret);
+        error = "opal_sysinfo_base_select";
+        goto error;
+    }
+
     /* Since we are the HNP, then responsibility for
      * defining the name falls to the PLM component for our
      * respective environment - hence, we have to open the PLM
-     * first and select that component. Note that ONLY the
-     * HNP ever uses a PLM component anyway
+     * first and select that component.
      */
     if (ORTE_SUCCESS != (ret = orte_plm_base_open())) {
         ORTE_ERROR_LOG(ret);
@@ -169,6 +178,7 @@ static int rte_init(char flags)
     }
     
     /* Setup the communication infrastructure */
+    
     /*
      * Runtime Messaging Layer
      */
@@ -279,10 +289,16 @@ static int rte_init(char flags)
         goto error;
     }
 
+    /* we are an hnp, so update the contact info field for later use */
+    orte_process_info.my_hnp_uri = orte_rml.get_contact_info();
+    
+    /* we are also officially a daemon, so better update that field too */
+    orte_process_info.my_daemon_uri = orte_rml.get_contact_info();
+    
 #if !ORTE_DISABLE_FULL_SUPPORT
     /* setup the orte_show_help system to recv remote output */
     ret = orte_rml.recv_buffer_nb(ORTE_NAME_WILDCARD, ORTE_RML_TAG_SHOW_HELP,
-                                 ORTE_RML_NON_PERSISTENT, orte_show_help_recv, NULL);
+                                  ORTE_RML_NON_PERSISTENT, orte_show_help_recv, NULL);
     if (ret != ORTE_SUCCESS && ret != ORTE_ERR_NOT_IMPLEMENTED) {
         ORTE_ERROR_LOG(ret);
         error = "setup receive for orte_show_help";
@@ -298,9 +314,9 @@ static int rte_init(char flags)
                          orte_process_info.nodename));
 
     if (ORTE_SUCCESS != (ret = orte_session_dir(true,
-                                orte_process_info.tmpdir_base,
-                                orte_process_info.nodename, NULL,
-                                ORTE_PROC_MY_NAME))) {
+                                                orte_process_info.tmpdir_base,
+                                                orte_process_info.nodename, NULL,
+                                                ORTE_PROC_MY_NAME))) {
         ORTE_ERROR_LOG(ret);
         error = "orte_session_dir";
         goto error;
@@ -334,16 +350,36 @@ static int rte_init(char flags)
     }
     free(contact_path);
 
+    /* setup the global job and node arrays */
+    orte_job_data = OBJ_NEW(opal_pointer_array_t);
+    if (ORTE_SUCCESS != (ret = opal_pointer_array_init(orte_job_data,
+                                                       1,
+                                                       ORTE_GLOBAL_ARRAY_MAX_SIZE,
+                                                       1))) {
+        ORTE_ERROR_LOG(ret);
+        error = "setup job array";
+        goto error;
+    }
+    
+    orte_node_pool = OBJ_NEW(opal_pointer_array_t);
+    if (ORTE_SUCCESS != (ret = opal_pointer_array_init(orte_node_pool,
+                                                       ORTE_GLOBAL_ARRAY_BLOCK_SIZE,
+                                                       ORTE_GLOBAL_ARRAY_MAX_SIZE,
+                                                       ORTE_GLOBAL_ARRAY_BLOCK_SIZE))) {
+        ORTE_ERROR_LOG(ret);
+        error = "setup node array";
+        goto error;
+    }
+    
     /* Setup the job data object for the daemons */        
     /* create and store the job data object */
     jdata = OBJ_NEW(orte_job_t);
     jdata->jobid = ORTE_PROC_MY_NAME->jobid;
-    opal_pointer_array_add(orte_job_data, jdata);
+    opal_pointer_array_set_item(orte_job_data, 0, jdata);
    
     /* create and store a node object where we are */
     node = OBJ_NEW(orte_node_t);
     node->name = strdup(orte_process_info.nodename);
-    node->arch = orte_process_info.arch;
     node->index = opal_pointer_array_add(orte_node_pool, node);
     
     /* create and store a proc object for us */
@@ -407,7 +443,7 @@ static int rte_init(char flags)
         goto error;
     }
 
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     /*
      * Setup the SnapC
      */
@@ -417,7 +453,7 @@ static int rte_init(char flags)
         goto error;
     }
 
-    if (ORTE_SUCCESS != (ret = orte_snapc_base_select(orte_process_info.hnp, !orte_process_info.daemon))) {
+    if (ORTE_SUCCESS != (ret = orte_snapc_base_select(ORTE_PROC_IS_HNP, !ORTE_PROC_IS_DAEMON))) {
         ORTE_ERROR_LOG(ret);
         error = "orte_snapc_base_select";
         goto error;
@@ -452,9 +488,39 @@ static int rte_init(char flags)
         goto error;
     }
 
+    /* if a tool has launched us and is requesting event reports,
+     * then set its contact info into the comm system
+     */
+    if (orte_report_events) {
+        if (ORTE_SUCCESS != (ret = orte_util_comm_connect_tool(orte_report_events_uri))) {
+            error = "could not connect to tool";
+            goto error;
+        }
+    }
+
+    /* We actually do *not* want an HNP to voluntarily yield() the
+       processor more than necessary.  Orterun already blocks when
+       it is doing nothing, so it doesn't use any more CPU cycles than
+       it should; but when it *is* doing something, we do not want it
+       to be unnecessarily delayed because it voluntarily yielded the
+       processor in the middle of its work.
+     
+       For example: when a message arrives at orterun, we want the
+       OS to wake us up in a timely fashion (which most OS's
+       seem good about doing) and then we want orterun to process
+       the message as fast as possible.  If orterun yields and lets
+       aggressive MPI applications get the processor back, it may be a
+       long time before the OS schedules orterun to run again
+       (particularly if there is no IO event to wake it up).  Hence,
+       routed OOB messages (for example) may be significantly delayed
+       before being delivered to MPI processes, which can be
+       problematic in some scenarios (e.g., COMM_SPAWN, BTL's that
+       require OOB messages for wireup, etc.). */
+    opal_progress_set_yield_when_idle(false);
+    
     return ORTE_SUCCESS;
 
-error:
+ error:
     if (ORTE_ERR_SILENT != ret) {
         orte_show_help("help-orte-runtime.txt",
                        "orte_init:startup:internal-failure",
@@ -472,6 +538,9 @@ static int rte_finalize(void)
 {
     char *contact_path;
     opal_list_item_t *item;
+    orte_node_t *node;
+    orte_job_t *job;
+    int i;
 
     /* remove my contact info file */
     contact_path = opal_os_path(false, orte_process_info.top_session_dir,
@@ -483,7 +552,7 @@ static int rte_finalize(void)
     
     orte_cr_finalize();
     
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     orte_snapc_base_close();
 #endif
     orte_filem_base_close();
@@ -505,6 +574,14 @@ static int rte_finalize(void)
     orte_grpcomm_base_close();
     orte_routed_base_close();
     orte_rml_base_close();
+
+    /* if we were doing timing studies, close the timing file */
+    if (orte_timing) {
+        if (stdout != orte_timing_output &&
+            stderr != orte_timing_output) {
+            fclose(orte_timing_output);
+        }
+    }
     
     /* cleanup the global list of local children and job data */
     while (NULL != (item = opal_list_remove_first(&orte_local_children))) {
@@ -516,6 +593,24 @@ static int rte_finalize(void)
     }
     OBJ_DESTRUCT(&orte_local_jobdata);
     
+    /* cleanup the job and node info arrays */
+    if (NULL != orte_node_pool) {
+        for (i=0; i < orte_node_pool->size; i++) {
+            if (NULL != (node = (orte_node_t*)opal_pointer_array_get_item(orte_node_pool,i))) {
+                OBJ_RELEASE(node);
+            }
+        }
+        OBJ_RELEASE(orte_node_pool);
+    }
+    if (NULL != orte_job_data) {
+        for (i=0; i < orte_job_data->size; i++) {
+            if (NULL != (job = (orte_job_t*)opal_pointer_array_get_item(orte_job_data,i))) {
+                OBJ_RELEASE(job);
+            }
+        }
+        OBJ_RELEASE(orte_job_data);
+    }
+
     /* finalize the session directory tree */
     orte_session_dir_finalize(ORTE_PROC_MY_NAME);
     
@@ -524,17 +619,20 @@ static int rte_finalize(void)
     if (NULL != orte_job_ident) {
         free(orte_job_ident);
     }
-
     
     /* close the xml output file, if open */
     if (orte_xml_output) {
-        fprintf(orte_xml_fp, "</%s>\n", orte_cmd_basename);
+        fprintf(orte_xml_fp, "</mpirun>\n");
         fflush(orte_xml_fp);
         if (stdout != orte_xml_fp) {
             fclose(orte_xml_fp);
         }
     }
     
+    /* handle the orted-specific OPAL stuff */
+    opal_sysinfo_base_close();
+    opal_pstat_base_close();
+
     return ORTE_SUCCESS;    
 }
 
@@ -579,54 +677,72 @@ static void rte_abort(int status, bool report)
     exit(status);
 }
 
-static bool proc_is_local(orte_process_name_t *proc)
+static uint8_t proc_get_locality(orte_process_name_t *proc)
 {
-    orte_node_t **nodes;
-    orte_proc_t **procs;
-    orte_vpid_t i;
+    orte_node_t *node;
+    orte_proc_t *myproc;
+    int i;
     
     /* the HNP is always on node=0 of the node array */
-    nodes = (orte_node_t**)orte_node_pool->addr;
-    procs = (orte_proc_t**)nodes[0]->procs->addr;
+    node = (orte_node_t*)opal_pointer_array_get_item(orte_node_pool, 0);
     
     /* cycle through the array of local procs */
-    for (i=0; i < nodes[0]->num_procs; i++) {
-        if (procs[i]->name.jobid == proc->jobid &&
-            procs[i]->name.vpid == proc->vpid) {
+    for (i=0; i < node->procs->size; i++) {
+        if (NULL == (myproc = (orte_proc_t*)opal_pointer_array_get_item(node->procs, i))) {
+            continue;
+        }
+        if (myproc->name.jobid == proc->jobid &&
+            myproc->name.vpid == proc->vpid) {
             OPAL_OUTPUT_VERBOSE((2, orte_ess_base_output,
                                  "%s ess:hnp: proc %s is LOCAL",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                  ORTE_NAME_PRINT(proc)));
-            return true;
+            return (OPAL_PROC_ON_NODE | OPAL_PROC_ON_CU | OPAL_PROC_ON_CLUSTER);
         }
     }
     
     OPAL_OUTPUT_VERBOSE((2, orte_ess_base_output,
-                         "%s ess:env: proc %s is REMOTE",
+                         "%s ess:hnp: proc %s is REMOTE",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          ORTE_NAME_PRINT(proc)));
     
-    return false;
+    return OPAL_PROC_NON_LOCAL;
     
 }
 
 static orte_proc_t* find_proc(orte_process_name_t *proc)
 {
     orte_job_t *jdata;
-    orte_proc_t **procs;
     
     if (NULL == (jdata = orte_get_job_data_object(proc->jobid))) {
         return NULL;
     }
-    procs = (orte_proc_t**)jdata->procs->addr;
-    
-    if (jdata->num_procs < proc->vpid) {
-        return NULL;
-    }
-    
-    return procs[proc->vpid];
+
+    return (orte_proc_t*)opal_pointer_array_get_item(jdata->procs, proc->vpid);
 }
 
+
+static orte_vpid_t proc_get_daemon(orte_process_name_t *proc)
+{
+    orte_proc_t *pdata;
+    
+    if( ORTE_JOBID_IS_DAEMON(proc->jobid) ) {
+        return proc->vpid;
+    }
+
+    /* get the job data */
+     if (NULL == (pdata = find_proc(proc))) {
+         return ORTE_VPID_INVALID;
+     }
+     
+    OPAL_OUTPUT_VERBOSE((2, orte_ess_base_output,
+                         "%s ess:hnp: proc %s is hosted by daemon %s",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         ORTE_NAME_PRINT(proc),
+                         ORTE_VPID_PRINT(pdata->node->daemon->name.vpid)));
+    
+    return pdata->node->daemon->name.vpid;
+}
 
 static char* proc_get_hostname(orte_process_name_t *proc)
 {
@@ -644,44 +760,6 @@ static char* proc_get_hostname(orte_process_name_t *proc)
                          pdata->node->name));
     
     return pdata->node->name;
-}
-
-static uint32_t proc_get_arch(orte_process_name_t *proc)
-{
-    orte_proc_t *pdata;
-    
-    if (NULL == (pdata = find_proc(proc))) {
-        ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-        return 0;
-    }
-    
-    OPAL_OUTPUT_VERBOSE((2, orte_ess_base_output,
-                         "%s ess:hnp: proc %s has arch %0x",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                         ORTE_NAME_PRINT(proc),
-                         pdata->node->arch));
-    
-    return pdata->node->arch;
-}
-
-static int update_arch(orte_process_name_t *proc, uint32_t arch)
-{
-    orte_proc_t *pdata;
-    
-    if (NULL == (pdata = find_proc(proc))) {
-        ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-        return ORTE_ERR_NOT_FOUND;
-    }
-    
-    OPAL_OUTPUT_VERBOSE((2, orte_ess_base_output,
-                         "%s ess:hnp: updating proc %s to arch %0x",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                         ORTE_NAME_PRINT(proc),
-                         arch));
-    
-    pdata->node->arch = arch;
-    
-    return ORTE_SUCCESS;
 }
 
 static orte_local_rank_t proc_get_local_rank(orte_process_name_t *proc)
@@ -718,4 +796,30 @@ static orte_node_rank_t proc_get_node_rank(orte_process_name_t *proc)
                          (int)pdata->node_rank));
     
     return pdata->node_rank;
+}
+
+static int update_pidmap(opal_byte_object_t *bo)
+{
+    /* there is nothing to do here - the HNP can resolve
+     * all requests directly from its internal data. However,
+     * we do need to free the data in the byte object to
+     * be consistent with other modules
+     */
+    if (NULL != bo && NULL != bo->bytes) {
+        free(bo->bytes);
+    }
+    return ORTE_SUCCESS;
+}
+
+static int update_nidmap(opal_byte_object_t *bo)
+{
+    /* there is nothing to do here - the HNP can resolve
+     * all requests directly from its internal data. However,
+     * we do need to free the data in the byte object to
+     * be consistent with other modules
+     */
+    if (NULL != bo && NULL != bo->bytes) {
+        free(bo->bytes);
+    }
+    return ORTE_SUCCESS;
 }

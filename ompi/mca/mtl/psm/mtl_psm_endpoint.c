@@ -22,14 +22,9 @@
 #include <sys/time.h>
 #include <time.h>
 #include "ompi/types.h"
-#include "orte/mca/oob/base/base.h"
-#include "orte/mca/rml/rml.h"
-#include "orte/mca/errmgr/errmgr.h"
-#include "orte/util/show_help.h"
 #include "mtl_psm.h"
 #include "mtl_psm_types.h"
 #include "mtl_psm_endpoint.h" 
-#include "ompi/runtime/ompi_module_exchange.h"
 
 /*
  * Initialize state of the endpoint instance.

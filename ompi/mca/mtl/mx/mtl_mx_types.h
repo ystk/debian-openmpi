@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,21 +20,17 @@
 #ifndef MTL_MX_TYPES_H_HAS_BEEN_INCLUDED
 #define MTL_MX_TYPES_H_HAS_BEEN_INCLUDED
 
+#include "ompi_config.h"
 #include "mtl_mx.h"
 
-#include "ompi/request/request.h"
 #include "ompi/mca/mtl/mtl.h"
 #include "ompi/mca/mtl/base/base.h"
-#include "ompi/datatype/datatype.h"
-#include "ompi/datatype/convertor.h"
 #include "mtl_mx_endpoint.h" 
 
 #include "myriexpress.h"
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /** 
  * MTL Module Interface
@@ -45,6 +42,8 @@ struct mca_mtl_mx_module_t {
     int32_t  mx_timeout;
     int32_t  mx_retries;
     int32_t  mx_support_sharedmem;
+    int mx_board_num;
+    int mx_endpoint_num;
     mx_endpoint_t mx_endpoint; /**< mx data structure for local endpoint */
     mx_endpoint_addr_t mx_endpoint_addr; /**< mx data structure for local endpoint address */
     mca_mtl_mx_addr_t mx_addr;
@@ -123,9 +122,7 @@ OMPI_MODULE_DECLSPEC extern mca_mtl_mx_component_t mca_mtl_mx_component;
     
 
    
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif  /* MTL_MX_TYPES_H_HAS_BEEN_INCLUDED */
 

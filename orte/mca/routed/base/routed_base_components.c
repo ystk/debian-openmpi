@@ -4,6 +4,7 @@
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2004-2008 The Trustees of Indiana University.
  *                         All rights reserved.
+ * Copyright (c) 2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -12,12 +13,12 @@
  */
 
 #include "orte_config.h"
+#include "orte/constants.h"
 
 #include "opal/mca/mca.h"
+#include "opal/class/opal_bitmap.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/mca_base_component_repository.h"
-
-#include "orte/util/show_help.h"
-#include "orte/mca/errmgr/errmgr.h"
 
 #include "orte/mca/routed/routed.h"
 #include "orte/mca/routed/base/base.h"
@@ -40,8 +41,20 @@ int orte_routed_base_open(void)
 
 #else
 
+static void construct(orte_routed_tree_t *rt)
+{
+    rt->vpid = ORTE_VPID_INVALID;
+    OBJ_CONSTRUCT(&rt->relatives, opal_bitmap_t);
+}
+static void destruct(orte_routed_tree_t *rt)
+{
+    OBJ_DESTRUCT(&rt->relatives);
+}
+OBJ_CLASS_INSTANCE(orte_routed_tree_t, opal_list_item_t,
+                   construct, destruct);
+
 int orte_routed_base_output = -1;
-orte_routed_module_t orte_routed;
+orte_routed_module_t orte_routed = {0};
 opal_list_t orte_routed_base_components;
 
 static orte_routed_component_t *active_component = NULL;
@@ -117,7 +130,7 @@ orte_routed_base_close(void)
     /* shutdown any remaining opened components */
     if (component_open_called) {
         mca_base_components_close(orte_routed_base_output, 
-                                  &orte_routed_base_components, NULL);
+                                  &orte_routed_base_components, NULL, true);
     }
 
     OBJ_DESTRUCT(&orte_routed_base_components);

@@ -20,11 +20,14 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/op/op.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Allreduce = PMPI_Allreduce
 #endif
 
@@ -69,8 +72,7 @@ int MPI_Allreduce(void *sendbuf, void *recvbuf, int count,
         } else if (MPI_OP_NULL == op) {
             err = MPI_ERR_OP;
         } else if (!ompi_op_is_valid(op, datatype, &msg, FUNC_NAME)) {
-            int ret;
-            ret = OMPI_ERRHANDLER_INVOKE(comm, MPI_ERR_OP, msg);
+            int ret = OMPI_ERRHANDLER_INVOKE(comm, MPI_ERR_OP, msg);
             free(msg);
             return ret;
         } else if( MPI_IN_PLACE == recvbuf ) {

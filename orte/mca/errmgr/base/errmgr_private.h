@@ -29,8 +29,8 @@
 #include "orte/types.h"
 
 #include "opal/dss/dss_types.h"
-#include "orte/mca/rml/rml_types.h"
 #include "orte/mca/plm/plm_types.h"
+#include "orte/runtime/orte_globals.h"
 
 #include "orte/mca/errmgr/errmgr.h"
 
@@ -62,11 +62,11 @@ ORTE_DECLSPEC    void orte_errmgr_base_proc_aborted_not_avail(orte_process_name_
 
 ORTE_DECLSPEC    void orte_errmgr_base_incomplete_start_not_avail(orte_jobid_t job, int exit_code);
 
-ORTE_DECLSPEC    void orte_errmgr_base_error_abort(int error_code, char *fmt, ...);
+ORTE_DECLSPEC    void orte_errmgr_base_error_abort(int error_code, char *fmt, ...) __opal_attribute_format__(__printf__, 2, 3) __opal_attribute_noreturn__;
 
 ORTE_DECLSPEC    int orte_errmgr_base_register_cb_not_avail(orte_jobid_t job,
                                                             orte_job_state_t state,
-                                                            orte_errmgr_cb_fn_t cbfunc,
+                                                            orte_err_cb_fn_t cbfunc,
                                                             void *cbdata);
 
 /*

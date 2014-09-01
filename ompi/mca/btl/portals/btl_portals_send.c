@@ -23,8 +23,7 @@
 #include <assert.h>
 
 #include "ompi/constants.h"
-#include "ompi/datatype/convertor.h"
-#include "ompi/datatype/datatype.h"
+#include "opal/datatype/opal_convertor.h"
 
 #include "btl_portals.h"
 #include "btl_portals_send.h"
@@ -65,7 +64,7 @@ mca_btl_portals_send(struct mca_btl_base_module_t* btl_base,
         mca_btl_portals_module.md_send.start = frag->segments[0].seg_addr.pval;
         mca_btl_portals_module.md_send.length = 
             0 == frag->size ? frag->segments[0].seg_len : frag->size;
-#if OMPI_ENABLE_DEBUG 
+#if OPAL_ENABLE_DEBUG 
         mca_btl_portals_module.md_send.options = 
             PTL_MD_EVENT_START_DISABLE;
 #else 
@@ -119,7 +118,7 @@ mca_btl_portals_send(struct mca_btl_base_module_t* btl_base,
 
 int mca_btl_portals_sendi(struct mca_btl_base_module_t* btl_base,
                           struct mca_btl_base_endpoint_t* endpoint,
-                          struct ompi_convertor_t* convertor,
+                          struct opal_convertor_t* convertor,
                           void* header,
                           size_t header_size,
                           size_t payload_size,
@@ -136,6 +135,8 @@ int mca_btl_portals_sendi(struct mca_btl_base_module_t* btl_base,
     int ret;
     size_t max_data;
     
+    opal_output(0, "mca_btl_portals_sendi status is incomplete");
+    abort();
     assert(&mca_btl_portals_module == (mca_btl_portals_module_t*) btl_base);
     *des = NULL; 
     if (OPAL_THREAD_ADD32(&mca_btl_portals_module.portals_outstanding_ops, 1) >
@@ -176,7 +177,7 @@ int mca_btl_portals_sendi(struct mca_btl_base_module_t* btl_base,
         iov.iov_len  = max_data = payload_size;
         iov_count    = 1;
         
-        (void)ompi_convertor_pack( convertor,
+        (void)opal_convertor_pack( convertor,
                                    &iov, &iov_count, &max_data);
         
         assert(max_data == payload_size);
@@ -203,7 +204,7 @@ int mca_btl_portals_sendi(struct mca_btl_base_module_t* btl_base,
         mca_btl_portals_module.md_send.start = frag->segments[0].seg_addr.pval;
         mca_btl_portals_module.md_send.length = 
             0 == frag->size ? frag->segments[0].seg_len : frag->size;
-#if OMPI_ENABLE_DEBUG 
+#if OPAL_ENABLE_DEBUG 
         mca_btl_portals_module.md_send.options = 
             PTL_MD_EVENT_START_DISABLE;
 #else 

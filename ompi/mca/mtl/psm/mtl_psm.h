@@ -20,21 +20,14 @@
 #ifndef MTL_PSM_H_HAS_BEEN_INCLUDED
 #define MTL_PSM_H_HAS_BEEN_INCLUDED
 
-#include "opal/threads/threads.h"
-#include "opal/threads/condition.h"
-#include "ompi/class/ompi_free_list.h"
-#include "opal/util/cmd_line.h"
-#include "ompi/request/request.h"
+#include "ompi/mca/pml/pml.h"
 #include "ompi/mca/mtl/mtl.h"
 #include "ompi/mca/mtl/base/base.h"
-#include "ompi/datatype/datatype.h"
-#include "ompi/datatype/convertor.h"
+#include "opal/datatype/opal_convertor.h"
 #include <psm.h>
 #include <psm_mq.h>
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 
 /* MTL interface functions */
@@ -53,14 +46,14 @@ ompi_mtl_psm_send(struct mca_mtl_base_module_t* mtl,
                  struct ompi_communicator_t* comm,
                  int dest,
                  int tag,
-                 struct ompi_convertor_t *convertor,
+                 struct opal_convertor_t *convertor,
                  mca_pml_base_send_mode_t mode);
 
 extern int ompi_mtl_psm_isend(struct mca_mtl_base_module_t* mtl, 
                              struct ompi_communicator_t* comm,
                              int dest,
                              int tag,
-                             struct ompi_convertor_t *convertor,
+                             struct opal_convertor_t *convertor,
                              mca_pml_base_send_mode_t mode,
                              bool blocking,
                              mca_mtl_request_t * mtl_request);
@@ -69,7 +62,7 @@ extern int ompi_mtl_psm_irecv(struct mca_mtl_base_module_t* mtl,
                              struct ompi_communicator_t *comm,
                              int src,
                              int tag,
-                             struct ompi_convertor_t *convertor,
+                             struct opal_convertor_t *convertor,
                              struct mca_mtl_request_t *mtl_request);
     
     
@@ -90,9 +83,7 @@ int ompi_mtl_psm_module_init(int local_rank, int num_local_procs);
     
 
    
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif  /* MTL_PSM_H_HAS_BEEN_INCLUDED */
 

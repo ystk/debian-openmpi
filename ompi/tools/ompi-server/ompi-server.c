@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2006 The University of Tennessee and The University
@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * $COPYRIGHT$
@@ -21,6 +21,10 @@
 
 #include "orte_config.h"
 #include "orte/constants.h"
+
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
 
 #include <stdio.h>
 #include <ctype.h>
@@ -41,24 +45,22 @@
 #include "opal/event/event.h"
 #include "opal/mca/base/base.h"
 #include "opal/util/cmd_line.h"
+#include "opal/util/output.h"
 #include "orte/util/show_help.h"
-#include "opal/util/printf.h"
-#include "opal/util/argv.h"
 #include "opal/util/daemon_init.h"
 #include "opal/runtime/opal.h"
+#include "opal/runtime/opal_cr.h"
 #include "opal/mca/base/mca_base_param.h"
 
 
 #include "orte/util/name_fns.h"
+#include "orte/util/proc_info.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rml/rml.h"
 
 #include "orte/runtime/runtime.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/runtime/orte_data_server.h"
-
-/* ensure I can behave like a daemon */
-#include "orte/orted/orted.h"
 
 /*
  * Globals
@@ -108,7 +110,7 @@ int main(int argc, char *argv[])
     char * tmp_env_var = NULL;
 
     /* init enough of opal to process cmd lines */
-    if (OPAL_SUCCESS != opal_init_util()) {
+    if (OPAL_SUCCESS != opal_init_util(&argc, &argv)) {
         fprintf(stderr, "OPAL failed to initialize -- orted aborting\n");
         exit(1);
     }
@@ -117,7 +119,7 @@ int main(int argc, char *argv[])
     cmd_line = OBJ_NEW(opal_cmd_line_t);
     opal_cmd_line_create(cmd_line, ompi_server_cmd_line_opts);
     mca_base_cmd_line_setup(cmd_line);
-    if (ORTE_SUCCESS != (ret = opal_cmd_line_parse(cmd_line, false,
+    if (OPAL_SUCCESS != (ret = opal_cmd_line_parse(cmd_line, false,
                                                    argc, argv))) {
         char *args = NULL;
         args = opal_cmd_line_get_usage_msg(cmd_line);
@@ -158,7 +160,7 @@ int main(int argc, char *argv[])
         opal_daemon_init(NULL);
     }
 
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     /* Disable the checkpoint notification routine for this
      * tool. As we will never need to checkpoint this tool.
      * Note: This must happen before opal_init().
@@ -179,17 +181,15 @@ int main(int argc, char *argv[])
                 "1",
                 true, &environ);
     free(tmp_env_var);
-#endif
+#else
     tmp_env_var = NULL; /* Silence compiler warning */
+#endif
 
-    /* flag that I am the HNP */
-    orte_process_info.hnp = true;
-
-    /* Perform the standard init, but flag that we are a non-tool
-     * so that we get the infrastructure required to support
-     * singletons that want to use us as their HNP
+    /* Perform the standard init, but flag that we are a tool
+     * so that we only open up the communications infrastructure. No
+     * session directories will be created.
      */
-    if (ORTE_SUCCESS != (ret = orte_init(ORTE_NON_TOOL))) {
+    if (ORTE_SUCCESS != (ret = orte_init(&argc, &argv, ORTE_PROC_TOOL))) {
         fprintf(stderr, "ompi-server: failed to initialize -- aborting\n");
         exit(1);
     }
@@ -218,15 +218,6 @@ int main(int argc, char *argv[])
             fclose(fp);
         }
         free(rml_uri);
-    }
-    
-    /* setup to listen for commands sent specifically to me */
-    ret = orte_rml.recv_buffer_nb(ORTE_NAME_WILDCARD, ORTE_RML_TAG_DAEMON,
-                                 ORTE_RML_NON_PERSISTENT, orte_daemon_recv, NULL);
-    if (ret != ORTE_SUCCESS && ret != ORTE_ERR_NOT_IMPLEMENTED) {
-        ORTE_ERROR_LOG(ret);
-        orte_finalize();
-        exit(1);
     }
     
     /* setup the data server to listen for commands */

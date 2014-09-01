@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -106,14 +107,17 @@
  *
  */
 
-#include "opal/mca/mca.h"
-
 #ifndef MCA_BTL_H
 #define MCA_BTL_H
 
-#include "ompi/types.h"
+#include "ompi_config.h"
+#include "opal/mca/mca.h"
+#include "opal/class/opal_bitmap.h"
+#include "opal/datatype/opal_convertor.h"
 #include "opal/prefetch.h" /* For OPAL_LIKELY */
 #include "ompi/mca/mpool/mpool.h"
+#include "ompi/types.h"
+#include "opal/types.h"
 
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
@@ -187,6 +191,9 @@ typedef uint8_t mca_btl_base_tag_t;
  /* btl can do heterogeneous rdma operations on byte buffers */
 #define MCA_BTL_FLAGS_HETEROGENEOUS_RDMA 0x0100
 
+/* btl can support failover if enabled */
+#define MCA_BTL_FLAGS_FAILOVER_SUPPORT 0x0200
+
 /* Default exclusivity levels */
 #define MCA_BTL_EXCLUSIVITY_HIGH     (64*1024) /* internal loopback */
 #define MCA_BTL_EXCLUSIVITY_DEFAULT  1024      /* GM/IB/etc. */
@@ -194,6 +201,7 @@ typedef uint8_t mca_btl_base_tag_t;
 
 /* error callback flags */
 #define MCA_BTL_ERROR_FLAGS_FATAL 0x1
+#define MCA_BTL_ERROR_FLAGS_NONFATAL 0x2
 
 /**
  * Asynchronous callback function on completion of an operation.
@@ -223,7 +231,7 @@ struct mca_btl_base_segment_t {
     ompi_ptr_t seg_addr;        
      /** Length in bytes */
     uint32_t   seg_len;           
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     /** Heterogeneous padding */
     uint8_t    seg_padding[4];     
 #endif
@@ -451,7 +459,7 @@ typedef int (*mca_btl_base_module_add_procs_fn_t)(
     size_t nprocs,
     struct ompi_proc_t** procs, 
     struct mca_btl_base_endpoint_t** endpoints,
-    struct ompi_bitmap_t* reachable
+    struct opal_bitmap_t* reachable
 );
 
 /**
@@ -500,13 +508,17 @@ typedef int (*mca_btl_base_module_register_fn_t)(
  * Callback function that is called asynchronously on receipt
  * of an error from the transport layer 
  *
- * @param[IN] btl    BTL module
- * @param[IN] flags  type of error 
+ * @param[IN] btl     BTL module
+ * @param[IN] flags   type of error 
+ * @param[IN] errproc process that had an error
+ * @param[IN] btlinfo descriptive string from the BTL
  */
 
 typedef void (*mca_btl_base_module_error_cb_fn_t)(
         struct mca_btl_base_module_t* btl,
-        int32_t flags                             
+        int32_t flags,
+        struct ompi_proc_t* errproc,
+        char* btlinfo
 );
 
 
@@ -599,7 +611,7 @@ typedef struct mca_btl_base_descriptor_t* (*mca_btl_base_module_prepare_fn_t)(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* endpoint,
     mca_mpool_base_registration_t* registration,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -646,6 +658,7 @@ typedef int (*mca_btl_base_module_send_fn_t)(
  * @param header_size (IN)     Size of header.
  * @param payload_size (IN)    Size of payload (from convertor).
  * @param order (IN)           The ordering tag (may be MCA_BTL_NO_ORDER)
+ * @param flags (IN)           Flags.
  * @param tag (IN)             The tag value used to notify the peer.
  * @param descriptor (OUT)     The descriptor to be returned unable to be sent immediately
 
@@ -660,7 +673,7 @@ typedef int (*mca_btl_base_module_send_fn_t)(
 typedef int (*mca_btl_base_module_sendi_fn_t)(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* endpoint,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     void* header,
     size_t header_size,
     size_t payload_size,

@@ -574,9 +574,7 @@ char *btl_openib_ini_yytext;
 
 #include "btl_openib_lex.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /*
  * local functions
@@ -584,9 +582,7 @@ extern "C" {
 static int finish_parsing(void) ;
 static int btl_openib_ini_yywrap(void);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 /*
  * global variables
@@ -602,7 +598,7 @@ char *btl_openib_ini_string = NULL;
 
 
 
-#line 606 "btl_openib_lex.c"
+#line 602 "btl_openib_lex.c"
 
 #define INITIAL 0
 #define comment 1
@@ -788,10 +784,10 @@ YY_DECL
 	register char *yy_cp, *yy_bp;
 	register int yy_act;
     
-#line 65 "btl_openib_lex.l"
+#line 61 "btl_openib_lex.l"
 
 
-#line 795 "btl_openib_lex.c"
+#line 791 "btl_openib_lex.c"
 
 	if ( !(yy_init) )
 		{
@@ -906,61 +902,61 @@ do_action:	/* This label is used only to access EOF actions. */
 case 1:
 /* rule 1 can match eol */
 YY_RULE_SETUP
-#line 67 "btl_openib_lex.l"
+#line 63 "btl_openib_lex.l"
 { ++btl_openib_ini_yynewlines;
                       return BTL_OPENIB_INI_PARSE_NEWLINE; }
 	YY_BREAK
 case 2:
 /* rule 2 can match eol */
 YY_RULE_SETUP
-#line 69 "btl_openib_lex.l"
+#line 65 "btl_openib_lex.l"
 { ++btl_openib_ini_yynewlines;
                       return BTL_OPENIB_INI_PARSE_NEWLINE; }
 	YY_BREAK
 case 3:
 /* rule 3 can match eol */
 YY_RULE_SETUP
-#line 71 "btl_openib_lex.l"
+#line 67 "btl_openib_lex.l"
 { ++btl_openib_ini_yynewlines;
                       return BTL_OPENIB_INI_PARSE_NEWLINE; }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 74 "btl_openib_lex.l"
+#line 70 "btl_openib_lex.l"
 { BEGIN(comment);
                       return BTL_OPENIB_INI_PARSE_NEWLINE; }
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 76 "btl_openib_lex.l"
+#line 72 "btl_openib_lex.l"
 ; /* Eat up non '*'s */
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 77 "btl_openib_lex.l"
+#line 73 "btl_openib_lex.l"
 ; /* Eat '*'s not followed by a '/' */
 	YY_BREAK
 case 7:
 /* rule 7 can match eol */
 YY_RULE_SETUP
-#line 78 "btl_openib_lex.l"
+#line 74 "btl_openib_lex.l"
 { ++btl_openib_ini_yynewlines;
                       return BTL_OPENIB_INI_PARSE_NEWLINE; } 
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 80 "btl_openib_lex.l"
+#line 76 "btl_openib_lex.l"
 { BEGIN(INITIAL); /* Done with block comment */
                       return BTL_OPENIB_INI_PARSE_NEWLINE; }
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 83 "btl_openib_lex.l"
+#line 79 "btl_openib_lex.l"
 { BEGIN(section_name); }
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 84 "btl_openib_lex.l"
+#line 80 "btl_openib_lex.l"
 {
                       BEGIN(section_end); 
                       return BTL_OPENIB_INI_PARSE_SECTION; }
@@ -968,64 +964,64 @@ YY_RULE_SETUP
 case 11:
 /* rule 11 can match eol */
 YY_RULE_SETUP
-#line 87 "btl_openib_lex.l"
+#line 83 "btl_openib_lex.l"
 { ++btl_openib_ini_yynewlines;
                       return BTL_OPENIB_INI_PARSE_ERROR; }
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 89 "btl_openib_lex.l"
+#line 85 "btl_openib_lex.l"
 { return BTL_OPENIB_INI_PARSE_ERROR; }
 	YY_BREAK
 case 13:
 /* rule 13 can match eol */
 YY_RULE_SETUP
-#line 90 "btl_openib_lex.l"
+#line 86 "btl_openib_lex.l"
 { BEGIN(INITIAL);
                       ++btl_openib_ini_yynewlines;
                       return BTL_OPENIB_INI_PARSE_NEWLINE; }
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 94 "btl_openib_lex.l"
+#line 90 "btl_openib_lex.l"
 { BEGIN(value); 
                       return BTL_OPENIB_INI_PARSE_EQUAL; }
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 96 "btl_openib_lex.l"
+#line 92 "btl_openib_lex.l"
 ; /* whitespace */
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 97 "btl_openib_lex.l"
+#line 93 "btl_openib_lex.l"
 { return BTL_OPENIB_INI_PARSE_SINGLE_WORD; }
 	YY_BREAK
 case 17:
 /* rule 17 can match eol */
 YY_RULE_SETUP
-#line 99 "btl_openib_lex.l"
+#line 95 "btl_openib_lex.l"
 { BEGIN(INITIAL);
                       ++btl_openib_ini_yynewlines;
                       return BTL_OPENIB_INI_PARSE_NEWLINE; }
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 102 "btl_openib_lex.l"
+#line 98 "btl_openib_lex.l"
 { 
                       return BTL_OPENIB_INI_PARSE_VALUE; }
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 105 "btl_openib_lex.l"
+#line 101 "btl_openib_lex.l"
 { return BTL_OPENIB_INI_PARSE_ERROR; }
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 107 "btl_openib_lex.l"
+#line 103 "btl_openib_lex.l"
 ECHO;
 	YY_BREAK
-#line 1029 "btl_openib_lex.c"
+#line 1025 "btl_openib_lex.c"
 			case YY_STATE_EOF(INITIAL):
 			case YY_STATE_EOF(comment):
 			case YY_STATE_EOF(section_name):
@@ -2001,7 +1997,7 @@ void btl_openib_ini_yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 107 "btl_openib_lex.l"
+#line 103 "btl_openib_lex.l"
 
 
 

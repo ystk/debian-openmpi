@@ -24,10 +24,9 @@
 #include <stdlib.h>
 
 #include "mpi.h"
-#include "ompi/file/file.h"
 #include "opal/class/opal_list.h"
 #include "opal/util/argv.h"
-#include "orte/util/show_help.h"
+#include "opal/util/output.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "ompi/mca/io/io.h"

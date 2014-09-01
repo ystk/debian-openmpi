@@ -1,5 +1,5 @@
 /*
- This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2009.
+ This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2013.
  Authors: Michael Heyde
 */
 
@@ -11,6 +11,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #define PROGRESSBARLEN 20
 
@@ -23,15 +26,15 @@ static void set_handles_level_3( OTF_HandlerArray *handles,
 static void set_handles_level_4( OTF_HandlerArray *handles,
                                  definitionInfoT *info );
 
-static void show_info_level_1( definitionInfoT info );
-static void show_info_level_2( definitionInfoT info );
-static void show_info_level_3( definitionInfoT info );
-static void show_info_level_4( definitionInfoT info );
+static void show_info_level_1( definitionInfoT *info );
+static void show_info_level_2( definitionInfoT *info );
+static void show_info_level_3( definitionInfoT *info );
+static void show_info_level_4( definitionInfoT *info );
 
-static void free_data_level_1( definitionInfoT info );
-static void free_data_level_2( definitionInfoT info );
-static void free_data_level_3( definitionInfoT info );
-static void free_data_level_4( definitionInfoT info );
+static void free_data_level_1( definitionInfoT *info );
+static void free_data_level_2( definitionInfoT *info );
+static void free_data_level_3( definitionInfoT *info );
+static void free_data_level_4( definitionInfoT *info );
 
 int main(int argc, char **argv)
 {
@@ -42,30 +45,32 @@ int main(int argc, char **argv)
   uint64_t          size           = 0;    /*size of the event files*/
   uint64_t          minRead        = 0;    /*variable for progress*/
   uint64_t          currRead       = 0;    /*count of current read bytes*/
+  uint32_t          numStreams     = 0;
   char*             parameter      = NULL; /*reference to the parameters*/
   char*             fileLocation   = NULL; /*path to the tracefiles*/
   OTF_FileManager  *manager        = NULL;
   OTF_Reader       *reader         = NULL;
+  OTF_MasterControl* master        = NULL;
   OTF_HandlerArray *handles        = NULL;
   int showProgress                 = 0;
   int infoLevel                    = 1;    /*level for the output of information (local)*/
 
   static const char* Helptext[] = {
     "                                                                  \n",
-    " otfinfo - program to get basic information of a trace.           \n",
+    " otfinfo - Program to get basic information of an OTF trace.      \n",
     "                                                                  \n",
-    " otfinfo [Options] <input file name>                              \n",
+    " Syntax: otfinfo [options] <input file name>                      \n",
     "                                                                  \n",
     "   options:                                                       \n",
     "      -h, --help    show this help message                        \n",
     "      -V            show OTF version                              \n",
     "      -f <n>        set max number of filehandles available       \n",
     "      -l <ilevel>   set the information level for the output      \n",
-    "                    (0 - 4) the default level is 1                \n",
+    "                    (0 - 4, default: 1)                           \n",
     "      -a            set the information level to 4                \n",
     "      -p            show progress bar for reading event files     \n",
     "                                                                  \n",
-    "                                                                  \n", NULL };
+    NULL };
 
   info.infoLevel = 1; /*level of information for the handles*/
 
@@ -104,7 +109,7 @@ int main(int argc, char **argv)
     }
     else if( strcmp(parameter,"-V") == 0 )
     {
-      printf( "%u.%u.%u \"%s\"\n", OTF_VERSION_MAYOR, OTF_VERSION_MINOR,
+      printf( "%u.%u.%u \"%s\"\n", OTF_VERSION_MAJOR, OTF_VERSION_MINOR,
                                    OTF_VERSION_SUB, OTF_VERSION_STRING );
       return 0;
     }
@@ -167,25 +172,55 @@ int main(int argc, char **argv)
   /*read definition file*/
   checkVal = OTF_Reader_readDefinitions( reader, handles );
   otfinfo_assert( checkVal != OTF_READ_ERROR );
+  checkVal = OTF_Reader_readMarkers( reader, handles );
+  otfinfo_assert( checkVal != OTF_READ_ERROR );
 
   /*getting the size of the event files*/
-  OTF_Reader_setRecordLimit( reader, 0 );
-  checkVal = OTF_Reader_readEvents( reader, handles );
-  otfinfo_assert(checkVal != OTF_READ_ERROR);
-  checkVal = OTF_Reader_eventBytesProgress( reader, &minRead,
-                                            &currRead, &size);
-  otfinfo_assert( checkVal != OTF_READ_ERROR );
-  info.traceFileSize = size;
+  master = OTF_Reader_getMasterControl( reader );
+  otfinfo_assert( master );
+
+  numStreams = OTF_MasterControl_getCount( master );
+  otfinfo_assert( numStreams > 0 );
+
+  info.traceFileSize = 0;
+  for( i = 0; i < (int)numStreams; i++ )
+  {
+    static char filename[1024];
+    static uint32_t filecomp = OTF_FILECOMPRESSION_COMPRESSED;
+    static struct stat filestat;
+    OTF_MapEntry* entry = OTF_MasterControl_getEntryByIndex( master, i );
+
+    /*get event file name of stream*/
+    OTF_getFilename( fileLocation, entry->argument, OTF_FILETYPE_EVENT | filecomp,
+                     sizeof(filename), filename );
+
+    /*if stat succeeds, compute total file size*/
+    if( stat( filename, &filestat ) == 0 )
+    {
+      info.traceFileSize += (uint64_t)filestat.st_size;
+    }
+    /*otherwise, re-try with uncompressed file*/
+    else
+    {
+      if( filecomp == OTF_FILECOMPRESSION_COMPRESSED )
+      {
+        filecomp = OTF_FILECOMPRESSION_UNCOMPRESSED;
+        i--; continue;
+      }
+    }
+
+    filecomp = OTF_FILECOMPRESSION_COMPRESSED;
+  }
 
   /*printing the results and cleanup*/
   if( 0 < infoLevel )
   {
-    show_info_level_1( info );
-    free_data_level_1( info );
+    show_info_level_1( &info );
+    free_data_level_1( &info );
     if( 1 < infoLevel )
     {
-      show_info_level_2( info );
-      free_data_level_2( info );
+      show_info_level_2( &info );
+      free_data_level_2( &info );
     }
   }
   checkVal = OTF_HandlerArray_close( handles );
@@ -217,6 +252,13 @@ int main(int argc, char **argv)
     checkVal = OTF_Reader_readDefinitions( reader, handles );
     otfinfo_assert( checkVal != OTF_READ_ERROR );
 
+    if( info.counterMarkerDefinition != 0 )
+    {
+      /*read markers*/
+      checkVal = OTF_Reader_readMarkers( reader, handles );
+      otfinfo_assert( checkVal != OTF_READ_ERROR );
+    }
+
     if( 1 == showProgress )
     {
       /*printing a kind of progress bar*/
@@ -237,7 +279,8 @@ int main(int argc, char **argv)
         OTF_Reader_eventBytesProgress( reader, &minRead, &currRead, &size );
         current = ( PROGRESSBARLEN * currRead ) / size;
         for( ; i < current; i++ )
-          printf( "#" ); fflush( stdout );
+          printf( "#" );
+        fflush( stdout );
       }
       otfinfo_assert( checkVal != OTF_READ_ERROR )
       for( ; i < PROGRESSBARLEN; i++ )
@@ -250,12 +293,12 @@ int main(int argc, char **argv)
       otfinfo_assert( checkVal != OTF_READ_ERROR );
     }
     /*printing the results and cleanup*/
-    show_info_level_3( info );
-    free_data_level_3( info );
+    show_info_level_3( &info );
+    free_data_level_3( &info );
     if( 3 < infoLevel )
     {
-      show_info_level_4( info );
-      free_data_level_4( info );
+      show_info_level_4( &info );
+      free_data_level_4( &info );
     }
     checkVal = OTF_HandlerArray_close( handles );
     otfinfo_assert( checkVal );
@@ -281,6 +324,12 @@ static void set_handles_level_1( OTF_HandlerArray *handles,
   OTF_HandlerArray_setHandler( handles, (OTF_FunctionPointer*)handleDefCreator,
                                OTF_DEFCREATOR_RECORD );
   OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFCREATOR_RECORD );
+
+  /*handler and inits for getting trace's unique id*/
+  info->traceUniqueId = 0;
+  OTF_HandlerArray_setHandler( handles, (OTF_FunctionPointer*)handleDefUniqueId,
+                               OTF_DEFUNIQUEID_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFUNIQUEID_RECORD );
 
   /*handler and inits for getting the otf version*/
   info->otfVersionString = NULL;
@@ -313,11 +362,11 @@ static void set_handles_level_1( OTF_HandlerArray *handles,
   OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFINITIONCOMMENT_RECORD );
 }
 
-static void show_info_level_1( definitionInfoT info )
+static void show_info_level_1( definitionInfoT *info )
 {
   uint32_t i = 0, index = 0;
-  double resolution = info.timerResolution;
-  double fileSize = info.traceFileSize;
+  double resolution = info->timerResolution;
+  double fileSize = info->traceFileSize;
   char* unitTimer;
   char* unitFileSize;
 
@@ -329,15 +378,15 @@ static void show_info_level_1( definitionInfoT info )
   }
   switch( i )
   {
-    case 0: unitTimer = "s";break;
-    case 1: unitTimer = "ms";break;
-    case 2: unitTimer = "µs";break;
-    default: unitTimer = "ns";break;
+    case 0: unitTimer = "Hz";break;
+    case 1: unitTimer = "KHz";break;
+    case 2: unitTimer = "MHz";break;
+    default: unitTimer = "GHz";break;
   }
 
   /*formating the size of the event files*/
   i = 0;
-  while( (fileSize / 1024 >= 1.0) && (i < 4) )
+  while( (fileSize / 1024 >= 1.0) && (i < 5) )
   {
     fileSize /= 1024;
     i++;
@@ -347,6 +396,7 @@ static void show_info_level_1( definitionInfoT info )
     case 0: unitFileSize = "Bytes"; break;
     case 1: unitFileSize = "KB"; break;
     case 2: unitFileSize = "MB"; break;
+    case 3: unitFileSize = "GB"; break;
     default: unitFileSize = "TB";break;
   }
 
@@ -356,38 +406,39 @@ static void show_info_level_1( definitionInfoT info )
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "| general information \n" );
   printf( "+----------------------+--------------------------------------------------------\n" );
-  printf( "| tracefile name       | %s\n", info.filePrefix );
-  printf( "| creator of the trace | %s\n", info.creatorName );
-  printf( "| used OTF version     | %i.%i.%i %s\n", info.otfVersionMajor,
-          info.otfVersionMinor, info.otfVersionSub, info.otfVersionString );
+  printf( "| tracefile name       | %s\n", info->filePrefix );
+  printf( "| creator of the trace | %s\n", info->creatorName );
+  printf( "| trace unique id      | %lli\n", (unsigned long long int)info->traceUniqueId );
+  printf( "| used OTF version     | %i.%i.%i %s\n", info->otfVersionMajor,
+          info->otfVersionMinor, info->otfVersionSub, info->otfVersionString );
   printf( "| event files size     | %.2f %s\n", fileSize,unitFileSize );
   printf( "| process definitions  | %llu\n",
-          (unsigned long long)info.counterProcessDefinition );
+          (unsigned long long)info->counterProcessDefinition );
   printf( "| timer resolution     | %.2f %s\n",resolution,unitTimer );
   printf( "+----------------------+--------------------------------------------------------\n" );
-  index = info.counterDefinitionComment;
+  index = info->counterDefinitionComment;
   printf( "| definition comments\n" );
   printf( "+-------------------------------------------------------------------------------\n" );
   for( i = 0; i < index; i++ )
   {
-    printf( "| %s\n", info.definitionComments[i] );
+    printf( "| %s\n", info->definitionComments[i] );
   }
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "\n" );
 }
 
-static void free_data_level_1( definitionInfoT info )
+static void free_data_level_1( definitionInfoT *info )
 {
   uint32_t i, index;
-  free( info.creatorName );
+  free( info->creatorName );
 
-  index = info.counterDefinitionComment;
+  index = info->counterDefinitionComment;
   for( i = 0; i < index; i++ )
   {
-    free( info.definitionComments[i] );
+    free( info->definitionComments[i] );
   }
-  free( info.definitionComments );
-  free( info.otfVersionString );
+  free( info->definitionComments );
+  free( info->otfVersionString );
 }
 
 static void set_handles_level_2( OTF_HandlerArray *handles, definitionInfoT *info )
@@ -398,6 +449,13 @@ static void set_handles_level_2( OTF_HandlerArray *handles, definitionInfoT *inf
                                (OTF_FunctionPointer*)handleDefFunction,
                                OTF_DEFFUNCTION_RECORD );
   OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFFUNCTION_RECORD );
+
+  /*handler and inits for getting the count of collop. definitions*/
+  info->counterCollectiveOperationDefinition = 0;
+  OTF_HandlerArray_setHandler( handles,
+                               (OTF_FunctionPointer*)handleDefCollectiveOperation,
+                               OTF_DEFCOLLOP_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFCOLLOP_RECORD );
 
   /*handler and inits for getting the count of counter definitions*/
   info->counterCounterDefinition = 0;
@@ -434,9 +492,16 @@ static void set_handles_level_2( OTF_HandlerArray *handles, definitionInfoT *inf
                                (OTF_FunctionPointer*)handleDefSclFile,
                                OTF_DEFSCLFILE_RECORD );
   OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFSCLFILE_RECORD );
+
+  /*handler and inits for getting the count of marker definitions*/
+  info->counterMarkerDefinition = 0;
+  OTF_HandlerArray_setHandler( handles,
+                               (OTF_FunctionPointer*)handleDefMarker,
+                               OTF_DEFMARKER_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFMARKER_RECORD  );
 }
 
-static void show_info_level_2( definitionInfoT info )
+static void show_info_level_2( definitionInfoT *info )
 {
   int index,i;
 
@@ -447,39 +512,44 @@ static void show_info_level_2( definitionInfoT info )
   printf( "| trace content\n" );
   printf( "+----------------------------+--------------------------------------------------\n" );
   printf( "| function definitions       | %llu\n",
-          (unsigned long long)info.counterFunctionDefinition );
+          (unsigned long long)info->counterFunctionDefinition );
   printf( "| counter definitions        | %llu\n",
-          (unsigned long long)info.counterCounterDefinition );
+          (unsigned long long)info->counterCounterDefinition );
+  printf( "| collective op. definitions | %llu\n",
+          (unsigned long long)info->counterCollectiveOperationDefinition );
   printf( "|                            |\n" );
   printf( "| process group definitions  | %llu\n",
-          (unsigned long long)info.counterProcessGroupDefinition );
+          (unsigned long long)info->counterProcessGroupDefinition );
   printf( "| function group definitions | %llu\n",
-          (unsigned long long)info.counterFunctionGroupDefinition );
+          (unsigned long long)info->counterFunctionGroupDefinition );
   printf( "| counter group definitions  | %llu\n",
-          (unsigned long long)info.counterCounterGroupDefinition );
+          (unsigned long long)info->counterCounterGroupDefinition );
+  printf( "|                            |\n" );
+  printf( "| marker definitions         | %llu\n",
+          (unsigned long long)info->counterMarkerDefinition );
   printf( "+----------------------------+--------------------------------------------------\n" );
 
-  index = info.counterSourceFileName;
+  index = info->counterSourceFileName;
   printf( "| source file names\n" );
   printf( "+-------------------------------------------------------------------------------\n" );
   for( i = 0; i < index; i++)
   {
-    printf( "| %s\n", info.sourceFileNames[i] );
+    printf( "| %s\n", info->sourceFileNames[i] );
   }
   printf( "+-------------------------------------------------------------------------------\n" );
 }
 
-static void free_data_level_2( definitionInfoT info )
+static void free_data_level_2( definitionInfoT *info )
 {
   int i, index;
 
-  index = info.counterSourceFileName;
+  index = info->counterSourceFileName;
 
   for( i = 0; i < index; i++ )
   {
-    free( (info.sourceFileNames)[i] );
+    free( (info->sourceFileNames)[i] );
   }
-  free( info.sourceFileNames );
+  free( info->sourceFileNames );
 }
 
 static void set_handles_level_3( OTF_HandlerArray *handles,
@@ -519,12 +589,45 @@ static void set_handles_level_3( OTF_HandlerArray *handles,
                                OTF_RECEIVE_RECORD);
   OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_RECEIVE_RECORD );
 
+  /*handler and inits for getting the count of RMA puts*/
+  info->counterRMAPut = 0;
+  OTF_HandlerArray_setHandler( handles,
+                               (OTF_FunctionPointer*)handleRMAPut,
+                               OTF_RMAPUT_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_RMAPUT_RECORD  );
+
+  /*handler and inits for getting the count RAM put remote end*/
+  info->counterRMAPutRemoteEnd = 0;
+  OTF_HandlerArray_setHandler( handles,
+                               (OTF_FunctionPointer*)handleRMAPutRemoteEnd,
+                               OTF_RMAPUTRE_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_RMAPUTRE_RECORD  );
+
+   /*handler and inits for getting the count of RMA get*/
+  info->counterRMAGet = 0;
+  OTF_HandlerArray_setHandler( handles,
+                               (OTF_FunctionPointer*)handleRMAGet,
+                               OTF_RMAGET_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_RMAGET_RECORD  );
+
+  /*handler and inits for getting the count of RMA end*/
+  info->counterRMAEnd = 0;
+  OTF_HandlerArray_setHandler( handles,
+                               (OTF_FunctionPointer*)handleRMAEnd,
+                               OTF_RMAEND_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_RMAEND_RECORD  );
+
   /*handler and inits for getting the count of collective operations*/
   info->counterCollectiveOperation = 0;
   OTF_HandlerArray_setHandler( handles,
-                               (OTF_FunctionPointer*)handleDefCollectiveOperation,
-                               OTF_DEFCOLLOP_RECORD );
-  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFCOLLOP_RECORD  );
+                               (OTF_FunctionPointer*)handleCollectiveOperation,
+                               OTF_COLLOP_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_COLLOP_RECORD  );
+
+  OTF_HandlerArray_setHandler( handles,
+                               (OTF_FunctionPointer*)handleEndCollectiveOperation,
+                               OTF_ENDCOLLOP_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_ENDCOLLOP_RECORD  );
 
   /*handler and inits for getting the count of file operations*/
   info->counterFileOperation = 0;
@@ -532,6 +635,18 @@ static void set_handles_level_3( OTF_HandlerArray *handles,
                                (OTF_FunctionPointer*)handleFileOperation,
                                OTF_FILEOPERATION_RECORD );
   OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_FILEOPERATION_RECORD  );
+
+  OTF_HandlerArray_setHandler( handles,
+                               (OTF_FunctionPointer*)handleEndFileOperation,
+                               OTF_ENDFILEOP_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_ENDFILEOP_RECORD  );
+
+  /*handler and inits for getting the count of markers*/
+  info->counterMarker = 0;
+  OTF_HandlerArray_setHandler( handles,
+                               (OTF_FunctionPointer*)handleMarker,
+                               OTF_MARKER_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_MARKER_RECORD  );
 
   /*handler and inits for getting the count of snapshots*/
   info->counterSnapshot = 0;
@@ -542,6 +657,7 @@ static void set_handles_level_3( OTF_HandlerArray *handles,
 
   (info->counters) = (counterT*)malloc( info->counterCounterDefinition *
                                         sizeof(counterT) );
+
   for( i = 0; i < info->counterCounterDefinition; i++ )
   {
     (info->counters)[i].name = NULL;
@@ -561,7 +677,7 @@ static void set_handles_level_3( OTF_HandlerArray *handles,
 
 }
 
-static void show_info_level_3( definitionInfoT info )
+static void show_info_level_3( definitionInfoT *info )
 {
   uint64_t i;
 
@@ -570,39 +686,49 @@ static void show_info_level_3( definitionInfoT info )
   printf( "\n##############\n" );
   printf( "+-----------------------+-------------------------------------------------------\n" );
   printf( "| enters                | %llu\n",
-          (unsigned long long)info.counterEnter );
+          (unsigned long long)info->counterEnter );
   printf( "| leaves                | %llu\n",
-          (unsigned long long)info.counterLeave );
+          (unsigned long long)info->counterLeave );
   printf( "| sends                 | %llu\n",
-          (unsigned long long)info.counterSend );
+          (unsigned long long)info->counterSend );
   printf( "| receives              | %llu\n",
-          (unsigned long long)info.counterReceive );
+          (unsigned long long)info->counterReceive );
+  printf( "| RMA Put               | %llu\n",
+          (unsigned long long)info->counterRMAPut );
+  printf( "| RMA Put remote end    | %llu\n",
+          (unsigned long long)info->counterRMAPutRemoteEnd );
+  printf( "| RMA Get               | %llu\n",
+          (unsigned long long)info->counterRMAGet );
+  printf( "| RMA End               | %llu\n",
+          (unsigned long long)info->counterRMAEnd );
   printf( "| collective operations | %llu\n",
-          (unsigned long long)info.counterCollectiveOperation );
+          (unsigned long long)info->counterCollectiveOperation );
   printf( "| file operations       | %llu\n",
-          (unsigned long long)info.counterFileOperation );
+          (unsigned long long)info->counterFileOperation );
+  printf( "| markers               | %llu\n",
+          (unsigned long long)info->counterMarker );
   printf( "| snapshots             | %llu\n",
-          (unsigned long long)info.counterSnapshot );
+          (unsigned long long)info->counterSnapshot );
   printf( "+-----------------------+-------------------------------------------------------\n" );
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "| counters[%llu]\n",
-          (unsigned long long)info.counterCounterDefinition );
+          (unsigned long long)info->counterCounterDefinition );
   printf( "+---------------+---------------------------------------------------------------\n" );
-  for( i = 0; i < info.counterCounterDefinition; i++ )
+  for( i = 0; i < info->counterCounterDefinition; i++ )
   {
-     printf( "| name          | %s\n", info.counters[i].name );
-     if( ((info.counters[i].properties) & OTF_COUNTER_TYPE_BITS) ==
+     printf( "| name          | %s\n", info->counters[i].name );
+     if( ((info->counters[i].properties) & OTF_COUNTER_TYPE_BITS) ==
          OTF_COUNTER_TYPE_ACC )
      {
        uint64_t lastValue =
-                  process_get_sum_value( info.counters[i].processMap );
+                  process_get_sum_value( info->counters[i].processMap );
        uint64_t lastTime =
-                  process_get_sum_time( info.counters[i].processMap );
+                  process_get_sum_time( info->counters[i].processMap );
        double average =
-                  ((double)(lastValue)) * ((double)(info.timerResolution)) /
+                  ((double)(lastValue)) * ((double)(info->timerResolution)) /
                   ((double)(lastTime));
        double highestRate =
-                  process_get_highest_rate(info.counters[i].processMap);
+                  process_get_highest_rate(info->counters[i].processMap);
 
        printf( "| last value    | %llu\n", (unsigned long long)lastValue );
        printf( "| average rate  | %7.4E per sec\n", average );
@@ -614,17 +740,17 @@ static void show_info_level_3( definitionInfoT info )
   printf( "\n" );
 }
 
-static void free_data_level_3( definitionInfoT info )
+static void free_data_level_3( definitionInfoT *info )
 {
   uint64_t i;
 
-  for( i = 0; i < info.counterCounterDefinition; i++ )
+  for( i = 0; i < info->counterCounterDefinition; i++ )
   {
-    free( (info.counters)[i].name );
-    if( NULL != (info.counters)[i].processMap )
-      hash_delete( (info.counters)[i].processMap );
+    free( (info->counters)[i].name );
+    if( NULL != (info->counters)[i].processMap )
+      hash_delete( (info->counters)[i].processMap );
   }
-  free( info.counters );
+  free( info->counters );
 }
 
 static void set_handles_level_4( OTF_HandlerArray *handles,
@@ -648,6 +774,15 @@ static void set_handles_level_4( OTF_HandlerArray *handles,
                                OTF_DEFFUNCTION_RECORD);
   OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFFUNCTION_RECORD );
 
+  /*handler and inits for getting the names of collective operations*/
+  info->collectiveOperationNames = NULL;
+  info->collectiveOperationNames = (char**)calloc( info->counterCollectiveOperationDefinition,
+                                                   sizeof(char*) );
+  OTF_HandlerArray_setHandler( handles,
+                               (OTF_FunctionPointer*)handleDefCollectiveOperation,
+                               OTF_DEFCOLLOP_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFCOLLOP_RECORD );
+
   /*handler and inits for getting the names of processe groups*/
   info->processGroupNames = NULL;
   info->processGroupNames = (char**)calloc( info->counterProcessGroupDefinition,
@@ -656,8 +791,6 @@ static void set_handles_level_4( OTF_HandlerArray *handles,
                                (OTF_FunctionPointer*)handleDefProcessGroup,
                                OTF_DEFPROCESSGROUP_RECORD);
   OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFPROCESSGROUP_RECORD );
-
-  info->collectiveOperationNames = NULL;
 
   /*handler and inits for getting the names of function groups*/
   info->functionGroupNames = NULL;
@@ -668,7 +801,7 @@ static void set_handles_level_4( OTF_HandlerArray *handles,
                                OTF_DEFFUNCTIONGROUP_RECORD);
   OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFFUNCTIONGROUP_RECORD );
 
-  /*handler and inits for getting the names of counter groupss*/
+  /*handler and inits for getting the names of counter groups*/
   info->counterGroupNames = NULL;
   info->counterGroupNames = (char**)calloc( info->counterCounterGroupDefinition,
                                             sizeof(char*) );
@@ -676,9 +809,18 @@ static void set_handles_level_4( OTF_HandlerArray *handles,
                                (OTF_FunctionPointer*)handleDefCounterGroup,
                                OTF_DEFCOUNTERGROUP_RECORD);
   OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFCOUNTERGROUP_RECORD );
+
+  /*handler and inits for getting the names of markers*/
+  info->markerNames = NULL;
+  info->markerNames = (char**)calloc( info->counterMarkerDefinition,
+                                      sizeof(char*) );
+  OTF_HandlerArray_setHandler( handles,
+                               (OTF_FunctionPointer*)handleDefMarker,
+                               OTF_DEFMARKER_RECORD );
+  OTF_HandlerArray_setFirstHandlerArg( handles, info, OTF_DEFMARKER_RECORD  );
 }
 
-static void show_info_level_4( definitionInfoT info )
+static void show_info_level_4( definitionInfoT *info )
 {
   uint64_t i;
 
@@ -687,114 +829,130 @@ static void show_info_level_4( definitionInfoT info )
   printf( "\n##############\n" );
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "| process definitions[%llu]\n",
-          (unsigned long long)info.counterProcessDefinition );
+          (unsigned long long)info->counterProcessDefinition );
   printf( "+-------------------------------------------------------------------------------\n" );
-  for( i = 0; i < info.counterProcessDefinition; i++ )
+  for( i = 0; i < info->counterProcessDefinition; i++ )
   {
-    printf( "| %s\n", info.processNames[i] );
+    printf( "| %s\n", info->processNames[i] );
   }
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "\n" );
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "| function definitions[%llu]\n",
-          (unsigned long long)info.counterFunctionDefinition );
+          (unsigned long long)info->counterFunctionDefinition );
   printf( "+-------------------------------------------------------------------------------\n" );
-  for(i = 0; i < info.counterFunctionDefinition; i++ )
+  for(i = 0; i < info->counterFunctionDefinition; i++ )
   {
-    printf( "| %s\n",info.functionNames[i] );
+    printf( "| %s\n",info->functionNames[i] );
+  }
+  printf( "+-------------------------------------------------------------------------------\n" );
+  printf( "\n" );
+  printf( "+-------------------------------------------------------------------------------\n" );
+  printf( "| marker definitions[%llu]\n",
+          (unsigned long long)info->counterMarkerDefinition );
+  printf( "+-------------------------------------------------------------------------------\n" );
+  for( i = 0; i < info->counterMarkerDefinition; i++ )
+  {
+     printf( "| %s\n", info->markerNames[i] );
   }
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "\n" );
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "| collective operation definitions[%llu]\n",
-          (unsigned long long)info.counterCollectiveOperation );
+          (unsigned long long)info->counterCollectiveOperationDefinition );
   printf( "+-------------------------------------------------------------------------------\n" );
-  for( i = 0; i < info.counterCollectiveOperation; i++ )
+  for( i = 0; i < info->counterCollectiveOperationDefinition; i++ )
   {
-    printf( "| %s\n", info.collectiveOperationNames[i] );
+    printf( "| %s\n", info->collectiveOperationNames[i] );
   }
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "\n" );
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "| process group definitions[%llu]\n",
-          (unsigned long long)info.counterProcessGroupDefinition );
+          (unsigned long long)info->counterProcessGroupDefinition );
   printf( "+-------------------------------------------------------------------------------\n" );
-  for( i = 0; i < info.counterProcessGroupDefinition; i++ )
+  for( i = 0; i < info->counterProcessGroupDefinition; i++ )
   {
-    printf( "| %s\n", info.processGroupNames[i] );
+    printf( "| %s\n", info->processGroupNames[i] );
   }
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "\n" );
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "| function group definitions[%llu]\n",
-          (unsigned long long)info.counterFunctionGroupDefinition );
+          (unsigned long long)info->counterFunctionGroupDefinition );
   printf( "+-------------------------------------------------------------------------------\n" );
-  for( i = 0; i < info.counterFunctionGroupDefinition; i++ )
+  for( i = 0; i < info->counterFunctionGroupDefinition; i++ )
   {
-    printf( "| %s\n", info.functionGroupNames[i] );
+    printf( "| %s\n", info->functionGroupNames[i] );
   }
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "\n" );
   printf( "+-------------------------------------------------------------------------------\n" );
   printf( "| counter group definitions[%llu]\n",
-          (unsigned long long)info.counterCounterGroupDefinition );
+          (unsigned long long)info->counterCounterGroupDefinition );
   printf( "+-------------------------------------------------------------------------------\n" );
-  for( i = 0; i < info.counterCounterGroupDefinition; i++ )
+  for( i = 0; i < info->counterCounterGroupDefinition; i++ )
   {
-     printf( "| %s\n", info.counterGroupNames[i] );
+     printf( "| %s\n", info->counterGroupNames[i] );
   }
   printf( "+-------------------------------------------------------------------------------\n" );
 }
 
-static void free_data_level_4( definitionInfoT info )
+static void free_data_level_4( definitionInfoT *info )
 {
   uint64_t i;
 
-  if( info.processNames != NULL )
+  if( info->processNames != NULL )
   {
-    for( i = 0; i < info.counterProcessDefinition; i++ )
+    for( i = 0; i < info->counterProcessDefinition; i++ )
     {
-      free( (info.processNames)[i] );
+      free( (info->processNames)[i] );
     }
-    free( info.processNames );
+    free( info->processNames );
   }
 
-  if( info.processGroupNames != NULL )
+  if( info->processGroupNames != NULL )
   {
-    for( i = 0; i < info.counterProcessGroupDefinition; i++ )
+    for( i = 0; i < info->counterProcessGroupDefinition; i++ )
     {
-      free( (info.processGroupNames)[i] );
+      free( (info->processGroupNames)[i] );
     }
-    free( info.processGroupNames );
+    free( info->processGroupNames );
   }
 
-  if( info.functionNames != NULL )
+  if( info->functionNames != NULL )
   {
-    for( i = 0; i < info.counterFunctionDefinition; i++ )
+    for( i = 0; i < info->counterFunctionDefinition; i++ )
     {
-      free( (info.functionNames)[i] );
+      free( (info->functionNames)[i] );
     }
-    free( info.functionNames );
+    free( info->functionNames );
   }
 
-  if( info.functionGroupNames != NULL )
+  if( info->functionGroupNames != NULL )
   {
-    for( i = 0; i < info.counterFunctionGroupDefinition; i++ )
+    for( i = 0; i < info->counterFunctionGroupDefinition; i++ )
     {
-      free( (info.functionGroupNames)[i] );
+      free( (info->functionGroupNames)[i] );
     }
-    free( info.functionGroupNames );
+    free( info->functionGroupNames );
   }
 
-  for(i = 0; i < info.counterCollectiveOperation; i++ )
+  for(i = 0; i < info->counterCollectiveOperationDefinition; i++ )
   {
-    free( (info.collectiveOperationNames)[i] );
+    free( (info->collectiveOperationNames)[i] );
   }
-  free( info.collectiveOperationNames );
+  free( info->collectiveOperationNames );
 
-  for(i = 0; i < info.counterCounterGroupDefinition; i++ )
+  for(i = 0; i < info->counterCounterGroupDefinition; i++ )
   {
-    free( (info.counterGroupNames)[i] );
+    free( (info->counterGroupNames)[i] );
   }
-  free( info.counterGroupNames );
+  free( info->counterGroupNames );
+
+  for( i = 0; i < info->counterMarkerDefinition; i++ )
+  {
+    free( (info->markerNames)[i] );
+  }
+  free( info->markerNames );
 }

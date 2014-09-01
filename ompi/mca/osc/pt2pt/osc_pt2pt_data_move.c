@@ -23,11 +23,11 @@
 #include "osc_pt2pt_data_move.h"
 #include "osc_pt2pt_buffer.h"
 
-#include "orte/util/show_help.h"
 #include "opal/util/arch.h"
+#include "opal/util/output.h"
 #include "opal/sys/atomic.h"
 #include "ompi/mca/pml/pml.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/op/op.h"
 #include "ompi/mca/osc/base/base.h"
 #include "ompi/mca/osc/base/osc_base_obj_convert.h"
@@ -37,7 +37,7 @@
 static inline int32_t
 create_send_tag(ompi_osc_pt2pt_module_t *module)
 {
-#if OMPI_HAVE_THREAD_SUPPORT && OPAL_HAVE_ATOMIC_CMPSET_32
+#if OPAL_HAVE_THREAD_SUPPORT && OPAL_HAVE_ATOMIC_CMPSET_32
     int32_t newval, oldval;
     do {
         oldval = module->p2p_tag_counter;
@@ -130,7 +130,7 @@ ompi_osc_pt2pt_sendreq_send_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
        in the case of get, as we really don't care when it completes -
        only when the data arrives. */
     if (OMPI_OSC_PT2PT_HDR_GET != header->hdr_base.hdr_type) {
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
         if (header->hdr_base.hdr_flags & OMPI_OSC_PT2PT_HDR_FLAG_NBO) {
             OMPI_OSC_PT2PT_SEND_HDR_NTOH(*header);
         }
@@ -159,18 +159,25 @@ ompi_osc_pt2pt_sendreq_send(ompi_osc_pt2pt_module_t *module,
                             ompi_osc_pt2pt_sendreq_t *sendreq)
 {
     int ret = OMPI_SUCCESS;
-    opal_free_list_item_t *item;
+    opal_free_list_item_t *item = NULL;
     ompi_osc_pt2pt_send_header_t *header = NULL;
     ompi_osc_pt2pt_buffer_t *buffer = NULL;
     size_t written_data = 0;
     size_t needed_len = sizeof(ompi_osc_pt2pt_send_header_t);
     const void *packed_ddt;
-    size_t packed_ddt_len = ompi_ddt_pack_description_length(sendreq->req_target_datatype);
+    size_t packed_ddt_len = ompi_datatype_pack_description_length(sendreq->req_target_datatype);
 
     /* we always need to send the ddt */
     needed_len += packed_ddt_len;
     if (OMPI_OSC_PT2PT_GET != sendreq->req_type) {
         needed_len += sendreq->req_origin_bytes_packed;
+    }
+
+    /* verify at least enough space for header */
+    if (mca_osc_pt2pt_component.p2p_c_eager_size
+        < sizeof(ompi_osc_pt2pt_send_header_t) + packed_ddt_len) {
+        ret = MPI_ERR_TRUNCATE;
+        goto cleanup;
     }
 
     /* Get a buffer */
@@ -181,12 +188,6 @@ ompi_osc_pt2pt_sendreq_send(ompi_osc_pt2pt_module_t *module,
         goto cleanup;
     }
     buffer = (ompi_osc_pt2pt_buffer_t*) item;
-
-    /* verify at least enough space for header */
-    if (mca_osc_pt2pt_component.p2p_c_eager_size < sizeof(ompi_osc_pt2pt_send_header_t)) {
-        ret = OMPI_ERR_OUT_OF_RESOURCE;
-        goto cleanup;
-    }
 
     /* setup buffer */
     buffer->mpireq.cbfunc = ompi_osc_pt2pt_sendreq_send_cb;
@@ -205,7 +206,7 @@ ompi_osc_pt2pt_sendreq_send(ompi_osc_pt2pt_module_t *module,
     switch (sendreq->req_type) {
     case OMPI_OSC_PT2PT_PUT:
         header->hdr_base.hdr_type = OMPI_OSC_PT2PT_HDR_PUT;
-#if OMPI_ENABLE_MEM_DEBUG
+#if OPAL_ENABLE_MEM_DEBUG
         header->hdr_target_op = 0;
 #endif
         break;
@@ -217,19 +218,19 @@ ompi_osc_pt2pt_sendreq_send(ompi_osc_pt2pt_module_t *module,
 
     case OMPI_OSC_PT2PT_GET:
         header->hdr_base.hdr_type = OMPI_OSC_PT2PT_HDR_GET;
-#if OMPI_ENABLE_MEM_DEBUG
+#if OPAL_ENABLE_MEM_DEBUG
         header->hdr_target_op = 0;
 #endif
         break;
     }
 
     /* Set datatype id and / or pack datatype */
-    ret = ompi_ddt_get_pack_description(sendreq->req_target_datatype, &packed_ddt);
+    ret = ompi_datatype_get_pack_description(sendreq->req_target_datatype, &packed_ddt);
     if (OMPI_SUCCESS != ret) goto cleanup;
     memcpy((unsigned char*) buffer->payload + written_data,
            packed_ddt, packed_ddt_len);
     written_data += packed_ddt_len;
-
+ 
     if (OMPI_OSC_PT2PT_GET != sendreq->req_type) {
         /* if sending data and it fits, pack payload */
         if (mca_osc_pt2pt_component.p2p_c_eager_size >=
@@ -244,7 +245,7 @@ ompi_osc_pt2pt_sendreq_send(ompi_osc_pt2pt_module_t *module,
                 memchecker_convertor_call(&opal_memchecker_base_mem_defined,
                                           &sendreq->req_origin_convertor);
             );
-            ret = ompi_convertor_pack(&sendreq->req_origin_convertor, &iov, &iov_count,
+            ret = opal_convertor_pack(&sendreq->req_origin_convertor, &iov, &iov_count,
                                       &max_data );
             MEMCHECKER(
                 memchecker_convertor_call(&opal_memchecker_base_mem_noaccess,
@@ -271,7 +272,7 @@ ompi_osc_pt2pt_sendreq_send(ompi_osc_pt2pt_module_t *module,
 
 #ifdef WORDS_BIGENDIAN
     header->hdr_base.hdr_flags |= OMPI_OSC_PT2PT_HDR_FLAG_NBO;
-#elif OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#elif OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     if (sendreq->req_target_proc->proc_arch & OPAL_ARCH_ISBIGENDIAN) {
         header->hdr_base.hdr_flags |= OMPI_OSC_PT2PT_HDR_FLAG_NBO;
         OMPI_OSC_PT2PT_SEND_HDR_HTON(*header);
@@ -374,7 +375,7 @@ ompi_osc_pt2pt_replyreq_send_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
     ompi_osc_pt2pt_reply_header_t *header =
         (ompi_osc_pt2pt_reply_header_t*) buffer->payload;
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
         if (header->hdr_base.hdr_flags & OMPI_OSC_PT2PT_HDR_FLAG_NBO) {
             OMPI_OSC_PT2PT_REPLY_HDR_NTOH(*header);
         }
@@ -447,7 +448,7 @@ ompi_osc_pt2pt_replyreq_send(ompi_osc_pt2pt_module_t *module,
             memchecker_convertor_call(&opal_memchecker_base_mem_defined,
                                       &replyreq->rep_target_convertor);
         );
-        ret = ompi_convertor_pack(&replyreq->rep_target_convertor, &iov, &iov_count,
+        ret = opal_convertor_pack(&replyreq->rep_target_convertor, &iov, &iov_count,
                                   &max_data );
         /* Copy finished, make the target buffer unaccessable. */
         MEMCHECKER(
@@ -473,7 +474,7 @@ ompi_osc_pt2pt_replyreq_send(ompi_osc_pt2pt_module_t *module,
 
 #ifdef WORDS_BIGENDIAN
     header->hdr_base.hdr_flags |= OMPI_OSC_PT2PT_HDR_FLAG_NBO;
-#elif OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#elif OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     if (replyreq->rep_origin_proc->proc_arch & OPAL_ARCH_ISBIGENDIAN) {
         header->hdr_base.hdr_flags |= OMPI_OSC_PT2PT_HDR_FLAG_NBO;
         OMPI_OSC_PT2PT_REPLY_HDR_HTON(*header);
@@ -572,19 +573,19 @@ ompi_osc_pt2pt_sendreq_recv_put(ompi_osc_pt2pt_module_t *module,
     }
 
     if (header->hdr_msg_length > 0) {
-        ompi_convertor_t convertor;
+        opal_convertor_t convertor;
         struct iovec iov;
         uint32_t iov_count = 1;
         size_t max_data;
         ompi_proc_t *proc;
 
         /* create convertor */
-        OBJ_CONSTRUCT(&convertor, ompi_convertor_t);
+        OBJ_CONSTRUCT(&convertor, opal_convertor_t);
 
         /* initialize convertor */
         proc = ompi_comm_peer_lookup(module->p2p_comm, header->hdr_origin);
-        ompi_convertor_copy_and_prepare_for_recv(proc->proc_convertor,
-                                                 datatype,
+        opal_convertor_copy_and_prepare_for_recv(proc->proc_convertor,
+                                                 &(datatype->super),
                                                  header->hdr_target_count,
                                                  target,
                                                  0,
@@ -600,7 +601,7 @@ ompi_osc_pt2pt_sendreq_recv_put(ompi_osc_pt2pt_module_t *module,
             memchecker_convertor_call(&opal_memchecker_base_mem_defined,
                                       &convertor);
         );
-        ompi_convertor_unpack(&convertor, 
+        opal_convertor_unpack(&convertor, 
                               &iov,
                               &iov_count,
                               &max_data );
@@ -662,17 +663,17 @@ ompi_osc_pt2pt_sendreq_recv_accum_long_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
     OPAL_THREAD_LOCK(&longreq->req_module->p2p_acc_lock);
 
     if (longreq->req_op == &ompi_mpi_op_replace.op) {
-        ompi_convertor_t convertor;
+        opal_convertor_t convertor;
         struct iovec iov;
         uint32_t iov_count = 1;
         size_t max_data;
 
         /* create convertor */
-        OBJ_CONSTRUCT(&convertor, ompi_convertor_t);
+        OBJ_CONSTRUCT(&convertor, opal_convertor_t);
 
         /* initialize convertor */
-        ompi_convertor_copy_and_prepare_for_recv(ompi_proc_local()->proc_convertor,
-                                                 longreq->req_datatype,
+        opal_convertor_copy_and_prepare_for_recv(ompi_proc_local()->proc_convertor,
+                                                 &(longreq->req_datatype->super),
                                                  header->hdr_target_count,
                                                  target,
                                                  0,
@@ -681,7 +682,7 @@ ompi_osc_pt2pt_sendreq_recv_accum_long_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
         iov.iov_len = header->hdr_msg_length;
         iov.iov_base = (IOVBASE_TYPE*) payload;
         max_data = iov.iov_len;
-        ompi_convertor_unpack(&convertor, 
+        opal_convertor_unpack(&convertor, 
                               &iov,
                               &iov_count,
                               &max_data);
@@ -752,17 +753,17 @@ ompi_osc_pt2pt_sendreq_recv_accum(ompi_osc_pt2pt_module_t *module,
         OPAL_THREAD_LOCK(&module->p2p_acc_lock);
 
         if (op == &ompi_mpi_op_replace.op) {
-            ompi_convertor_t convertor;
+            opal_convertor_t convertor;
             struct iovec iov;
             uint32_t iov_count = 1;
             size_t max_data;
 
             /* create convertor */
-            OBJ_CONSTRUCT(&convertor, ompi_convertor_t);
+            OBJ_CONSTRUCT(&convertor, opal_convertor_t);
 
             /* initialize convertor */
-            ompi_convertor_copy_and_prepare_for_recv(proc->proc_convertor,
-                                                     datatype,
+            opal_convertor_copy_and_prepare_for_recv(proc->proc_convertor,
+                                                     &(datatype->super),
                                                      header->hdr_target_count,
                                                      target,
                                                      0,
@@ -771,7 +772,7 @@ ompi_osc_pt2pt_sendreq_recv_accum(ompi_osc_pt2pt_module_t *module,
             iov.iov_len = header->hdr_msg_length;
             iov.iov_base = (IOVBASE_TYPE*)payload;
             max_data = iov.iov_len;
-            ompi_convertor_unpack(&convertor, 
+            opal_convertor_unpack(&convertor, 
                                   &iov,
                                   &iov_count,
                                   &max_data);
@@ -779,9 +780,9 @@ ompi_osc_pt2pt_sendreq_recv_accum(ompi_osc_pt2pt_module_t *module,
         } else {
             void *buffer = NULL;
 
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
             if (proc->proc_arch != ompi_proc_local()->proc_arch) {
-                ompi_convertor_t convertor;
+                opal_convertor_t convertor;
                 struct iovec iov;
                 uint32_t iov_count = 1;
                 size_t max_data;
@@ -793,18 +794,18 @@ ompi_osc_pt2pt_sendreq_recv_accum(ompi_osc_pt2pt_module_t *module,
                 primitive_count *= header->hdr_target_count;
 
                 /* figure out how big a buffer we need */
-                ompi_ddt_type_size(primitive_datatype, &buflen);
+                ompi_datatype_type_size(primitive_datatype, &buflen);
                 buflen *= primitive_count;
 
                 /* create convertor */
-                OBJ_CONSTRUCT(&convertor, ompi_convertor_t);
+                OBJ_CONSTRUCT(&convertor, opal_convertor_t);
 
                 buffer = (void*) malloc(buflen);
                 if (NULL == buffer) return OMPI_ERR_TEMP_OUT_OF_RESOURCE;
 
                 /* initialize convertor */
-                ompi_convertor_copy_and_prepare_for_recv(proc->proc_convertor,
-                                                         primitive_datatype,
+                opal_convertor_copy_and_prepare_for_recv(proc->proc_convertor,
+                                                         &(primitive_datatype->super),
                                                          primitive_count,
                                                          buffer,
                                                          0,
@@ -813,7 +814,7 @@ ompi_osc_pt2pt_sendreq_recv_accum(ompi_osc_pt2pt_module_t *module,
                 iov.iov_len = header->hdr_msg_length;
                 iov.iov_base = (IOVBASE_TYPE*)payload;
                 max_data = iov.iov_len;
-                ompi_convertor_unpack(&convertor, 
+                opal_convertor_unpack(&convertor, 
                                       &iov,
                                       &iov_count,
                                       &max_data);
@@ -843,7 +844,7 @@ ompi_osc_pt2pt_sendreq_recv_accum(ompi_osc_pt2pt_module_t *module,
                 opal_memchecker_base_mem_noaccess( target, header->hdr_msg_length );
             );
 
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
             if (proc->proc_arch != ompi_proc_local()->proc_arch) {
                 if (NULL == buffer) free(buffer);
             }
@@ -874,7 +875,7 @@ ompi_osc_pt2pt_sendreq_recv_accum(ompi_osc_pt2pt_module_t *module,
         primitive_count *= header->hdr_target_count;
 
         /* figure out how big a buffer we need */
-        ompi_ddt_type_size(primitive_datatype, &buflen);
+        ompi_datatype_type_size(primitive_datatype, &buflen);
         buflen *= primitive_count;
 
         /* get a longreq and fill it in */
@@ -971,7 +972,7 @@ ompi_osc_pt2pt_replyreq_recv(ompi_osc_pt2pt_module_t *module,
             memchecker_convertor_call(&opal_memchecker_base_mem_defined,
                                       &sendreq->req_origin_convertor);
         );
-        ompi_convertor_unpack(&sendreq->req_origin_convertor,
+        opal_convertor_unpack(&sendreq->req_origin_convertor,
                               &iov,
                               &iov_count,
                               &max_data );
@@ -1080,7 +1081,7 @@ ompi_osc_pt2pt_control_send(ompi_osc_pt2pt_module_t *module,
 
 #ifdef WORDS_BIGENDIAN
     header->hdr_base.hdr_flags |= OMPI_OSC_PT2PT_HDR_FLAG_NBO;
-#elif OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#elif OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     if (proc->proc_arch & OPAL_ARCH_ISBIGENDIAN) {
         header->hdr_base.hdr_flags |= OMPI_OSC_PT2PT_HDR_FLAG_NBO;
         OMPI_OSC_PT2PT_CONTROL_HDR_HTON(*header);

@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -37,7 +37,7 @@
 #include "orte/mca/routed/base/base.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/iof/base/base.h"
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
 #include "orte/mca/snapc/base/base.h"
 #endif
 #include "orte/util/proc_info.h"
@@ -54,6 +54,16 @@ int orte_ess_base_tool_setup(void)
     int ret;
     char *error = NULL;
 
+    if (NULL != orte_process_info.my_hnp_uri) {
+        /* if we were given an HNP, then we were launched
+         * by mpirun in some fashion - in this case, we want
+         * to look like an application as well as being a tool.
+         * Need to do this before opening the routed framework
+         * so it will do the right things.
+         */
+        orte_process_info.proc_type |= ORTE_PROC_NON_MPI;
+    }
+    
     /* Setup the communication infrastructure */
     
     /* Runtime Messaging Layer */
@@ -116,18 +126,21 @@ int orte_ess_base_tool_setup(void)
     }
     
     /* setup I/O forwarding system - must come after we init routes */
-    if (ORTE_SUCCESS != (ret = orte_iof_base_open())) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_iof_base_open";
-        goto error;
-    }
-    if (ORTE_SUCCESS != (ret = orte_iof_base_select())) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_iof_base_select";
-        goto error;
+    if (NULL != orte_process_info.my_hnp_uri) {
+        /* only do this if we were given an HNP */
+        if (ORTE_SUCCESS != (ret = orte_iof_base_open())) {
+            ORTE_ERROR_LOG(ret);
+            error = "orte_iof_base_open";
+            goto error;
+        }
+        if (ORTE_SUCCESS != (ret = orte_iof_base_select())) {
+            ORTE_ERROR_LOG(ret);
+            error = "orte_iof_base_select";
+            goto error;
+        }
     }
     
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     /*
      * Setup the SnapC
      */
@@ -136,7 +149,7 @@ int orte_ess_base_tool_setup(void)
         error = "orte_snapc_base_open";
         goto error;
     }
-    if (ORTE_SUCCESS != (ret = orte_snapc_base_select(orte_process_info.hnp, !orte_process_info.daemon))) {
+    if (ORTE_SUCCESS != (ret = orte_snapc_base_select(ORTE_PROC_IS_HNP, !ORTE_PROC_IS_DAEMON))) {
         ORTE_ERROR_LOG(ret);
         error = "orte_snapc_base_select";
         goto error;
@@ -158,15 +171,21 @@ error:
 
 int orte_ess_base_tool_finalize(void)
 {
+    orte_wait_finalize();
+
+#if OPAL_ENABLE_FT_CR == 1
+    orte_snapc_base_close();
+#endif
+
     /* if I am a tool, then all I will have done is
      * a very small subset of orte_init - ensure that
      * I only back those elements out
      */
-    orte_iof_base_close();
+    if (NULL != orte_process_info.my_hnp_uri) {
+        orte_iof_base_close();
+    }
     orte_routed_base_close();
     orte_rml_base_close();
-    
-    orte_session_dir_finalize(ORTE_PROC_MY_NAME);
-    
+
     return ORTE_SUCCESS;    
 }

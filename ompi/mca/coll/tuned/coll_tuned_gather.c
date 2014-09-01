@@ -20,12 +20,11 @@
 
 #include "mpi.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
 #include "ompi/mca/pml/pml.h"
-#include "ompi/op/op.h"
 #include "coll_tuned.h"
 #include "coll_tuned_topo.h"
 #include "coll_tuned_util.h"
@@ -68,19 +67,19 @@ ompi_coll_tuned_gather_intra_binomial(void *sbuf, int scount,
     COLL_TUNED_UPDATE_IN_ORDER_BMTREE( comm, tuned_module, root );
     bmtree = data->cached_in_order_bmtree;
 
-    ompi_ddt_get_extent(sdtype, &slb, &sextent);
-    ompi_ddt_get_true_extent(sdtype, &strue_lb, &strue_extent);
+    ompi_datatype_get_extent(sdtype, &slb, &sextent);
+    ompi_datatype_get_true_extent(sdtype, &strue_lb, &strue_extent);
 
     vrank = (rank - root + size) % size;
 
     if (rank == root) {
-        ompi_ddt_get_extent(rdtype, &rlb, &rextent);
-        ompi_ddt_get_true_extent(rdtype, &rtrue_lb, &rtrue_extent);
+        ompi_datatype_get_extent(rdtype, &rlb, &rextent);
+        ompi_datatype_get_true_extent(rdtype, &rtrue_lb, &rtrue_extent);
 	if (0 == root){
 	    /* root on 0, just use the recv buffer */
 	    ptmp = (char *) rbuf;
 	    if (sbuf != MPI_IN_PLACE) {
-		err = ompi_ddt_sndrcv(sbuf, scount, sdtype,
+		err = ompi_datatype_sndrcv(sbuf, scount, sdtype,
 				      ptmp, rcount, rdtype);
 		if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 	    }
@@ -95,12 +94,12 @@ ompi_coll_tuned_gather_intra_binomial(void *sbuf, int scount,
 	    ptmp = tempbuf - rlb;
 	    if (sbuf != MPI_IN_PLACE) {
 		/* copy from sbuf to temp buffer */
-		err = ompi_ddt_sndrcv(sbuf, scount, sdtype,
+		err = ompi_datatype_sndrcv(sbuf, scount, sdtype,
 				      ptmp, rcount, rdtype);
 		if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 	    } else {
 		/* copy from rbuf to temp buffer  */
-		err = ompi_ddt_copy_content_same_ddt(rdtype, rcount, ptmp, 
+		err = ompi_datatype_copy_content_same_ddt(rdtype, rcount, ptmp, 
 						     (char *) rbuf + rank*rextent*rcount);
 		if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 	    }
@@ -117,7 +116,7 @@ ompi_coll_tuned_gather_intra_binomial(void *sbuf, int scount,
 
 	ptmp = tempbuf - slb;
 	/* local copy to tempbuf */
-	err = ompi_ddt_sndrcv(sbuf, scount, sdtype,
+	err = ompi_datatype_sndrcv(sbuf, scount, sdtype,
                                    ptmp, scount, sdtype);
 	if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
@@ -174,12 +173,12 @@ ompi_coll_tuned_gather_intra_binomial(void *sbuf, int scount,
     if (rank == root) {
 	if (root != 0) {
 	    /* rotate received data on root if root != 0 */
-	    err = ompi_ddt_copy_content_same_ddt(rdtype, rcount*(size - root),
+	    err = ompi_datatype_copy_content_same_ddt(rdtype, rcount*(size - root),
 						 (char *) rbuf + rextent*root*rcount, ptmp);
 	    if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
 
-	    err = ompi_ddt_copy_content_same_ddt(rdtype, rcount*root,
+	    err = ompi_datatype_copy_content_same_ddt(rdtype, rcount*root,
 						 (char *) rbuf, ptmp + rextent*rcount*(size-root));
 	    if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
@@ -239,8 +238,8 @@ ompi_coll_tuned_gather_intra_linear_sync(void *sbuf, int scount,
            - send the second segment of the data.
         */
 
-        ompi_ddt_type_size(sdtype, &typelng);
-        ompi_ddt_get_extent(sdtype, &lb, &extent);
+        ompi_datatype_type_size(sdtype, &typelng);
+        ompi_datatype_get_extent(sdtype, &lb, &extent);
         first_segment_count = scount;
         COLL_TUNED_COMPUTED_SEGCOUNT( (size_t) first_segment_size, typelng, 
                                       first_segment_count );
@@ -277,8 +276,8 @@ ompi_coll_tuned_gather_intra_linear_sync(void *sbuf, int scount,
         reqs = (ompi_request_t**) calloc(size, sizeof(ompi_request_t*));
         if (NULL == reqs) { ret = -1; line = __LINE__; goto error_hndl; }
         
-        ompi_ddt_type_size(rdtype, &typelng);
-        ompi_ddt_get_extent(rdtype, &lb, &extent);
+        ompi_datatype_type_size(rdtype, &typelng);
+        ompi_datatype_get_extent(rdtype, &lb, &extent);
         first_segment_count = rcount;
         COLL_TUNED_COMPUTED_SEGCOUNT( (size_t)first_segment_size, typelng, 
                                       first_segment_count );
@@ -318,7 +317,7 @@ ompi_coll_tuned_gather_intra_linear_sync(void *sbuf, int scount,
 
         /* copy local data if necessary */
         if (MPI_IN_PLACE != sbuf) {
-            ret = ompi_ddt_sndrcv(sbuf, scount, sdtype,
+            ret = ompi_datatype_sndrcv(sbuf, scount, sdtype,
                                   (char*)rbuf + rank * rcount * extent, 
                                   rcount, rdtype);
             if (ret != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
@@ -394,12 +393,12 @@ ompi_coll_tuned_gather_intra_basic_linear(void *sbuf, int scount,
 
     /* I am the root, loop receiving the data. */
 
-    ompi_ddt_get_extent(rdtype, &lb, &extent);
+    ompi_datatype_get_extent(rdtype, &lb, &extent);
     incr = extent * rcount;
     for (i = 0, ptmp = (char *) rbuf; i < size; ++i, ptmp += incr) {
         if (i == rank) {
             if (MPI_IN_PLACE != sbuf) {
-                err = ompi_ddt_sndrcv(sbuf, scount, sdtype,
+                err = ompi_datatype_sndrcv(sbuf, scount, sdtype,
                                       ptmp, rcount, rdtype);
             } else {
                 err = MPI_SUCCESS;
@@ -450,9 +449,12 @@ ompi_coll_tuned_gather_intra_check_forced_init(coll_tuned_force_algorithm_mca_pa
                                  "gather_algorithm",
                                  "Which gather algorithm is used. Can be locked down to choice of: 0 ignore, 1 basic linear, 2 binomial, 3 linear with synchronization.",
                                  false, false, 0, NULL);
+    if (mca_param_indices->algorithm_param_index < 0) {
+        return mca_param_indices->algorithm_param_index;
+    }
     mca_base_param_lookup_int(mca_param_indices->algorithm_param_index, 
                               &(requested_alg));
-    if( requested_alg > max_alg ) {
+    if( 0 > requested_alg || requested_alg > max_alg ) {
         if( 0 == ompi_comm_rank( MPI_COMM_WORLD ) ) {
             opal_output( 0, "Gather algorithm #%d is not available (range [0..%d]). Switching back to default(0)\n",
                          requested_alg, max_alg );

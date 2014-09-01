@@ -24,8 +24,6 @@
 #ifndef MCA_RCACHE_H
 #define MCA_RCACHE_H
 #include "opal/mca/mca.h"
-#include "ompi/info/info.h"
-#include "opal/class/opal_list.h" 
 #include "ompi/mca/mpool/mpool.h"
 #include "opal/threads/mutex.h"
 

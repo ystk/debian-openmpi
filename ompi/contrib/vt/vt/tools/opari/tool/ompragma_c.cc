@@ -5,7 +5,7 @@
 **  Copyright (c) 1998-2008                                                **
 **  Forschungszentrum Juelich, Juelich Supercomputing Centre               **
 **                                                                         **
-**  See the file COPYING in the package base directory for details       **
+**  See the file COPYING in the package base directory for details         **
 ****************************************************************************/
 
 #include "ompragma.h"
@@ -16,7 +16,7 @@
 string OMPragmaC::find_next_word() {
   while ( pline < lines.size() ) {
     string::size_type wbeg = lines[pline].find_first_not_of(" \t", ppos);
-    if ( lines[pline][wbeg] == '\\' || wbeg == string::npos ) {
+    if ( wbeg == string::npos || lines[pline][wbeg] == '\\' ) {
       ++pline;
       if ( pline < lines.size() ) { ppos = 0; } else { return ""; }
     } else if ( lines[pline][wbeg] == '(' || lines[pline][wbeg] == ')' ) {
@@ -57,6 +57,9 @@ void OMPragmaC::add_descr(int n) {
     // not 100% right but best we can do if compiler doesn't allow macro
     // replacement on pragma statements
     os << " shared(omp_rd_" << n << ")";
+#ifdef OPARI_VT
+    os << " copyin(omp_pt_" << n << ")";
+#endif //OPARI_VT
   }
   int lastline = lines.size() - 1;
   lines[lastline].append(os.str());

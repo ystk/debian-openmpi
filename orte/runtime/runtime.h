@@ -26,13 +26,12 @@
 #define ORTE_RUNTIME_H
 
 #include "orte_config.h"
-#include "orte/types.h"
 
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
 
-#include "opal/util/cmd_line.h"
+#include "orte/util/proc_info.h"
 
 BEGIN_C_DECLS
 
@@ -47,11 +46,6 @@ ORTE_DECLSPEC extern bool orte_finalizing;
 ORTE_DECLSPEC extern int orte_debug_output;
 ORTE_DECLSPEC extern bool orte_debug_flag;
 
-/* some convenience definitions for code clarity */
-#define ORTE_NON_TOOL           0x00
-#define ORTE_TOOL               0x01
-#define ORTE_TOOL_WITH_NAME     0x02
-
     /**
      * Initialize the Open Run Time Environment
      *
@@ -61,9 +55,11 @@ ORTE_DECLSPEC extern bool orte_debug_flag;
      * be called by every application using the RTE interface, including
      * MPI applications and mpirun.
      *
-     * @param tool Whether we are ORTE tool or not
+     * @param pargc  Pointer to the number of arguments in the pargv array
+     * @param pargv  The list of arguments.
+     * @param flags  Whether we are ORTE tool or not
      */
-ORTE_DECLSPEC    int orte_init(char flags);
+ORTE_DECLSPEC    int orte_init(int*pargc, char*** pargv, orte_proc_type_t flags);
 
     /**
      * Initialize parameters for ORTE.

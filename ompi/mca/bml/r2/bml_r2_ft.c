@@ -20,21 +20,16 @@
  */
 
 #include "ompi_config.h"
+#include "opal/util/output.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-#include "orte/util/show_help.h"
 #include "ompi/runtime/ompi_cr.h"
-#include "ompi/class/ompi_bitmap.h"
-#include "ompi/mca/bml/bml.h"
 #include "ompi/mca/bml/base/base.h"
-#include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
 #include "ompi/mca/bml/base/bml_base_btl.h" 
-#include "ompi/mca/pml/pml.h"
 #include "ompi/mca/pml/base/base.h"
-#include "orte/mca/rml/rml.h"
 #include "orte/mca/grpcomm/grpcomm.h"
 #include "ompi/proc/proc.h"
 
@@ -146,6 +141,10 @@ int mca_bml_r2_ft_event(int state)
                 opal_output(0, "bml:r2: ft_event(Restart): Failed to finalize BML framework\n");
                 return ret;
             }
+            if( OMPI_SUCCESS != (ret = mca_btl_base_close()) ) {
+                opal_output(0, "bml:r2: ft_event(Restart): Failed to close BTL framework\n");
+                return ret;
+            }
         }
         /* Matches OPAL_CRS_RESTART */
         else if( ompi_cr_continue_like_restart && !first_continue_pass ) {
@@ -175,8 +174,8 @@ int mca_bml_r2_ft_event(int state)
              * This will cause the BTL components to discover the available
              * network options on this machine, and post proper modex informaiton.
              */
-            if( OMPI_SUCCESS != (ret = mca_btl_base_select(OMPI_ENABLE_PROGRESS_THREADS,
-                                                           OMPI_ENABLE_MPI_THREADS) ) ) {
+            if( OMPI_SUCCESS != (ret = mca_btl_base_select(OPAL_ENABLE_PROGRESS_THREADS,
+                                                           OMPI_ENABLE_THREAD_MULTIPLE) ) ) {
                 opal_output(0, "bml:r2: ft_event(Restart): Failed to select in BTL framework\n");
                 return ret;
             }
@@ -217,6 +216,10 @@ int mca_bml_r2_ft_event(int state)
          */
         if( OMPI_SUCCESS != (ret = mca_bml_r2_finalize()) ) {
             opal_output(0, "bml:r2: ft_event(Restart): Failed to finalize BML framework\n");
+            return ret;
+        }
+        if( OMPI_SUCCESS != (ret = mca_btl_base_close()) ) {
+            opal_output(0, "bml:r2: ft_event(Restart): Failed to close BTL framework\n");
             return ret;
         }
     }
@@ -271,8 +274,8 @@ int mca_bml_r2_ft_event(int state)
          * This will cause the BTL components to discover the available
          * network options on this machine, and post proper modex informaiton.
          */
-        if( OMPI_SUCCESS != (ret = mca_btl_base_select(OMPI_ENABLE_PROGRESS_THREADS,
-                                                       OMPI_ENABLE_MPI_THREADS) ) ) {
+        if( OMPI_SUCCESS != (ret = mca_btl_base_select(OPAL_ENABLE_PROGRESS_THREADS,
+                                                       OMPI_ENABLE_THREAD_MULTIPLE) ) ) {
             opal_output(0, "bml:r2: ft_event(Restart): Failed to select in BTL framework\n");
             return ret;
         }

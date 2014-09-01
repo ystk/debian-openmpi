@@ -21,12 +21,10 @@
 
 #include "mpi.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
-#include "ompi/mca/pml/pml.h"
-#include "ompi/op/op.h"
 #include "coll_tuned.h"
 #include "coll_tuned_topo.h"
 #include "coll_tuned_util.h"
@@ -100,10 +98,10 @@ int ompi_coll_tuned_allgather_intra_bruck(void *sbuf, int scount,
    OPAL_OUTPUT((ompi_coll_tuned_stream,
                 "coll:tuned:allgather_intra_bruck rank %d", rank));
 
-   err = ompi_ddt_get_extent (sdtype, &slb, &sext);
+   err = ompi_datatype_get_extent (sdtype, &slb, &sext);
    if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
-   err = ompi_ddt_get_extent (rdtype, &rlb, &rext);
+   err = ompi_datatype_get_extent (rdtype, &rlb, &rext);
    if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
    /* Initialization step:
@@ -114,12 +112,12 @@ int ompi_coll_tuned_allgather_intra_bruck(void *sbuf, int scount,
    tmprecv = (char*) rbuf;
    if (MPI_IN_PLACE != sbuf) {
       tmpsend = (char*) sbuf;
-      err = ompi_ddt_sndrcv(tmpsend, scount, sdtype, tmprecv, rcount, rdtype);
+      err = ompi_datatype_sndrcv(tmpsend, scount, sdtype, tmprecv, rcount, rdtype);
       if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl;  }
 
    } else if (0 != rank) {
       tmpsend = ((char*)rbuf) + rank * rcount * rext;
-      err = ompi_ddt_copy_content_same_ddt(rdtype, rcount, tmprecv, tmpsend);
+      err = ompi_datatype_copy_content_same_ddt(rdtype, rcount, tmprecv, tmpsend);
       if (err < 0) { line = __LINE__; goto err_hndl; }
    }
    
@@ -171,7 +169,7 @@ int ompi_coll_tuned_allgather_intra_bruck(void *sbuf, int scount,
       ptrdiff_t true_extent, true_lb;
       char *free_buf = NULL, *shift_buf = NULL;
 
-      err = ompi_ddt_get_true_extent(rdtype, &true_lb, &true_extent);
+      err = ompi_datatype_get_true_extent(rdtype, &true_lb, &true_extent);
       if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
       free_buf = (char*) calloc(((true_extent + true_lb +
@@ -183,19 +181,19 @@ int ompi_coll_tuned_allgather_intra_bruck(void *sbuf, int scount,
       shift_buf = free_buf - rlb;
       
       tmpsend = (char*) rbuf;
-      err = ompi_ddt_copy_content_same_ddt(rdtype, ((size - rank) * rcount),
+      err = ompi_datatype_copy_content_same_ddt(rdtype, ((size - rank) * rcount),
                                            shift_buf, tmpsend);
       if (err < 0) { line = __LINE__; goto err_hndl;  }
 
       tmprecv = (char*) rbuf;
       tmpsend = (char*) rbuf + (size - rank) * rcount * rext;
 
-      err = ompi_ddt_copy_content_same_ddt(rdtype, rank * rcount, 
+      err = ompi_datatype_copy_content_same_ddt(rdtype, rank * rcount, 
                                            tmprecv, tmpsend);
       if (err < 0) { line = __LINE__; goto err_hndl;  }
 
       tmprecv = (char*) rbuf + rank * rcount * rext;
-      err = ompi_ddt_copy_content_same_ddt(rdtype, (size - rank) * rcount, 
+      err = ompi_datatype_copy_content_same_ddt(rdtype, (size - rank) * rcount, 
                                            tmprecv, shift_buf);
       if (err < 0) { line = __LINE__; goto err_hndl;  }
 
@@ -294,10 +292,10 @@ ompi_coll_tuned_allgather_intra_recursivedoubling(void *sbuf, int scount,
                 "coll:tuned:allgather_intra_recursivedoubling rank %d, size %d", 
                 rank, size));
 
-   err = ompi_ddt_get_extent (sdtype, &slb, &sext);
+   err = ompi_datatype_get_extent (sdtype, &slb, &sext);
    if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
-   err = ompi_ddt_get_extent (rdtype, &rlb, &rext);
+   err = ompi_datatype_get_extent (rdtype, &rlb, &rext);
    if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
    /* Initialization step:
@@ -307,7 +305,7 @@ ompi_coll_tuned_allgather_intra_recursivedoubling(void *sbuf, int scount,
    if (MPI_IN_PLACE != sbuf) {
       tmpsend = (char*) sbuf;
       tmprecv = (char*) rbuf + rank * rcount * rext;
-      err = ompi_ddt_sndrcv(tmpsend, scount, sdtype, tmprecv, rcount, rdtype);
+      err = ompi_datatype_sndrcv(tmpsend, scount, sdtype, tmprecv, rcount, rdtype);
       if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl;  }
 
    } 
@@ -385,10 +383,10 @@ int ompi_coll_tuned_allgather_intra_ring(void *sbuf, int scount,
    OPAL_OUTPUT((ompi_coll_tuned_stream,
                 "coll:tuned:allgather_intra_ring rank %d", rank));
 
-   err = ompi_ddt_get_extent (sdtype, &slb, &sext);
+   err = ompi_datatype_get_extent (sdtype, &slb, &sext);
    if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
-   err = ompi_ddt_get_extent (rdtype, &rlb, &rext);
+   err = ompi_datatype_get_extent (rdtype, &rlb, &rext);
    if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
    /* Initialization step:
@@ -398,7 +396,7 @@ int ompi_coll_tuned_allgather_intra_ring(void *sbuf, int scount,
    tmprecv = (char*) rbuf + rank * rcount * rext;
    if (MPI_IN_PLACE != sbuf) {
       tmpsend = (char*) sbuf;
-      err = ompi_ddt_sndrcv(tmpsend, scount, sdtype, tmprecv, rcount, rdtype);
+      err = ompi_datatype_sndrcv(tmpsend, scount, sdtype, tmprecv, rcount, rdtype);
       if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl;  }
    } 
    
@@ -526,10 +524,10 @@ ompi_coll_tuned_allgather_intra_neighborexchange(void *sbuf, int scount,
    OPAL_OUTPUT((ompi_coll_tuned_stream,
                 "coll:tuned:allgather_intra_neighborexchange rank %d", rank));
 
-   err = ompi_ddt_get_extent (sdtype, &slb, &sext);
+   err = ompi_datatype_get_extent (sdtype, &slb, &sext);
    if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
-   err = ompi_ddt_get_extent (rdtype, &rlb, &rext);
+   err = ompi_datatype_get_extent (rdtype, &rlb, &rext);
    if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
    /* Initialization step:
@@ -539,7 +537,7 @@ ompi_coll_tuned_allgather_intra_neighborexchange(void *sbuf, int scount,
    tmprecv = (char*) rbuf + rank * rcount * rext;
    if (MPI_IN_PLACE != sbuf) {
       tmpsend = (char*) sbuf;
-      err = ompi_ddt_sndrcv(tmpsend, scount, sdtype, tmprecv, rcount, rdtype);
+      err = ompi_datatype_sndrcv(tmpsend, scount, sdtype, tmprecv, rcount, rdtype);
       if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl;  }
    } 
 
@@ -633,10 +631,10 @@ int ompi_coll_tuned_allgather_intra_two_procs(void *sbuf, int scount,
    OPAL_OUTPUT((ompi_coll_tuned_stream,
                 "ompi_coll_tuned_allgather_intra_two_procs rank %d", rank));
 
-   err = ompi_ddt_get_extent (sdtype, &lb, &sext);
+   err = ompi_datatype_get_extent (sdtype, &lb, &sext);
    if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
-   err = ompi_ddt_get_extent (rdtype, &lb, &rext);
+   err = ompi_datatype_get_extent (rdtype, &lb, &rext);
    if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
    /* Exchange data:
@@ -662,7 +660,7 @@ int ompi_coll_tuned_allgather_intra_two_procs(void *sbuf, int scount,
 
    /* Place your data in correct location if necessary */
    if (MPI_IN_PLACE != sbuf) {
-      err = ompi_ddt_sndrcv((char*)sbuf, scount, sdtype, 
+      err = ompi_datatype_sndrcv((char*)sbuf, scount, sdtype, 
                             (char*)rbuf + rank * rcount * rext, rcount, rdtype);
       if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl;  }
    }
@@ -715,7 +713,7 @@ ompi_coll_tuned_allgather_intra_basic_linear(void *sbuf, int scount,
        as sbuf and avoid using a temporary buffer if gather is
        implemented correctly */
     if (MPI_IN_PLACE == sbuf && 0 != ompi_comm_rank(comm)) {
-       ompi_ddt_get_extent(rdtype, &lb, &extent);
+       ompi_datatype_get_extent(rdtype, &lb, &extent);
        sbuf = ((char*) rbuf) + (ompi_comm_rank(comm) * extent * rcount);
        sdtype = rdtype;
        scount = rcount;
@@ -766,9 +764,12 @@ ompi_coll_tuned_allgather_intra_check_forced_init(coll_tuned_force_algorithm_mca
                                 "allgather_algorithm",
                                 "Which allgather algorithm is used. Can be locked down to choice of: 0 ignore, 1 basic linear, 2 bruck, 3 recursive doubling, 4 ring, 5 neighbor exchange, 6: two proc only.",
                                 false, false, 0, NULL);
+    if (mca_param_indices->algorithm_param_index < 0) {
+        return mca_param_indices->algorithm_param_index;
+    }
     mca_base_param_lookup_int(mca_param_indices->algorithm_param_index, 
                               &(requested_alg));
-    if( requested_alg > max_alg ) {
+    if( 0 > requested_alg || requested_alg > max_alg ) {
        if( 0 == ompi_comm_rank( MPI_COMM_WORLD ) ) {
           opal_output( 0, "Allgather algorithm #%d is not available (range [0..%d]). Switching back to ignore(0)\n",
                        requested_alg, max_alg );

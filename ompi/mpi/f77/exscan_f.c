@@ -21,7 +21,7 @@
 #include "ompi/mpi/f77/bindings.h"
 #include "ompi/mpi/f77/constants.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_EXSCAN = mpi_exscan_f
 #pragma weak pmpi_exscan = mpi_exscan_f
 #pragma weak pmpi_exscan_ = mpi_exscan_f
@@ -36,14 +36,14 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_EXSCAN,
                            (sendbuf, recvbuf, count, datatype, op, comm, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_EXSCAN = mpi_exscan_f
 #pragma weak mpi_exscan = mpi_exscan_f
 #pragma weak mpi_exscan_ = mpi_exscan_f
 #pragma weak mpi_exscan__ = mpi_exscan_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_EXSCAN,
                            mpi_exscan,
                            mpi_exscan_,
@@ -54,7 +54,7 @@ OMPI_GENERATE_F77_BINDINGS (MPI_EXSCAN,
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
@@ -71,8 +71,8 @@ void mpi_exscan_f(char *sendbuf, char *recvbuf, MPI_Fint *count,
     c_op = MPI_Op_f2c(*op);
 
     /* MPI_IN_PLACE is not supported */
-    sendbuf = OMPI_F2C_BOTTOM (sendbuf);
-    recvbuf = OMPI_F2C_BOTTOM (recvbuf);
+    sendbuf = (char *) OMPI_F2C_BOTTOM (sendbuf);
+    recvbuf = (char *) OMPI_F2C_BOTTOM (recvbuf);
 
     *ierr = OMPI_INT_2_FINT(MPI_Exscan(sendbuf, recvbuf, 
 				       OMPI_FINT_2_INT(*count),

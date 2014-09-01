@@ -26,10 +26,16 @@
  * includes
  */
 #include "orte_config.h"
+
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #include "orte/constants.h"
 #include "orte/types.h"
 
 #include "opal/dss/dss.h"
+#include "opal/util/output.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/runtime/orte_wait.h"
@@ -103,7 +109,10 @@ static void process_message(int fd, short event, void *data)
     
     switch (command) {
         case ORTE_RML_UPDATE_CMD:
-            orte_rml_base_update_contact_info(mev->buffer);
+            if (ORTE_SUCCESS != (rc = orte_rml_base_update_contact_info(mev->buffer))) {
+                ORTE_ERROR_LOG(rc);
+                return;
+            }
             break;
             
         default:

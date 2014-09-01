@@ -1,5 +1,5 @@
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
-# Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2008-2013 Cisco Systems, Inc.  All rights reserved.
 
 # This is the VERSION file for Open MPI, describing the precise
 # version of Open MPI in this distribution.  The various components of
@@ -10,7 +10,7 @@
 # <major>.<minor>.<release>.  If release is zero, then it is omitted.
 
 major=1
-minor=4
+minor=6
 release=5
 
 # greek is used for alpha or beta release tags.  If it is non-empty,
@@ -27,7 +27,7 @@ greek=
 
 want_svn=0
 
-# If svn_r=-1, then the SVN r number will be obtained dynamically at
+# If svn_r=-1, then the SVN r numbere will be obtained dynamically at
 # run time, either 1) via the "svnversion" command (if this is a
 # Subversion checkout) in the form "r<svn_r>", or b) with the date (if
 # this is not a Subversion checkout, and the svnversion command cannot
@@ -37,11 +37,11 @@ want_svn=0
 # distribution tarball is being made from an SVN checkout, the value
 # of svn_r in this file is replaced with the output of "svnversion".
 
-svn_r=r25905
+svn_r=r28673
 
 # The date when this release was created
 
-date="Feb 10, 2012"
+date="Jun 26, 2013"
 
 # The shared library version of each of Open MPI's public libraries.
 # These versions are maintained in accordance with the "Library
@@ -70,44 +70,27 @@ date="Feb 10, 2012"
 # be affected by changes to inlined functions in OMPI's
 # header-file-based C++ bindings implementation.
 
-# 5. For the v1.4 series, we have decided not to change the version
-# numbers for libopen-rte.so and libopen-pal.so because of deep voodo
-# linker reasons. This policy is only in effect for the v1.4 series;
-# the v1.5 series will update libopen-rte.so/libopen-pal.so version
-# numbers as appropriate. This policy change will unfortunately cause
-# an ABI breakage for MPI applications between the v1.4 and v1.5
-# series -- sorry folks! :-(
+# 5. The ORTE and OPAL libraries will change versions when their
+# public interfaces change (as relative to the layer(s) above them).
+# None of the ORTE and OPAL interfaces are public to MPI applications,
+# but they are "public" within the OMPI code base and select 3rd party
+# software packages.
 
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-# NOTE: 
-
-# In 1.4.4, we bumped the libmpi_f90_so_version and
-# libmca_common_sm_so_version numbers such that they now conflict with
-# Open MPI v1.5 release numbers.  This was seen as a lesser of evils;
-# we preserved ABI for the f90 library, but at the expense of a
-# conflicting .so library version number.  This is not *quite* as evil
-# as it sounds, however, as you cannot have 2 Open MPI installs in the
-# same directory tree (due to conflicts of other files, such as
-# mpi.h).  Hence, you can't have a v1.4.x and v1.5.x in the same tree
-# *anyway* -- so the fact that v1.4.x might have the same filename for
-# the F90 MPI bindings library as v1.5.x is not entirely evil.
-# Meaning: philosophically, it's a bad idea.  But in practice, it
-# won't create any problems.
-
-libmpi_so_version=0:4:0
-libmpi_cxx_so_version=0:1:0
-libmpi_f77_so_version=0:3:0
-libmpi_f90_so_version=1:0:1
-libopen_rte_so_version=0:0:0
-libopen_pal_so_version=0:0:0
+libmpi_so_version=1:8:0
+libmpi_cxx_so_version=1:2:0
+libmpi_f77_so_version=1:7:0
+libmpi_f90_so_version=4:0:3
+libopen_rte_so_version=4:3:0
+libopen_pal_so_version=4:5:0
 
 # "Common" components install standalone libraries that are run-time
 # linked by one or more components.  So they need to be versioned as
 # well.  Yuck; this somewhat breaks the
 # components-don't-affect-the-build-system abstraction.
 
-libmca_common_sm_so_version=1:2:0
-libmca_common_mx_so_version=0:1:0
-libmca_common_portals_so_version=0:0:0
+libmca_common_sm_so_version=3:1:0
+libmca_common_mx_so_version=1:1:0
+libmca_common_portals_so_version=1:0:0

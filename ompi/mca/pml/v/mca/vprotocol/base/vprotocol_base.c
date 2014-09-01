@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2004-2007 The Trustees of the University of Tennessee.
  *                         All rights reserved.
+ * Copyright (c) 2009-2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,8 +28,7 @@ int mca_vprotocol_base_open(char *vprotocol_include_list)
 {
     OBJ_CONSTRUCT(&mca_vprotocol_base_components_available, opal_list_t);
     mca_vprotocol_base_include_list = vprotocol_include_list;
-    if(mca_vprotocol_base_include_list[0] == 0)
-        return OMPI_SUCCESS;
+    if(mca_vprotocol_base_include_list[0] == 0) return OMPI_SUCCESS;
     return mca_base_components_open("vprotocol", 0, 
                                     mca_vprotocol_base_static_components, 
                                     &mca_vprotocol_base_components_available, 
@@ -42,7 +42,10 @@ int mca_vprotocol_base_close(void)
     int ret;
     ret = mca_base_components_close(mca_pml_v.output, 
                                     &mca_vprotocol_base_components_available, 
-                                    NULL);
+                                    NULL, true);
+    if (NULL != mca_vprotocol_base_include_list) {
+        free(mca_vprotocol_base_include_list);
+    }
     OBJ_DESTRUCT(&mca_vprotocol_base_components_available);
     return ret;
 }

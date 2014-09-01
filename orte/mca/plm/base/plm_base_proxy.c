@@ -22,13 +22,11 @@
 #include "orte/constants.h"
 
 #include "opal/dss/dss.h"
+#include "orte/util/name_fns.h"
 #include "orte/mca/rml/rml.h"
-#include "orte/mca/rml/base/rml_contact.h"
-#include "orte/mca/iof/iof.h"
+#include "orte/mca/rml/rml_types.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/runtime/orte_globals.h"
-#include "orte/util/show_help.h"
-#include "orte/util/name_fns.h"
 
 #include "orte/mca/plm/base/plm_private.h"
 
@@ -52,7 +50,7 @@ int orte_plm_proxy_spawn(orte_job_t *jdata)
     /* setup the buffer */
     OBJ_CONSTRUCT(&buf, opal_buffer_t);
     
-    /* tell the HNP we are sending a launch request */
+    /* tell the recipient we are sending a launch request */
     command = ORTE_PLM_LAUNCH_JOB_CMD;
     if (ORTE_SUCCESS != (rc = opal_dss.pack(&buf, &command, 1, ORTE_PLM_CMD))) {
         ORTE_ERROR_LOG(rc);
@@ -67,11 +65,8 @@ int orte_plm_proxy_spawn(orte_job_t *jdata)
     }
     
     /* identify who gets this command - the HNP or the local orted */
-    if (jdata->controls & ORTE_JOB_CONTROL_LOCAL_SPAWN) {
-        /* for now, this is unsupported */
-        opal_output(0, "LOCAL DAEMON SPAWN IS CURRENTLY UNSUPPORTED");
-        target = ORTE_PROC_MY_HNP;
-        /* target = ORTE_PROC_MY_DAEMON; */
+    if (jdata->controls & ORTE_JOB_CONTROL_LOCAL_SLAVE) {
+        target = ORTE_PROC_MY_DAEMON;
     } else {
         target = ORTE_PROC_MY_HNP;
     }

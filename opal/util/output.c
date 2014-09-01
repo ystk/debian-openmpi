@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2008 The University of Tennessee and The University
@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2008 Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -216,6 +216,23 @@ bool opal_output_switch(int output_id, bool enable)
  */
 void opal_output_reopen_all(void)
 {
+    char *str;
+    char hostname[32];
+
+    str = getenv("OPAL_OUTPUT_STDERR_FD");
+    if (NULL != str) {
+        default_stderr_fd = atoi(str);
+    } else {
+        default_stderr_fd = -1;
+    }
+
+    gethostname(hostname, sizeof(hostname));
+    if( NULL != verbose.lds_prefix ) {
+        free(verbose.lds_prefix);
+        verbose.lds_prefix = NULL;
+    }
+    asprintf(&verbose.lds_prefix, "[%s:%05d] ", hostname, getpid());
+#if 0
     int i;
     opal_output_stream_t lds;
 
@@ -255,6 +272,7 @@ void opal_output_reopen_all(void)
          */
         opal_output_open(&lds);
     }
+#endif
 }
 
 
@@ -530,7 +548,7 @@ static int do_open(int output_id, opal_output_stream_t * lds)
         OPAL_THREAD_UNLOCK(&mutex);
     }
     info[i].ldi_enabled = lds->lds_is_debugging ?
-        (bool) OMPI_ENABLE_DEBUG : true;
+        (bool) OPAL_ENABLE_DEBUG : true;
     info[i].ldi_verbose_level = lds->lds_verbose_level;
 
 #if USE_SYSLOG
@@ -601,11 +619,11 @@ static int open_file(int i)
     /* Setup the filename and open flags */
 
     if (NULL != output_dir) {
-        filename = (char *) malloc(OMPI_PATH_MAX);
+        filename = (char *) malloc(OPAL_PATH_MAX);
         if (NULL == filename) {
             return OPAL_ERR_OUT_OF_RESOURCE;
         }
-        strncpy(filename, output_dir, OMPI_PATH_MAX);
+        strncpy(filename, output_dir, OPAL_PATH_MAX);
         strcat(filename, "/");
         if (NULL != output_prefix) {
             strcat(filename, output_prefix);
@@ -629,15 +647,18 @@ static int open_file(int i)
             return OPAL_ERR_IN_ERRNO;
         }
 
+        free(filename);
+
         /* Make the file be close-on-exec to prevent child inheritance
          * problems */
 
 #ifndef __WINDOWS__
         /* TODO: Need to find out the equivalent in windows */
-        fcntl(info[i].ldi_fd, F_SETFD, 1);
+        if (-1 == fcntl(info[i].ldi_fd, F_SETFD, 1)) {
+           return OPAL_ERR_IN_ERRNO;
+        }
 #endif
 
-        free(filename);
     }
 
     /* Return successfully even if the session dir did not exist yet;
@@ -818,7 +839,7 @@ static int output(int output_id, const char *format, va_list arglist)
                   fileno(stderr) : default_stderr_fd,
                   out, (int)strlen(out)); 
             fflush(stderr);
-	}
+        }
 
         /* File output -- first check to see if the file opening was
          * delayed.  If so, try to open it.  If we failed to open it,

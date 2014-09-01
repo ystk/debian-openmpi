@@ -30,7 +30,6 @@
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 
-#include "opal/class/opal_object.h"
 
 #include "ompi/info/info.h"
 #include "ompi/communicator/communicator.h"
@@ -56,6 +55,8 @@ BEGIN_C_DECLS
 #define OMPI_RML_TAG_COLL_SM2_BACK_FILE_CREATED     OMPI_RML_TAG_BASE+9
 
 #define OMPI_RML_TAG_DYNAMIC                        OMPI_RML_TAG_BASE+200
+
+
 
 
 /*
@@ -116,6 +117,20 @@ typedef void (*ompi_dpm_base_module_mark_dyncomm_fn_t)(ompi_communicator_t *comm
 typedef int (*ompi_dpm_base_module_open_port_fn_t)(char *port_name, orte_rml_tag_t tag);
 
 /*
+ * Converts an opaque port string to a RML process nane and tag.
+ */
+typedef int (*ompi_dpm_base_module_parse_port_name_t)(char *port_name,
+                                                      char **hnp_uri, char **rml_uri,
+                                                      orte_rml_tag_t *tag);
+
+/* 
+ * Update the routed component to make sure that the RML can send messages to
+ * the remote port
+ */
+typedef int (*ompi_dpm_base_module_route_to_port_t)(char *rml_uri, orte_process_name_t *rproc);
+
+
+/*
  * Close a port
  */
 typedef int (*ompi_dpm_base_module_close_port_fn_t)(char *port_name);
@@ -145,6 +160,10 @@ struct ompi_dpm_base_module_1_0_0_t {
     ompi_dpm_base_module_mark_dyncomm_fn_t      mark_dyncomm;
     /* open port */
     ompi_dpm_base_module_open_port_fn_t         open_port;
+    /* parse port string */
+    ompi_dpm_base_module_parse_port_name_t      parse_port;
+    /* update route to a port */
+    ompi_dpm_base_module_route_to_port_t        route_to_port;
     /* close port */
     ompi_dpm_base_module_close_port_fn_t        close_port;
     /* finalize */

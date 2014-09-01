@@ -20,10 +20,12 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/mpi/f77/fint_2_int.h"
 #include "ompi/op/op.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Op_f2c = PMPI_Op_f2c
 #endif
 

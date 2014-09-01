@@ -21,6 +21,10 @@
 
 #include "ompi_config.h"
 
+struct ompi_communicator_t;
+struct ompi_file_t;
+struct ompi_win_t;
+
 /**
  * Handler function for MPI_ERRORS_ARE_FATAL
  */

@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,7 +21,7 @@
  * This test is intended to test the opal_value_array class
  */
 
-#include "ompi_config.h"
+#include "opal_config.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
@@ -42,7 +42,7 @@ int main(int argc, char **argv)
 
     test_init("opal_value_array_t");
 
-    i = opal_init();
+    i = opal_init(&argc, &argv);
     test_verify_int(OPAL_SUCCESS, i);
     if (OPAL_SUCCESS != i) {
         test_finalize();

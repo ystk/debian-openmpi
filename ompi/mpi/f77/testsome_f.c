@@ -24,7 +24,7 @@
 #include "ompi/errhandler/errhandler.h"
 #include "ompi/communicator/communicator.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_TESTSOME = mpi_testsome_f
 #pragma weak pmpi_testsome = mpi_testsome_f
 #pragma weak pmpi_testsome_ = mpi_testsome_f
@@ -39,14 +39,14 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_TESTSOME,
                            (incount, array_of_requests, outcount, array_of_indices, array_of_statuses, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_TESTSOME = mpi_testsome_f
 #pragma weak mpi_testsome = mpi_testsome_f
 #pragma weak mpi_testsome_ = mpi_testsome_f
 #pragma weak mpi_testsome__ = mpi_testsome_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_TESTSOME,
                            mpi_testsome,
                            mpi_testsome_,
@@ -57,7 +57,7 @@ OMPI_GENERATE_F77_BINDINGS (MPI_TESTSOME,
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
@@ -71,13 +71,10 @@ void mpi_testsome_f(MPI_Fint *incount, MPI_Fint *array_of_requests,
     MPI_Request *c_req;
     MPI_Status *c_status;
     int i;
-#if OMPI_SIZEOF_FORTRAN_INTEGER != SIZEOF_INT
-    int int_c;
-#endif
     OMPI_SINGLE_NAME_DECL(outcount);
     OMPI_ARRAY_NAME_DECL(array_of_indices);
 
-    c_req = malloc(OMPI_FINT_2_INT(*incount) *
+    c_req = (MPI_Request *) malloc(OMPI_FINT_2_INT(*incount) *
                    (sizeof(MPI_Request) + sizeof(MPI_Status)));
     if (NULL == c_req) {
         *ierr = OMPI_INT_2_FINT(OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD,
@@ -97,12 +94,8 @@ void mpi_testsome_f(MPI_Fint *incount, MPI_Fint *array_of_requests,
                                          OMPI_ARRAY_NAME_CONVERT(array_of_indices), 
                                          c_status));
 
-#if OMPI_SIZEOF_FORTRAN_INTEGER != SIZEOF_INT
     OMPI_SINGLE_INT_2_FINT(outcount);
-    int_c = OMPI_FINT_2_INT(*incount);
-    OMPI_ARRAY_INT_2_FINT(array_of_indices, int_c);
-    *incount = OMPI_INT_2_FINT(int_c);
-#endif
+    OMPI_ARRAY_INT_2_FINT(array_of_indices, *incount);
 
     if (MPI_SUCCESS == OMPI_FINT_2_INT(*ierr)) {
         if (MPI_UNDEFINED != OMPI_FINT_2_INT(*outcount)) {

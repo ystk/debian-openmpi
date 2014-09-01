@@ -5,8 +5,8 @@ enable_debug_symbols=yes
 enable_io_romio=yes
 enable_static=yes
 enable_shared=no
-with_threads=no
-enable_pretty_print_stacktrace=no
+with_threads=yes
+enable_pretty_print_stacktrace=yes
 enable_dlopen=no
 with_portals_config=cnl_modex
 with_memory_manager=none
@@ -47,8 +47,6 @@ ompi_cv_f77_sizeof_COMPLEXp8=${ompi_cv_f77_sizeof_COMPLEXp8=8}
 ompi_cv_f77_alignment_COMPLEXp8=${ompi_cv_f77_alignment_COMPLEXp8=4}
 ompi_cv_f77_sizeof_COMPLEXp16=${ompi_cv_f77_sizeof_COMPLEXp16=16}
 ompi_cv_f77_alignment_COMPLEXp16=${ompi_cv_f77_alignment_COMPLEXp16=8}
-ompi_cv_f77_sizeof_COMPLEXp32=${ompi_cv_f77_sizeof_COMPLEXp32=32}
-ompi_cv_f77_alignment_COMPLEXp32=${ompi_cv_f77_alignment_COMPLEXp32=8}
 ompi_cv_f77_true_value=${ompi_cv_f77_true_value=0}
 
 
@@ -84,8 +82,6 @@ ompi_cv_f90_sizeof_COMPLEXp8=${ompi_cv_f90_sizeof_COMPLEXp8=8}
 ompi_cv_f90_alignment_COMPLEXp8=${ompi_cv_f90_alignment_COMPLEXp8=4}
 ompi_cv_f90_sizeof_COMPLEXp16=${ompi_cv_f90_sizeof_COMPLEXp16=16}
 ompi_cv_f90_alignment_COMPLEXp16=${ompi_cv_f90_alignment_COMPLEXp16=8}
-ompi_cv_f90_sizeof_COMPLEXp32=${ompi_cv_f90_sizeof_COMPLEXp32=32}
-ompi_cv_f90_alignment_COMPLEXp32=${ompi_cv_f90_alignment_COMPLEXp32=8}
 ompi_cv_f90_true_value=${ompi_cv_f90_true_value=0}
 ompi_cv_f90_sizeof_DOUBLE_COMPLEX=${ompi_cv_f90_sizeof_DOUBLE_COMPLEX=16}
 ompi_cv_f90_alignment_DOUBLE_COMPLEX=${ompi_cv_f90_alignment_DOUBLE_COMPLEX=8}

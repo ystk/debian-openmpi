@@ -23,16 +23,10 @@
 
 #include "ompi_config.h"
 
-#include "opal/class/opal_list.h"
-#include "ompi/class/ompi_rb_tree.h"
 #include "opal/mca/mca.h"
-#include "ompi/mca/mpool/mpool.h"
-#include "opal/threads/mutex.h" 
 #include "opal/memoryhooks/memory.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /*
  *  memory hook callback, called when memory is free'd out from under us
@@ -40,9 +34,7 @@ extern "C" {
     void mca_mpool_base_mem_cb(void* base, size_t size, void* cbdata,
                                bool from_alloc);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* MCA_MPOOL_BASE_MEM_CB_H */
 

@@ -17,12 +17,11 @@
 #include "ompi_config.h"
 
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/base.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/base/mca_base_param.h"
 
-#include "orte/util/show_help.h"
 
 #include "ompi/mca/dpm/dpm.h"
 #include "ompi/mca/dpm/base/base.h"
@@ -42,6 +41,8 @@ OMPI_DECLSPEC ompi_dpm_base_module_t ompi_dpm = {
     ompi_dpm_base_null_dyn_finalize,
     ompi_dpm_base_null_mark_dyncomm,
     ompi_dpm_base_null_open_port,
+    ompi_dpm_base_null_parse_port, 
+    ompi_dpm_base_null_route_to_port,
     ompi_dpm_base_null_close_port,
     NULL
 };

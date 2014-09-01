@@ -26,7 +26,7 @@
 #include "mpi.h"
 #include "ompi/file/file.h"
 #include "opal/util/argv.h"
-#include "orte/util/show_help.h"
+#include "opal/util/output.h"
 #include "opal/class/opal_list.h"
 #include "opal/class/opal_object.h"
 #include "opal/mca/mca.h"
@@ -214,11 +214,6 @@ int mca_io_base_file_select(ompi_file_t *file,
     if (OMPI_SUCCESS != (err = module_init(file))) {
         return err;
     }
-
-    /* Add the component to the list of components that the io
-       framework is maintaining */
-
-    mca_io_base_component_add(&selected.ai_component);
 
     /* Announce the winner */
   

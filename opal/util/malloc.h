@@ -21,6 +21,7 @@
 #ifndef OPAL_MALLOC_H
 #define OPAL_MALLOC_H
 
+#include "opal_config.h"
 #include <stdlib.h>
 
 /*
@@ -42,9 +43,7 @@
 #define OPAL_MALLOC_DEBUG_LEVEL 2
 #endif
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
   /**
    * Initialize malloc debug output.
    *
@@ -141,8 +140,6 @@ OPAL_DECLSPEC void opal_free(void *addr, const char *file, int line) __opal_attr
  */
 OPAL_DECLSPEC void opal_malloc_debug(int level);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OPAL_MALLOC_H */

@@ -2,13 +2,14 @@
  * Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -21,8 +22,6 @@
 #include "opal/prefetch.h"
 
 #include "ompi/mca/mtl/mtl.h"
-#include "ompi/communicator/communicator.h"
-#include "opal/class/opal_list.h"
 #include "ompi/runtime/ompi_module_exchange.h"
 #include "ompi/mca/mtl/base/mtl_base_datatype.h"
 #include "ompi/mca/common/mx/common_mx.h"
@@ -60,7 +59,9 @@ mca_mtl_mx_module_t ompi_mtl_mx = {
         ompi_mtl_mx_irecv,
         ompi_mtl_mx_iprobe,
         
-        ompi_mtl_mx_cancel
+        ompi_mtl_mx_cancel,
+        NULL,
+        NULL
     }    
 };
 
@@ -69,21 +70,27 @@ int ompi_mtl_mx_progress( void );
 int ompi_mtl_mx_module_init(){ 
     mx_param_t mx_param;
     mx_return_t mx_return;
-    
+    int32_t nic, ep;
     
     /* setup params */
     mx_param.key = MX_PARAM_UNEXP_QUEUE_MAX;
     mx_param.val.unexp_queue_max = ompi_mtl_mx.mx_unexp_queue_max;
     
-   
     /* get a local endpoint */
-    mx_return = mx_open_endpoint(MX_ANY_NIC, 
-                                 MX_ANY_ENDPOINT,
+    nic = ompi_mtl_mx.mx_board_num;
+    if (nic < 0) {
+      nic = MX_ANY_NIC;
+    }
+    ep = ompi_mtl_mx.mx_endpoint_num;
+    if (ep < 0) {
+      ep = MX_ANY_ENDPOINT;
+    }
+    mx_return = mx_open_endpoint(nic,
+                                 ep,
                                  ompi_mtl_mx.mx_filter, 
                                  NULL, 
                                  0,
                                  &ompi_mtl_mx.mx_endpoint);
-    
     
     if(mx_return != MX_SUCCESS) { 
         opal_output(ompi_mtl_base_output, "Error in mx_open_endpoint (error %s)\n", mx_strerror(mx_return));
@@ -106,9 +113,11 @@ int ompi_mtl_mx_module_init(){
         opal_output(ompi_mtl_base_output, "Error in mx_decompose_endpoint_addr (error %s)\n", mx_strerror(mx_return));
         return OMPI_ERROR;
     }
+    opal_output_verbose(10, ompi_mtl_base_output, 
+			"mtl:mx: local nic %d, endpoint %d, got nic %d, ep %d\n", nic, ep, 
+			ompi_mtl_mx.mx_addr.nic_id,
+			ompi_mtl_mx.mx_addr.endpoint_id);
 
-
-    
     ompi_modex_send( &mca_mtl_mx_component.super.mtl_version, 
                              &ompi_mtl_mx.mx_addr, 
                              sizeof(mca_mtl_mx_addr_t));
@@ -116,10 +125,7 @@ int ompi_mtl_mx_module_init(){
     /* register the mtl mx progress function */
     opal_progress_register(ompi_mtl_mx_progress);
     
-    
     return OMPI_SUCCESS; 
-    
-        
 }
 
 int
@@ -135,7 +141,7 @@ ompi_mtl_mx_finalize(struct mca_mtl_base_module_t* mtl) {
         return OMPI_ERROR;
     }
     
-    return ompi_common_mx_finalize();
+    return OMPI_SUCCESS;
     
 }
 
@@ -162,7 +168,7 @@ ompi_mtl_mx_add_procs(struct mca_mtl_base_module_t *mtl,
        progress MX as often as possible during the stage gate 2.  This
        would have happened after the stage gate anyway, so we're just
        speeding things up a bit. */
-#if OMPI_ENABLE_PROGRESS_THREADS == 0
+#if OPAL_ENABLE_PROGRESS_THREADS == 0
     /* switch from letting us sit in the event library for a bit each
        time through opal_progress() to completely non-blocking */
     opal_progress_set_event_flag(OPAL_EVLOOP_NONBLOCK);
@@ -229,7 +235,7 @@ int ompi_mtl_mx_progress( void ) {
                            mtl_mx_request->super.ompi_req->req_status.MPI_SOURCE);
                 MX_GET_TAG(mx_status.match_info,
                            mtl_mx_request->super.ompi_req->req_status.MPI_TAG); 
-                mtl_mx_request->super.ompi_req->req_status._count = 
+                mtl_mx_request->super.ompi_req->req_status._ucount = 
                     mx_status.xfer_length;
             }
             /* suppose everything went just fine ... */

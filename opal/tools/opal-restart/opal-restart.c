@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -12,6 +12,7 @@
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2007      Evergrid, Inc. All rights reserved.
+ * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -61,7 +62,6 @@
 #include "opal/util/show_help.h"
 #include "opal/util/output.h"
 #include "opal/util/opal_environ.h"
-#include "opal/util/os_path.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 
@@ -272,7 +272,9 @@ main(int argc, char *argv[])
 
     if (OPAL_SUCCESS != ret) {
         opal_show_help("help-opal-restart.txt", "restart_cmd_failure", true,
-                       opal_restart_globals.filename, ret);
+                       opal_restart_globals.filename,
+                       ret,
+                       opal_crs_base_selected_component.base_version.mca_component_name);
         exit_status = ret;
         goto cleanup;
     }
@@ -313,7 +315,7 @@ static int initialize(int argc, char *argv[])
      * to ensure installdirs is setup properly
      * before calling mca_base_open();
      */
-    if( OPAL_SUCCESS != (ret = opal_init_util()) ) {
+    if( OPAL_SUCCESS != (ret = opal_init_util(&argc, &argv)) ) {
         return ret;
     }
 
@@ -349,7 +351,7 @@ static int initialize(int argc, char *argv[])
     /*
      * Initialize the OPAL layer
      */
-    if (OPAL_SUCCESS != (ret = opal_init())) {
+    if (OPAL_SUCCESS != (ret = opal_init(&argc, &argv))) {
         exit_status = ret;
         goto cleanup;
     }
@@ -365,11 +367,21 @@ static int initialize(int argc, char *argv[])
 
 static int finalize(void)
 {
+#if 0
     int ret;
 
+    /*
+     * JJH: Comment this out for now. It should only be called
+     * when exec fails, and opal-restart is shutting down.
+     * Currently BLCR is calling opal_even_fini() in the restart
+     * functionality, so calling it twice is causing a segv.
+     * Since we do not really need to do this, just comment it out
+     * for now.
+     */
     if (OPAL_SUCCESS != (ret = opal_finalize())) {
         return ret;
     }
+#endif
 
     return OPAL_SUCCESS;
 }

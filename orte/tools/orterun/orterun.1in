@@ -1,4 +1,4 @@
-. -*- nroff -*-
+.\" -*- nroff -*-
 .\" Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
 .\" Copyright (c) 2008-2009 Sun Microsystems, Inc.  All rights reserved.
 .\" Copyright (c) 2010 Cisco Systems, Inc.  All rights reserved.
@@ -313,6 +313,12 @@ Display the specified ranks in separate xterm windows. The ranks are specified
 as a comma-separated list of ranges, with a -1 indicating all. A separate
 window will be created for each specified rank.
 .B Note:
+xterm will normally terminate the window upon termination of the process running
+within it. However, by adding a "!" to the end of the list of specified ranks,
+the proper options will be provided to ensure that xterm keeps the window open
+\fIafter\fP the process terminates, thus allowing you to see the process' output.
+Each xterm window will subsequently need to be manually closed.
+.B Note:
 In some environments, xterm may require that the executable be in the user's
 path, or be specified in absolute or relative terms. Thus, it may be necessary
 to specify a local executable as "./foo" instead of just "foo". If xterm fails to
@@ -376,7 +382,9 @@ See the "Current Working Directory" section for notes on relative paths.
 .B Note:
 If the \fI-wdir\fP option appears both on the command line and in an
 application context, the context will take precedence over the command
-line.
+line. Thus, if the path to the desired wdir is different
+on the backend nodes, then it must be specified as an absolute path that
+is correct for the backend node.
 .
 .
 .TP
@@ -468,9 +476,31 @@ as well as the underlying environment (e.g., when failing to launch a daemon) to
 .
 .TP
 .B -ompi-server\fR,\fP --ompi-server <uri or file>
-Specify the URI of the Open MPI server, or the name of the file (specified as file:filename) that
-contains that info. The Open MPI server is used to support multi-application data exchange via
+Specify the URI of the Open MPI server (or the mpirun to be used as the server)
+, the name
+of the file (specified as file:filename) that
+contains that info, or the PID (specified as pid:#) of the mpirun to be used as
+ the server.
+The Open MPI server is used to support multi-application data exchange via
 the MPI-2 MPI_Publish_name and MPI_Lookup_name functions.
+.
+.
+.TP
+.B -report-pid\fR,\fP --report-pid <channel>
+Print out mpirun's PID during startup. The channel must be either a '-' to indi
+cate that
+the pid is to be output to stdout, a '+' to indicate that the pid is to be outp
+ut to stderr,
+or a filename to which the pid is to be written.
+.
+.
+.TP
+.B -report-uri\fR,\fP --report-uri <channel>
+Print out mpirun's URI during startup. The channel must be either a '-' to indi
+cate that
+the URI is to be output to stdout, a '+' to indicate that the URI is to be outp
+ut to stderr,
+or a filename to which the URI is to be written.
 .
 .
 .TP
@@ -543,7 +573,7 @@ two ways: Extended Command Line Arguments, and Application Context.
 .PP
 An application context describes the MIMD program set including all arguments
 in a separate file.
-.\"See appcontext(5) for a description of the application context syntax.
+.\" See appcontext(5) for a description of the application context syntax.
 This file essentially contains multiple \fImpirun\fP command lines, less the
 command name itself.  The ability to specify different options for different
 instantiations of a program is another reason to use an application context.
@@ -652,15 +682,12 @@ will launch ranks 0-3 on node aa and ranks 4-5 on node bb.  The remaining
 slots in the hostfile will not be used since the \fI-np\fP option indicated
 that only 6 processes should be launched.
 .
-.SS Mapping Processes to Nodes:  Using Policies
+.SS Mapping Processes to Nodes
 .
 The examples above illustrate the default mapping of process ranks
 to nodes.  This mapping can also be controlled with various
-\fImpirun\fP options that describe mapping policies.
-.
-.
-.PP
-Consider the same hostfile as above, again with \fI-np\fP 6:
+\fImpirun\fP options.  Here, we consider the same hostfile as
+above with \fI-np\fP 6 again:
 .
 
                           node aa      node bb      node cc
@@ -744,27 +771,6 @@ And here is a MIMD example:
 mpirun -H aa -np 1 hostname : -H bb,cc -np 2 uptime
 will launch process 0 running \fIhostname\fP on node aa and processes 1 and 2
 each running \fIuptime\fP on nodes bb and cc, respectively.
-.
-.SS Mapping Processes to Nodes:  Using Arbitrary Mappings
-.
-The mapping of process ranks to nodes can be prescribed not just
-with general policies but also, if necessary, using arbitrary mappings
-that cannot be described by a simple policy.  One can use the "sequential
-mapper," which reads the hostfile line by line, assigning processes
-to nodes in whatever order the hostfile specifies.  Use the
-\fI-mca rmaps seq\fP option.  For example, using the same hostfile
-as before
-.
-.TP 4
-mpirun -hostfile myhostfile ./a.out
-will launch three processes, on ranks aa, bb, and cc, respectively.
-The slot counts don't matter;  one process is launched per line on
-whatever node is listed on the line.
-.
-.PP
-Another way to specify arbitrary mappings is with a rank file, which
-gives you detailed control over process binding as well.  Rank files
-are discussed below.
 .
 .SS Process Binding
 .
@@ -882,12 +888,19 @@ Consider the following:
     rank 2=cc slot=1-2
     mpirun -H aa,bb,cc,dd -rf myrankfile ./a.out
 .
+.PP
 So that
-
+.
   Rank 0 runs on node aa, bound to socket 1, cores 0-2.
   Rank 1 runs on node bb, bound to socket 0, cores 0 and 1.
   Rank 2 runs on node cc, bound to cores 1 and 2.
-. 
+.
+.PP
+Note that all slot locations are to be specified as
+.I physical
+indexes.  You can use tools such as HWLOC's "lstopo -v" to find the
+physical indexes of socket and cores.
+.
 .
 .SS Application Context or Executable Program?
 .
@@ -1080,9 +1093,6 @@ Open MPI will add "/remote/node/directory/bin" to the \fIPATH\fR
 and "/remote/node/directory/lib64" to the \fLD_LIBRARY_PATH\fR on the
 remote node before attempting to execute anything.
 .PP
-Note that \fI--prefix\fR can be set on a per-context basis, allowing
-for different values for different nodes.
-.PP
 The \fI--prefix\fR option is not sufficient if the installation paths
 on the remote node are different than the local node (e.g., if "/lib"
 is used on the local node, but "/lib64" is used on the remote node),
@@ -1169,6 +1179,50 @@ To find the available component types under the MCA architecture, or to find the
 available parameters for a specific component, use the \fIompi_info\fP command.
 See the \fIompi_info(1)\fP man page for detailed information on the command.
 .
+.SS Exit status
+.
+There is no standard definition for what \fImpirun\fP should return as an exit
+status. After considerable discussion, we settled on the following method for
+assigning the \fImpirun\fP exit status (note: in the following description,
+the "primary" job is the initial application started by mpirun - all jobs that
+are spawned by that job are designated "secondary" jobs):
+.
+.IP \[bu] 2
+if all processes in the primary job normally terminate with exit status 0, we return 0
+.IP \[bu]
+if one or more processes in the primary job normally terminate with non-zero exit status, 
+we return the exit status of the lowest rank to have a non-zero status
+.IP \[bu]
+if all processes in the primary job normally terminate with exit status 0, and one or more
+processes in a secondary job normally terminate with non-zero exit status, we (a) return
+the exit status of the lowest rank in the lowest jobid to have a non-zero status, and (b)
+output a message summarizing the exit status of the primary and all secondary jobs.
+.IP \[bu]
+if the cmd line option --report-child-jobs-separately is set, we will return -only- the
+exit status of the primary job. Any non-zero exit status in secondary jobs will be
+reported solely in a summary print statement.
+.
+.PP
+By default, OMPI records and notes that MPI processes exited with non-zero termination status.
+This is generally not considered an "abnormal termination" - i.e., OMPI will not abort an MPI
+job if one or more processes return a non-zero status. Instead, the default behavior simply
+reports the number of processes terminating with non-zero status upon completion of the job.
+.PP
+However, in some cases it can be desirable to have the job abort when any process terminates
+with non-zero status. For example, a non-MPI job might detect a bad result from a calculation
+and want to abort, but doesn't want to generate a core file. Or an MPI job might continue past
+a call to MPI_Finalize, but indicate that all processes should abort due to some post-MPI result.
+.PP
+It is not anticipated that this situation will occur frequently. However, in the interest of
+serving the broader community, OMPI now has a means for allowing users to direct that jobs be
+aborted upon any process exiting with non-zero status. Setting the MCA parameter
+"orte_abort_on_non_zero_status" to 1 will cause OMPI to abort all processes once any process
+ exits with non-zero status.
+.PP
+Terminations caused in this manner will be reported on the console as an "abnormal termination",
+with the first process to so exit identified along with its exit status.
+.PP
+.
 .\" **************************
 .\"    Examples Section
 .\" **************************
@@ -1196,9 +1250,9 @@ parameters.
 .\" **************************
 .
 .\" .SH DIAGNOSTICS
-.\".TP 4
-.\"Error Msg:
-.\"Description
+.\" .TP 4
+.\" Error Msg:
+.\" Description
 .
 .\" **************************
 .\"    Return Value Section

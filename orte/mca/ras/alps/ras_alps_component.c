@@ -19,8 +19,8 @@
 
 #include "orte_config.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/base/base.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "orte/constants.h"
 #include "orte/util/proc_info.h"
@@ -86,14 +86,14 @@ static int ras_alps_open(void)
 static int orte_ras_alps_component_query(mca_base_module_t **module, int *priority)
 {
     /* if we are not an HNP, then we must not be selected */
-    if (!orte_process_info.hnp) {
+    if (!ORTE_PROC_IS_HNP) {
         *module = NULL;
         return ORTE_ERROR;
     }
     
     /* Are we running under a ALPS job? */
 
-    if (NULL != getenv("BATCH_PARTITION_ID")) {
+    if (NULL != getenv("OMPI_ALPS_RESID")) {
         mca_base_param_lookup_int(param_priority, priority);
         opal_output_verbose(1, orte_ras_base.ras_output,
                              "ras:alps: available for selection");
@@ -104,7 +104,7 @@ static int orte_ras_alps_component_query(mca_base_module_t **module, int *priori
     /* Sadly, no */
 
     opal_output(orte_ras_base.ras_output,
-                "ras:alps: NOT available for selection");
+                "ras:alps: NOT available for selection -- OMPI_ALPS_RESID not set?");
     *module = NULL;
     return ORTE_ERROR;
 }

@@ -23,7 +23,7 @@
 #include "ompi/errhandler/errhandler.h"
 #include "ompi/communicator/communicator.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_TESTALL = mpi_testall_f
 #pragma weak pmpi_testall = mpi_testall_f
 #pragma weak pmpi_testall_ = mpi_testall_f
@@ -34,42 +34,42 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_TESTALL,
                            pmpi_testall_,
                            pmpi_testall__,
                            pmpi_testall_f,
-                           (MPI_Fint *count, MPI_Fint *array_of_requests, MPI_Flogical *flag, MPI_Fint *array_of_statuses, MPI_Fint *ierr),
+                           (MPI_Fint *count, MPI_Fint *array_of_requests, ompi_fortran_logical_t *flag, MPI_Fint *array_of_statuses, MPI_Fint *ierr),
                            (count, array_of_requests, flag, array_of_statuses, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_TESTALL = mpi_testall_f
 #pragma weak mpi_testall = mpi_testall_f
 #pragma weak mpi_testall_ = mpi_testall_f
 #pragma weak mpi_testall__ = mpi_testall_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_TESTALL,
                            mpi_testall,
                            mpi_testall_,
                            mpi_testall__,
                            mpi_testall_f,
-                           (MPI_Fint *count, MPI_Fint *array_of_requests, MPI_Flogical *flag, MPI_Fint *array_of_statuses, MPI_Fint *ierr),
+                           (MPI_Fint *count, MPI_Fint *array_of_requests, ompi_fortran_logical_t *flag, MPI_Fint *array_of_statuses, MPI_Fint *ierr),
                            (count, array_of_requests, flag, array_of_statuses, ierr) )
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
 static const char FUNC_NAME[] = "MPI_TESTALL";
 
-void mpi_testall_f(MPI_Fint *count, MPI_Fint *array_of_requests, MPI_Flogical *flag, MPI_Fint *array_of_statuses, MPI_Fint *ierr)
+void mpi_testall_f(MPI_Fint *count, MPI_Fint *array_of_requests, ompi_fortran_logical_t *flag, MPI_Fint *array_of_statuses, MPI_Fint *ierr)
 {
     MPI_Request *c_req;
     MPI_Status *c_status;
     int i;
     OMPI_LOGICAL_NAME_DECL(flag);
 
-    c_req = malloc(OMPI_FINT_2_INT(*count) *
+    c_req = (MPI_Request *) malloc(OMPI_FINT_2_INT(*count) *
                    (sizeof(MPI_Request) + sizeof(MPI_Status)));
     if (NULL == c_req){
         *ierr = OMPI_INT_2_FINT(OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD,

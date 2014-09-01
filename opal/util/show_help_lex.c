@@ -387,17 +387,17 @@ struct yy_trans_info
 	flex_int32_t yy_verify;
 	flex_int32_t yy_nxt;
 	};
-static yyconst flex_int16_t yy_acclist[18] =
+static yyconst flex_int16_t yy_acclist[17] =
     {   0,
         6,    5,    4,    5,    5,    5,    5,    3,    5,    4,
-        1,    4,    3,16386, 8194,    4,16386
+        1,    4,    3,16386, 8194,    4
     } ;
 
-static yyconst flex_int16_t yy_accept[25] =
+static yyconst flex_int16_t yy_accept[24] =
     {   0,
         1,    1,    1,    1,    1,    2,    3,    5,    6,    7,
         8,   10,   10,   11,   11,   13,   13,   13,   14,   15,
-       15,   17,   18,   18
+       15,   17,   17
     } ;
 
 static yyconst flex_int32_t yy_ec[256] =
@@ -437,34 +437,34 @@ static yyconst flex_int32_t yy_meta[6] =
         1,    1,    1,    1,    1
     } ;
 
-static yyconst flex_int16_t yy_base[31] =
+static yyconst flex_int16_t yy_base[30] =
     {   0,
         0,    3,   28,   27,   28,   25,   31,   24,   23,   22,
        31,   21,   31,   20,   31,    7,   19,   31,   11,   15,
-       31,    0,   31,   18,   17,   14,   13,   10,    9,    0
+       31,   31,   18,   17,   14,   13,   10,    9,    0
     } ;
 
-static yyconst flex_int16_t yy_def[31] =
+static yyconst flex_int16_t yy_def[30] =
     {   0,
-       24,   23,   25,   25,   23,   26,   23,   27,   28,   29,
-       23,   26,   23,   27,   23,   28,   29,   23,   30,   30,
-       23,   20,    0,   23,   23,   23,   23,   23,   23,   23
+       23,   22,   24,   24,   22,   25,   22,   26,   27,   28,
+       22,   25,   22,   26,   22,   27,   28,   22,   29,   29,
+       22,    0,   22,   22,   22,   22,   22,   22,   22
     } ;
 
 static yyconst flex_int16_t yy_nxt[37] =
     {   0,
        20,    7,    8,    6,    7,    8,    9,    6,   13,   17,
-       16,   19,   21,   14,   12,   22,   21,   10,    6,   22,
-       18,   15,   13,   18,   13,   15,   13,   23,   11,   11,
-        5,   23,   23,   23,   23,   23
+       16,   19,   21,   14,   12,   19,   21,   10,    6,   19,
+       18,   15,   13,   18,   13,   15,   13,   22,   11,   11,
+        5,   22,   22,   22,   22,   22
     } ;
 
 static yyconst flex_int16_t yy_chk[37] =
     {   0,
-       30,    1,    1,    2,    2,    2,    2,    2,   16,   29,
-       28,   16,   19,   27,   26,   19,   20,   25,   24,   20,
+       29,    1,    1,    2,    2,    2,    2,    2,   16,   28,
+       27,   16,   19,   26,   25,   19,   20,   24,   23,   20,
        17,   14,   12,   10,    9,    8,    6,    5,    4,    3,
-       23,   23,   23,   23,   23,   23
+       22,   22,   22,   22,   22,   22
     } ;
 
 extern int opal_show_help_yy_flex_debug;
@@ -516,15 +516,13 @@ char *opal_show_help_yytext;
 #include "opal_config.h"
 
 #include <stdio.h>
-#if HAVE_UNISTD_H
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
 #include "opal/util/show_help_lex.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /*
  * public functions
@@ -536,9 +534,7 @@ extern int opal_show_help_finish_parsing(void);
  */
 static int opal_show_help_yywrap(void);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 /*
  * global variables
@@ -550,7 +546,7 @@ bool opal_show_help_parse_done = false;
   return opal_show_help_finish_parsing()
 
 
-#line 554 "show_help_lex.c"
+#line 550 "show_help_lex.c"
 
 #define INITIAL 0
 #define CHOMP 1
@@ -736,10 +732,10 @@ YY_DECL
 	register char *yy_cp, *yy_bp;
 	register int yy_act;
     
-#line 63 "show_help_lex.l"
+#line 59 "show_help_lex.l"
 
 
-#line 743 "show_help_lex.c"
+#line 739 "show_help_lex.c"
 
 	if ( !(yy_init) )
 		{
@@ -798,7 +794,7 @@ yy_match:
 			while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 				{
 				yy_current_state = (int) yy_def[yy_current_state];
-				if ( yy_current_state >= 24 )
+				if ( yy_current_state >= 23 )
 					yy_c = yy_meta[(unsigned int) yy_c];
 				}
 			yy_current_state = yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
@@ -855,19 +851,19 @@ do_action:	/* This label is used only to access EOF actions. */
 case 1:
 /* rule 1 can match eol */
 YY_RULE_SETUP
-#line 65 "show_help_lex.l"
+#line 61 "show_help_lex.l"
 ; /* comment line */
 	YY_BREAK
 case 2:
 /* rule 2 can match eol */
 YY_RULE_SETUP
-#line 67 "show_help_lex.l"
+#line 63 "show_help_lex.l"
 { BEGIN(CHOMP); return OPAL_SHOW_HELP_PARSE_TOPIC; }
 	YY_BREAK
 case 3:
 /* rule 3 can match eol */
 YY_RULE_SETUP
-#line 69 "show_help_lex.l"
+#line 65 "show_help_lex.l"
 { BEGIN(INITIAL); }
 	YY_BREAK
 case 4:
@@ -876,15 +872,15 @@ case 4:
 (yy_c_buf_p) = yy_cp -= 1;
 YY_DO_BEFORE_ACTION; /* set up opal_show_help_yytext again */
 YY_RULE_SETUP
-#line 71 "show_help_lex.l"
+#line 67 "show_help_lex.l"
 { BEGIN(CHOMP); return OPAL_SHOW_HELP_PARSE_MESSAGE; }
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 73 "show_help_lex.l"
+#line 69 "show_help_lex.l"
 ECHO;
 	YY_BREAK
-#line 888 "show_help_lex.c"
+#line 884 "show_help_lex.c"
 			case YY_STATE_EOF(INITIAL):
 			case YY_STATE_EOF(CHOMP):
 				yyterminate();
@@ -1147,7 +1143,7 @@ static int yy_get_next_buffer (void)
 		while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 			{
 			yy_current_state = (int) yy_def[yy_current_state];
-			if ( yy_current_state >= 24 )
+			if ( yy_current_state >= 23 )
 				yy_c = yy_meta[(unsigned int) yy_c];
 			}
 		yy_current_state = yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
@@ -1170,11 +1166,11 @@ static int yy_get_next_buffer (void)
 	while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 		{
 		yy_current_state = (int) yy_def[yy_current_state];
-		if ( yy_current_state >= 24 )
+		if ( yy_current_state >= 23 )
 			yy_c = yy_meta[(unsigned int) yy_c];
 		}
 	yy_current_state = yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
-	yy_is_jam = (yy_current_state == 23);
+	yy_is_jam = (yy_current_state == 22);
 	if ( ! yy_is_jam )
 		*(yy_state_ptr)++ = yy_current_state;
 
@@ -1860,7 +1856,7 @@ void opal_show_help_yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 73 "show_help_lex.l"
+#line 69 "show_help_lex.l"
 
 
 

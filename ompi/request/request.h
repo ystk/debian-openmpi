@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2009-2010 Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -27,10 +27,12 @@
 #ifndef OMPI_REQUEST_H
 #define OMPI_REQUEST_H
 
+#include "ompi_config.h"
 #include "mpi.h"
 #include "ompi/class/ompi_free_list.h"
 #include "opal/class/opal_pointer_array.h"
 #include "opal/threads/condition.h"
+#include "ompi/constants.h"
 
 BEGIN_C_DECLS
 
@@ -364,7 +366,7 @@ static inline int ompi_request_free(ompi_request_t** request)
 static inline void ompi_request_wait_completion(ompi_request_t *req)
 {
     if(false == req->req_complete) {
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
         if(opal_progress_spin(&req->req_complete)) {
             return;
         }
@@ -393,7 +395,6 @@ static inline int ompi_request_complete(ompi_request_t* request, bool with_signa
     if( NULL != request->req_complete_cb ) {
         request->req_complete_cb( request );
     }
-    request->req_complete = true;
     ompi_request_completed++;
     request->req_complete = true;
     if(with_signal && ompi_request_waiting) {
@@ -404,6 +405,46 @@ static inline int ompi_request_complete(ompi_request_t* request, bool with_signa
     }
     return OMPI_SUCCESS;
 }
+
+/* In a 64-bit library with strict alignment requirements (like 64-bit
+ * SPARC), the _ucount field of a C status is a long and requires 8
+ * byte alignment.  Unfortunately a Fortran status is an array of 6
+ * integers which only requires 4 byte alignment.  When storing the
+ * length into a status we don't know whether it is a C or Fortran
+ * status.  Therefore, we just copy the entire status as an integer
+ * array to avoid any issues.  We supply one macro for doing the entire
+ * status and another for just the _ucount field.  Note that these
+ * macros are enabled on 64-bit SPARC platforms only.  This is because
+ * an investigation into performance effects showed that keeping the
+ * structure assignment code wherever possible resulted in the best
+ * performance.  Details of the investigation into this issue are at
+ * https://svn.open-mpi.org/trac/ompi/ticket/2526
+ */
+#if defined(__sparc) && SIZEOF_SIZE_T == 8
+#define OMPI_STATUS_SET(outstat, instat)                                          \
+    do {                                                                          \
+        if (((ulong)(outstat)) & 0x7) {                                           \
+            int _i;                                                               \
+            for(_i=0; _i<(int)(sizeof(ompi_status_public_t)/sizeof(int)); _i++) { \
+                ((int *)(outstat))[_i] = ((int *)(instat))[_i];                   \
+            }                                                                     \
+        } else {                                                                  \
+            *(outstat) = *(instat);                                               \
+        }                                                                         \
+    } while(0)
+#define OMPI_STATUS_SET_COUNT(outcount, incount)             \
+    do {                                                     \
+        if (((ulong)(outcount)) & 0x7) {                     \
+            ((int *)(outcount))[0] = ((int *)(incount))[0];  \
+            ((int *)(outcount))[1] = ((int *)(incount))[1];  \
+        } else {                                             \
+            *(outcount) = *(incount);                        \
+        }                                                    \
+    } while(0)
+#else
+#define OMPI_STATUS_SET(outstat, instat) (*(outstat) = *(instat))
+#define OMPI_STATUS_SET_COUNT(outcount, incount) (*(outcount) = *(incount))
+#endif
 
 END_C_DECLS
 

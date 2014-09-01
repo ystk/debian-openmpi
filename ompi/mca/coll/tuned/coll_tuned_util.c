@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -21,9 +21,8 @@
 
 #include "mpi.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/communicator/communicator.h"
-#include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
 #include "ompi/mca/pml/pml.h"
 #include "coll_tuned_util.h"
@@ -53,7 +52,7 @@ int ompi_coll_tuned_sendrecv_actual( void* sendbuf, int scount,
     if (err != MPI_SUCCESS) { line = __LINE__; goto error_handler; }
 
     err = ompi_request_wait_all( 2, reqs, statuses );
-    if (err != MPI_SUCCESS) { line = __LINE__; goto error_handler; }
+    if (err != MPI_SUCCESS) { line = __LINE__; goto error_handler_waitall; }
 
     if (MPI_STATUS_IGNORE != status) {
         *status = statuses[0];
@@ -61,7 +60,7 @@ int ompi_coll_tuned_sendrecv_actual( void* sendbuf, int scount,
     
     return (MPI_SUCCESS);
 
- error_handler:
+ error_handler_waitall:
     /* As we use wait_all we will get MPI_ERR_IN_STATUS which is not an error
      * code that we can propagate up the stack. Instead, look for the real
      * error code from the MPI_ERROR in the status.
@@ -79,6 +78,7 @@ int ompi_coll_tuned_sendrecv_actual( void* sendbuf, int scount,
         OPAL_OUTPUT ((ompi_coll_tuned_stream, "%s:%d: Error %d occurred (req index %d)\n",
                       __FILE__, line, err, err_index));
     } else {
+ error_handler:
         /* Error discovered during the posting of the irecv or isend,
          * and no status is available.
          */

@@ -32,6 +32,7 @@
 #endif
 
 #include "opal/util/error.h"
+#include "opal/util/output.h"
 #include "opal/runtime/opal.h"
 
 #include "orte/util/show_help.h"
@@ -41,6 +42,7 @@
 #include "orte/util/proc_info.h"
 
 #include "orte/runtime/runtime.h"
+#include "orte/runtime/orte_globals.h"
 #include "orte/runtime/orte_locks.h"
 
 /*
@@ -56,14 +58,14 @@ orte_process_name_t orte_name_wildcard = {ORTE_JOBID_WILDCARD, ORTE_VPID_WILDCAR
 orte_process_name_t orte_name_invalid = {ORTE_JOBID_INVALID, ORTE_VPID_INVALID}; 
 
 
-#if OMPI_CC_USE_PRAGMA_IDENT
+#if OPAL_CC_USE_PRAGMA_IDENT
 #pragma ident ORTE_IDENT_STRING
-#elif OMPI_CC_USE_IDENT
+#elif OPAL_CC_USE_IDENT
 #ident ORTE_IDENT_STRING
 #endif
 const char orte_version_string[] = ORTE_IDENT_STRING;
 
-int orte_init(char flags)
+int orte_init(int* pargc, char*** pargv, orte_proc_type_t flags)
 {
     int ret;
     char *error = NULL;
@@ -73,24 +75,18 @@ int orte_init(char flags)
     }
 
     /* initialize the opal layer */
-    if (ORTE_SUCCESS != (ret = opal_init())) {
+    if (ORTE_SUCCESS != (ret = opal_init(pargc, pargv))) {
         ORTE_ERROR_LOG(ret);
         return ret;
     }
     
-    /* ensure we know the tool setting for when we finalize */
-    if ((flags & ORTE_TOOL) || (flags & ORTE_TOOL_WITH_NAME)) {
-        orte_process_info.tool = true;
-    }
+    /* ensure we know the type of proc for when we finalize */
+    orte_process_info.proc_type = flags;
 
     /* setup the locks */
     if (ORTE_SUCCESS != (ret = orte_locks_init())) {
         error = "orte_locks_init";
         goto error;
-    }
-    
-    if (orte_process_info.hnp) {
-        orte_process_info.daemon = false;
     }
     
     /* Register all MCA Params */
@@ -128,7 +124,7 @@ int orte_init(char flags)
     }
     
     /* initialize the RTE for this environment */
-    if (ORTE_SUCCESS != (ret = orte_ess.init(flags))) {
+    if (ORTE_SUCCESS != (ret = orte_ess.init())) {
         ORTE_ERROR_LOG(ret);
         error = "orte_ess_set_name";
         goto error;

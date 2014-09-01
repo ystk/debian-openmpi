@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2009 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -15,11 +15,10 @@
  */
 
 #include "orte_config.h"
+#include "opal/util/output.h"
 #include "orte/constants.h"
 
-#include "orte/util/show_help.h"
 
-#include "orte/util/show_help.h"
 
 #include "orte/mca/filem/filem.h"
 #include "orte/mca/filem/base/base.h"
@@ -29,7 +28,7 @@
  * Public string for version number
  */
 const char *orte_filem_rsh_component_version_string = 
-"ORTE FILEM rsh MCA component version " OMPI_VERSION;
+"ORTE FILEM rsh MCA component version " ORTE_VERSION;
 
 /*
  * Local functionality
@@ -54,9 +53,9 @@ orte_filem_rsh_component_t mca_filem_rsh_component = {
             ORTE_FILEM_BASE_VERSION_2_0_0,
             /* Component name and version */
             "rsh",
-            OMPI_MAJOR_VERSION,
-            OMPI_MINOR_VERSION,
-            OMPI_RELEASE_VERSION,
+            ORTE_MAJOR_VERSION,
+            ORTE_MINOR_VERSION,
+            ORTE_RELEASE_VERSION,
             
             /* Component open and close functions */
             filem_rsh_open,
@@ -77,6 +76,9 @@ orte_filem_rsh_component_t mca_filem_rsh_component = {
     },
 
     /* cp_command */
+    NULL,
+
+    /* cp_local_command */
     NULL,
 
     /* remote_sh_command */
@@ -116,6 +118,12 @@ static int filem_rsh_open(void)
                               "scp",
                               &mca_filem_rsh_component.cp_command);
     mca_base_param_reg_string(&mca_filem_rsh_component.super.base_version,
+                              "cp",
+                              "The Unix cp command for the FILEM rsh component",
+                              false, false,
+                              "cp",
+                              &mca_filem_rsh_component.cp_local_command);
+    mca_base_param_reg_string(&mca_filem_rsh_component.super.base_version,
                               "rsh",
                               "The remote shell command for the FILEM rsh component",
                               false, false,
@@ -124,23 +132,23 @@ static int filem_rsh_open(void)
 
     mca_base_param_reg_int(&mca_filem_rsh_component.super.base_version,
                            "max_incomming",
-                           "Maximum number of incomming connections",
+                           "Maximum number of incomming connections (0 = any)",
                            false, false,
                            orte_filem_rsh_max_incomming,
                            &orte_filem_rsh_max_incomming);
 
-    if( orte_filem_rsh_max_incomming <= 0 ) {
+    if( orte_filem_rsh_max_incomming < 0 ) {
         orte_filem_rsh_max_incomming = 1;
     }
 
     mca_base_param_reg_int(&mca_filem_rsh_component.super.base_version,
                            "max_outgoing",
-                           "Maximum number of out going connections (Currently not used)",
+                           "Maximum number of out going connections (0 = any)",
                            false, false,
                            orte_filem_rsh_max_outgoing,
                            &orte_filem_rsh_max_outgoing);
 
-    if( orte_filem_rsh_max_outgoing <= 0 ) {
+    if( orte_filem_rsh_max_outgoing < 0 ) {
         orte_filem_rsh_max_outgoing = 1;
     }
 
@@ -158,6 +166,9 @@ static int filem_rsh_open(void)
     opal_output_verbose(20, mca_filem_rsh_component.super.output_handle,
                         "filem:rsh: open: cp command  = %s", 
                         mca_filem_rsh_component.cp_command);
+    opal_output_verbose(20, mca_filem_rsh_component.super.output_handle,
+                        "filem:rsh: open: cp local command  = %s", 
+                        mca_filem_rsh_component.cp_local_command);
     opal_output_verbose(20, mca_filem_rsh_component.super.output_handle,
                         "filem:rsh: open: rsh command  = %s", 
                         mca_filem_rsh_component.remote_sh_command);

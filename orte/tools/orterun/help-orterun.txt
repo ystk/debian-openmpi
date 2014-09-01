@@ -10,7 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2007-2010 Cisco Systems, Inc. All rights reserved.
+# Copyright (c) 2007      Cisco Systems, Inc. All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -95,8 +95,18 @@ in the application to be terminated by signals sent by %s
 #
 [orterun:proc-exit-no-sync]
 %s has exited due to process rank %lu with PID %lu on
-node %s exiting without calling "finalize". This may
-have caused other processes in the application to be
+node %s exiting improperly. There are two reasons this could occur:
+
+1. this process did not call "init" before exiting, but others in
+the job did. This can cause a job to hang indefinitely while it waits
+for all processes to call "init". By rule, if one process calls "init",
+then ALL processes must call "init" prior to termination.
+
+2. this process called "init", but exited without calling "finalize".
+By rule, all processes that call "init" MUST call "finalize" prior to
+exiting or it will be considered an "abnormal termination"
+
+This may have caused other processes in the application to be
 terminated by signals sent by %s (as reported here).
 #
 [orterun:proc-exit-no-sync-unknown]
@@ -131,6 +141,29 @@ interruption (probably control-C).
 It is dangerous to interrupt %s while it is killing a job (proper
 termination may not be guaranteed).  Hit control-C again within 1
 second if you really want to kill %s immediately.
+#
+[orterun:double-prefix]
+Both a prefix was supplied to %s and the absolute path to %s was
+given:
+
+  Prefix: %s
+  Path:   %s
+
+Only one should be specified to avoid potential version
+confusion. Operation will continue, but the -prefix option will be
+used. This is done to allow you to select a different prefix for
+the backend computation nodes than used on the frontend for %s.
+#
+[orterun:app-prefix-conflict]
+Both a prefix or absolute path was given for %s, and a different
+prefix provided for the first app_context:
+
+  Mpirun prefix: %s
+  App prefix:    %s
+
+Only one should be specified to avoid potential version
+confusion. Operation will continue, but the applicaton's prefix
+option will be ignored.
 #
 [orterun:empty-prefix]
 A prefix was supplied to %s that only contained slashes.  
@@ -247,6 +280,14 @@ Node: %s
 while attempting to start process rank %lu.
 #
 [orterun:proc-failed-to-start]
+%s was unable to start the specified application as it encountered an error:
+
+Error name: %s
+Node: %s
+
+when attempting to start process rank %lu.
+#
+[orterun:proc-socket-not-avail]
 %s was unable to start the specified application as it encountered an error:
 
 Error name: %s
@@ -399,3 +440,38 @@ Error received: %s
 
 Please check to ensure that the requested server matches the actual server
 information, and that the server is in operation.
+#
+[orterun:ompi-server-pid-bad]
+%s was unable to parse the PID of the %s to be used as the ompi-server.
+The option we were given was:
+
+--ompi-server %s
+
+Please remember that the correct format for this command line option is:
+
+--ompi-server PID:pid-of-%s
+
+where PID can be either "PID" or "pid".
+#
+[orterun:ompi-server-could-not-get-hnp-list]
+%s was unable to search the list of local %s contact files to find the specified pid.
+You might check to see if your local session directory is available and
+that you have read permissions on the top of that directory tree.
+#
+[orterun:ompi-server-pid-not-found]
+%s was unable to find an %s with the specified pid of %d that was to be used as the ompi-server.
+The option we were given was:
+
+--ompi-server %s
+
+Please remember that the correct format for this command line option is:
+
+--ompi-server PID:pid-of-%s
+
+where PID can be either "PID" or "pid".
+#
+[orterun:write_file]
+%s was unable to open a file to printout %s as requested. The file
+name given was:
+
+File: %s
