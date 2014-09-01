@@ -28,13 +28,12 @@
 
 #include "orte/util/proc_info.h"
 #include "orte/util/name_fns.h"
-#include "orte/util/show_help.h"
 #include "orte/runtime/orte_globals.h"
 
 OMPI_DECLSPEC extern int mca_btl_base_verbose;
 
-OMPI_DECLSPEC extern int mca_btl_base_err(const char*, ...);
-OMPI_DECLSPEC extern int mca_btl_base_out(const char*, ...);
+OMPI_DECLSPEC extern int mca_btl_base_err(const char*, ...) __opal_attribute_format__(__printf__, 1, 2);
+OMPI_DECLSPEC extern int mca_btl_base_out(const char*, ...) __opal_attribute_format__(__printf__, 1, 2);
 
 #define BTL_OUTPUT(args)                                     \
 do {                                                         \
@@ -71,7 +70,7 @@ do {                                                             \
 } while(0);
 
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 #define BTL_VERBOSE(args)                                    \
 do {                                                         \
    if(mca_btl_base_verbose > 0) {                            \

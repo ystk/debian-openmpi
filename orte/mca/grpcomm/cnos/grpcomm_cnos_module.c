@@ -28,16 +28,18 @@
 
 #include "opal/dss/dss.h"
 #include "opal/class/opal_list.h"
-#include "opal/class/opal_value_array.h"
 
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rml/rml_types.h"
-#include "orte/mca/rmaps/rmaps_types.h"
 
 #include "grpcomm_cnos.h"
 
 #if OMPI_GRPCOMM_CNOS_HAVE_BARRIER
-#include <catamount/cnos_mpi_os.h>
+#  if defined(HAVE_CNOS_MPI_OS_H)
+#    include "cnos_mpi_os.h"
+#  elif defined(HAVE_CATAMOUNT_CNOS_MPI_OS_H)
+#    include "catamount/cnos_mpi_os.h"
+#  endif
 #endif
 
 /* API functions */
@@ -72,6 +74,7 @@ orte_grpcomm_base_module_t orte_grpcomm_cnos_module = {
     xcast,
     allgather,
     allgather_list,
+    orte_grpcomm_cnos_barrier,
     orte_grpcomm_cnos_barrier,
     set_proc_attr,
     get_proc_attr,

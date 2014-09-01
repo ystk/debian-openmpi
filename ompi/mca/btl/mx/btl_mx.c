@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2008 The University of Tennessee and The University
@@ -17,9 +17,9 @@
  */
 
 #include "ompi_config.h"
-#include "opal/util/if.h"
+#include "opal/class/opal_bitmap.h"
 
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
 #include "ompi/runtime/ompi_cr.h"
 #endif
 
@@ -27,7 +27,7 @@
 #include "btl_mx_frag.h" 
 #include "btl_mx_proc.h"
 #include "btl_mx_endpoint.h"
-#include "ompi/datatype/convertor.h" 
+#include "opal/datatype/opal_convertor.h" 
 #include "opal/prefetch.h"
 
 /**
@@ -37,7 +37,7 @@ int mca_btl_mx_add_procs( struct mca_btl_base_module_t* btl,
                           size_t nprocs, 
                           struct ompi_proc_t** ompi_procs, 
                           struct mca_btl_base_endpoint_t** peers, 
-                          ompi_bitmap_t* reachable )
+                          opal_bitmap_t* reachable )
 {
     mca_btl_mx_module_t* mx_btl = (mca_btl_mx_module_t*)btl;
     int i, rc;
@@ -53,7 +53,7 @@ int mca_btl_mx_add_procs( struct mca_btl_base_module_t* btl,
          * other processes on the same node. The BTL self and sm are
          * supposed to take care of such communications.
          */
-        if( ompi_procs[i]->proc_flags & OMPI_PROC_FLAG_LOCAL ) {
+        if( OPAL_PROC_ON_LOCAL_NODE(ompi_procs[i]->proc_flags) ) {
             if( ompi_procs[i] == ompi_proc_local_proc ) {
                 if( 0 == mca_btl_mx_component.mx_support_self )
                     continue;
@@ -86,7 +86,7 @@ int mca_btl_mx_add_procs( struct mca_btl_base_module_t* btl,
             OPAL_THREAD_UNLOCK(&mx_proc->proc_lock);
             continue;
         }
-        ompi_bitmap_set_bit(reachable, i);
+        opal_bitmap_set_bit(reachable, i);
         OPAL_THREAD_UNLOCK(&mx_proc->proc_lock);
         peers[i] = mx_endpoint;
     }
@@ -120,7 +120,7 @@ int mca_btl_mx_register( struct mca_btl_base_module_t* btl,
     if( (NULL != cbfunc) && ( 0 == mca_btl_mx_component.mx_use_unexpected) ) {
 #endif
     if( NULL != cbfunc ) {
-        mca_btl_mx_frag_t* frag;
+        mca_btl_mx_frag_t* frag = NULL;
         mx_return_t mx_return;
         mx_segment_t mx_segment;
         int i, rc;
@@ -174,7 +174,7 @@ mca_btl_base_descriptor_t* mca_btl_mx_alloc( struct mca_btl_base_module_t* btl,
                                              uint32_t flags)
 {
     mca_btl_mx_module_t* mx_btl = (mca_btl_mx_module_t*) btl; 
-    mca_btl_mx_frag_t* frag;
+    mca_btl_mx_frag_t* frag = NULL;
     int rc;
     
     MCA_BTL_MX_FRAG_ALLOC_EAGER(mx_btl, frag, rc);
@@ -219,13 +219,13 @@ mca_btl_base_descriptor_t*
 mca_btl_mx_prepare_src( struct mca_btl_base_module_t* btl,
                         struct mca_btl_base_endpoint_t* endpoint,
                         struct mca_mpool_base_registration_t* registration,
-                        struct ompi_convertor_t* convertor,
+                        struct opal_convertor_t* convertor,
                         uint8_t order,
                         size_t reserve,
                         size_t* size,
                         uint32_t flags)
 {
-    mca_btl_mx_frag_t* frag;
+    mca_btl_mx_frag_t* frag = NULL;
     struct iovec iov;
     uint32_t iov_count = 1;
     size_t max_data;
@@ -238,7 +238,7 @@ mca_btl_mx_prepare_src( struct mca_btl_base_module_t* btl,
     /* If the data is contiguous we can use directly the pointer
      * to the user memory.
      */
-    if( 0 == ompi_convertor_need_buffers(convertor) ) {
+    if( 0 == opal_convertor_need_buffers(convertor) ) {
         /**
          * let the convertor figure out the correct pointer depending
          * on the data layout
@@ -268,7 +268,7 @@ mca_btl_mx_prepare_src( struct mca_btl_base_module_t* btl,
     }
 
     iov.iov_len = max_data;
-    (void)ompi_convertor_pack(convertor, &iov, &iov_count, &max_data );
+    (void)opal_convertor_pack(convertor, &iov, &iov_count, &max_data );
     *size = max_data;
 
     if( 1 == frag->base.des_src_cnt ) {
@@ -304,14 +304,14 @@ mca_btl_mx_prepare_src( struct mca_btl_base_module_t* btl,
 mca_btl_base_descriptor_t* mca_btl_mx_prepare_dst( struct mca_btl_base_module_t* btl,
                                                    struct mca_btl_base_endpoint_t* endpoint,
                                                    struct mca_mpool_base_registration_t* registration,
-                                                   struct ompi_convertor_t* convertor,
+                                                   struct opal_convertor_t* convertor,
                                                    uint8_t order,
                                                    size_t reserve,
                                                    size_t* size,
                                                    uint32_t flags)
 {
     mca_btl_mx_module_t* mx_btl = (mca_btl_mx_module_t*)btl;
-    mca_btl_mx_frag_t* frag;
+    mca_btl_mx_frag_t* frag = NULL;
     mx_return_t mx_return;
     mx_segment_t mx_segment;
     int rc;
@@ -322,7 +322,7 @@ mca_btl_base_descriptor_t* mca_btl_mx_prepare_dst( struct mca_btl_base_module_t*
     }
 
     frag->segment[0].seg_len       = *size;
-    ompi_convertor_get_current_pointer( convertor, (void**)&(frag->segment[0].seg_addr.pval) );
+    opal_convertor_get_current_pointer( convertor, (void**)&(frag->segment[0].seg_addr.pval) );
     frag->segment[0].seg_key.key64 = (uint64_t)(intptr_t)frag;
 
     mx_segment.segment_ptr    = frag->segment[0].seg_addr.pval;
@@ -414,7 +414,7 @@ static int mca_btl_mx_put( struct mca_btl_base_module_t* btl,
  */
 static int mca_btl_mx_sendi( struct mca_btl_base_module_t* btl,
                              struct mca_btl_base_endpoint_t* endpoint,
-                             struct ompi_convertor_t* convertor,
+                             struct opal_convertor_t* convertor,
                              void* header,
                              size_t header_size,
                              size_t payload_size,
@@ -435,7 +435,7 @@ static int mca_btl_mx_sendi( struct mca_btl_base_module_t* btl,
             return OMPI_ERROR;
     }
     
-    if( !ompi_convertor_need_buffers(convertor) ) {
+    if( !opal_convertor_need_buffers(convertor) ) {
         uint32_t mx_segment_count = 0;
         uint64_t tag64 = 0x01ULL | (((uint64_t)tag) << 8);
         mx_return_t mx_return;
@@ -455,7 +455,7 @@ static int mca_btl_mx_sendi( struct mca_btl_base_module_t* btl,
             iov.iov_base = NULL;
             iov.iov_len = payload_size;
             
-            (void)ompi_convertor_pack( convertor, &iov, &iov_count, &max_data );
+            (void)opal_convertor_pack( convertor, &iov, &iov_count, &max_data );
             assert( max_data == payload_size );
             
             mx_segment->segment_ptr    = iov.iov_base;
@@ -621,7 +621,7 @@ int mca_btl_mx_finalize( struct mca_btl_base_module_t* btl )
 }
 
 
-#if OPAL_ENABLE_FT == 0
+#if OPAL_ENABLE_FT_CR == 0
 int mca_btl_mx_ft_event(int state) {
     return OMPI_SUCCESS;
 }
@@ -667,7 +667,7 @@ int mca_btl_mx_ft_event(int state) {
 
     return OMPI_SUCCESS;
 }
-#endif /* OPAL_ENABLE_FT */
+#endif /* OPAL_ENABLE_FT_CR */
 
 mca_btl_mx_module_t mca_btl_mx_module = {
     {

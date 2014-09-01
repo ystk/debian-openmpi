@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2008 The University of Tennessee and The University
@@ -10,12 +10,12 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2013 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2009 Mellanox Technologies. All rights reserved.
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
- * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2012 Oracle and/or its affiliates.  All rights reserved.
  * Copyright (c) 2009      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -28,14 +28,16 @@
 #include <string.h>
 #include <inttypes.h>
 #include "orte/util/show_help.h"
-#include "opal/util/if.h"
+#include "orte/runtime/orte_globals.h"
+#include "orte/mca/errmgr/base/base.h"
+#include "opal/class/opal_bitmap.h"
+#include "opal/util/output.h"
 #include "opal/util/arch.h"
 
-#include "ompi/mca/pml/pml.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/btl_base_error.h"
 
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
 #include "ompi/runtime/ompi_cr.h"
 #endif
 
@@ -46,13 +48,15 @@
 #include "btl_openib_proc.h"
 #include "btl_openib_endpoint.h"
 #include "btl_openib_xrc.h"
-#include "ompi/datatype/convertor.h"
-#include "ompi/datatype/datatype.h"
+#include "opal/datatype/opal_convertor.h"
 #include "ompi/mca/mpool/base/base.h"
 #include "ompi/mca/mpool/mpool.h"
 #include "ompi/mca/mpool/rdma/mpool_rdma.h"
 #include "orte/util/proc_info.h"
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <string.h>
 #include <math.h>
 #include <inttypes.h>
@@ -66,6 +70,13 @@
 #include <sys/resource.h>
 #endif
 #include <unistd.h>
+#ifdef OPAL_HAVE_HWLOC
+#include "opal/mca/hwloc/hwloc.h"
+#endif
+
+#ifndef MIN
+#define MIN(a,b) ((a)<(b)?(a):(b))
+#endif
 
 mca_btl_openib_module_t mca_btl_openib_module = {
     {
@@ -168,7 +179,7 @@ static int adjust_cq(mca_btl_openib_device_t *device, const int cq)
 
     if(NULL == device->ib_cq[cq]) {
         device->ib_cq[cq] = ibv_create_cq_compat(device->ib_dev_context, cq_size,
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
                 device, device->ib_channel,
 #else
                 NULL, NULL,
@@ -181,7 +192,7 @@ static int adjust_cq(mca_btl_openib_device_t *device, const int cq)
             return OMPI_ERROR;
         }
 
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
         if(ibv_req_notify_cq(device->ib_cq[cq], 0)) {
             mca_btl_openib_show_init_error(__FILE__, __LINE__,
                                            "ibv_req_notify_cq",
@@ -217,17 +228,93 @@ static int adjust_cq(mca_btl_openib_device_t *device, const int cq)
     return OMPI_SUCCESS;
 }
 
+
+/* In this function we check if the device supports srq limit
+   event. We create the temporary srq, post some receive buffers - in
+   order to prevent srq limit event immediately and call the
+   "ibv_modify_srq" function. If a return value of the function not
+   success => our decision that the device doesn't support this
+   capability. */
+static int check_if_device_support_modify_srq(mca_btl_openib_module_t *openib_btl)
+{
+    char buff;
+    int rc = OMPI_SUCCESS;
+
+    struct ibv_srq* dummy_srq = NULL;
+    struct ibv_srq_attr modify_attr;
+
+    struct ibv_sge sge_elem;
+    struct ibv_recv_wr wr1, wr2, *bad_wr;
+
+    struct ibv_srq_init_attr init_attr;
+    memset(&init_attr, 0, sizeof(struct ibv_srq_init_attr));
+
+    init_attr.attr.max_wr = 3;
+    init_attr.attr.max_sge = 1;
+
+    dummy_srq = ibv_create_srq(openib_btl->device->ib_pd, &init_attr);
+    if(NULL == dummy_srq) {
+        rc = OMPI_ERROR;
+        return rc;
+    }
+
+    sge_elem.addr = (uint64_t) &buff;
+    sge_elem.length = sizeof(buff);
+
+    wr1.num_sge = wr2.num_sge = 1;
+    wr1.sg_list = wr2.sg_list = &sge_elem;
+
+    wr1.next = &wr2;
+    wr2.next = NULL;
+
+    if(ibv_post_srq_recv(dummy_srq, &wr1, &bad_wr)) {
+        rc = OMPI_ERROR;
+        goto destroy_dummy_srq;
+    }
+
+    modify_attr.max_wr = 2;
+    modify_attr.max_sge = 1;
+    modify_attr.srq_limit = 1;
+
+    if(ibv_modify_srq(dummy_srq, &modify_attr, IBV_SRQ_LIMIT)) {
+        rc = OMPI_ERR_NOT_SUPPORTED;
+        goto destroy_dummy_srq;
+    }
+
+destroy_dummy_srq:
+    if(ibv_destroy_srq(dummy_srq)) {
+        rc = OMPI_ERROR;
+    }
+
+    return rc;
+}
+
 /*
  * create both the high and low priority completion queues
  * and the shared receive queue (if requested)
  */
 static int create_srq(mca_btl_openib_module_t *openib_btl)
 {
-    int qp;
+    int qp, rc = 0;
+    int32_t rd_num, rd_curr_num;
+
+    bool device_support_modify_srq = true;
+
+    /* Check if our device supports modify srq ability */
+    rc = check_if_device_support_modify_srq(openib_btl);
+    if(OMPI_ERR_NOT_SUPPORTED == rc) {
+        device_support_modify_srq = false;
+    } else if(OMPI_SUCCESS != rc) {
+        mca_btl_openib_show_init_error(__FILE__, __LINE__,
+                    "ibv_create_srq",
+                    ibv_get_device_name(openib_btl->device->ib_dev));
+        return rc;
+    }
 
     /* create the SRQ's */
     for(qp = 0; qp < mca_btl_openib_component.num_qps; qp++) {
         struct ibv_srq_init_attr attr;
+        memset(&attr, 0, sizeof(struct ibv_srq_init_attr));
 
         if(!BTL_OPENIB_QP_TYPE_PP(qp)) {
             attr.attr.max_wr = mca_btl_openib_component.qp_infos[qp].rd_num +
@@ -251,6 +338,43 @@ static int create_srq(mca_btl_openib_module_t *openib_btl)
                                                "ibv_create_srq",
                                                ibv_get_device_name(openib_btl->device->ib_dev));
                 return OMPI_ERROR;
+            }
+
+#if OPAL_HAVE_THREADS
+            {
+                opal_mutex_t *lock = &mca_btl_openib_component.srq_manager.lock;
+                opal_hash_table_t *srq_addr_table = &mca_btl_openib_component.srq_manager.srq_addr_table;
+
+                opal_mutex_lock(lock);
+                if (OPAL_SUCCESS != opal_hash_table_set_value_ptr(
+                                srq_addr_table, &openib_btl->qps[qp].u.srq_qp.srq,
+                                sizeof(struct ibv_srq*), (void*) openib_btl)) {
+                    BTL_ERROR(("SRQ Internal error."
+                            " Failed to add element to mca_btl_openib_component.srq_manager.srq_addr_table\n"));
+
+                    opal_mutex_unlock(lock);
+                    return OMPI_ERROR;
+                }
+                opal_mutex_unlock(lock);
+            }
+#endif
+            rd_num = mca_btl_openib_component.qp_infos[qp].rd_num;
+            rd_curr_num = openib_btl->qps[qp].u.srq_qp.rd_curr_num = mca_btl_openib_component.qp_infos[qp].u.srq_qp.rd_init;
+
+            if(true == mca_btl_openib_component.enable_srq_resize &&
+                                    true == device_support_modify_srq) {
+                if(0 == rd_curr_num) {
+                    openib_btl->qps[qp].u.srq_qp.rd_curr_num = 1;
+                }
+
+                openib_btl->qps[qp].u.srq_qp.rd_low_local = rd_curr_num - (rd_curr_num >> 2);
+                openib_btl->qps[qp].u.srq_qp.srq_limit_event_flag = true;
+            } else {
+                openib_btl->qps[qp].u.srq_qp.rd_curr_num = rd_num;
+                openib_btl->qps[qp].u.srq_qp.rd_low_local = mca_btl_openib_component.qp_infos[qp].rd_low;
+                /* Not used in this case, but we don't need a garbage */
+                mca_btl_openib_component.qp_infos[qp].u.srq_qp.srq_limit = 0;
+                openib_btl->qps[qp].u.srq_qp.srq_limit_event_flag = false;
             }
         }
     }
@@ -288,8 +412,10 @@ static int mca_btl_openib_size_queues(struct mca_btl_openib_module_t* openib_btl
         goto out;
     }
 
-    if (0 == openib_btl->num_peers) {
-       rc = create_srq(openib_btl);
+    if (0 == openib_btl->num_peers && 
+            (mca_btl_openib_component.num_srq_qps > 0 || 
+             mca_btl_openib_component.num_xrc_qps > 0)) {
+        rc = create_srq(openib_btl);
     }
 
     openib_btl->num_peers += nprocs;
@@ -451,6 +577,104 @@ static int mca_btl_openib_tune_endpoint(mca_btl_openib_module_t* openib_btl,
     return OMPI_SUCCESS;
 }
 
+/* read a single integer from a linux module parameters file */
+static uint64_t read_module_param(char *file, uint64_t value)
+{
+    int fd = open(file, O_RDONLY);
+    char buffer[64];
+    uint64_t ret;
+
+    if (0 > fd) {
+        return value;
+    }
+
+    read (fd, buffer, 64);
+
+    close (fd);
+
+    errno = 0;
+    ret = strtoull(buffer, NULL, 10);
+
+    return (0 == errno) ? ret : value;
+}
+
+/* calculate memory registation limits */
+static uint64_t calculate_total_mem (void)
+{
+#if OPAL_HAVE_HWLOC
+    hwloc_obj_t machine;
+
+    machine = hwloc_get_next_obj_by_type (opal_hwloc_topology, HWLOC_OBJ_MACHINE, NULL);
+    if (NULL == machine) {
+        return 0;
+    }
+    
+    return machine->memory.total_memory;
+#else
+    return 0;
+#endif
+}
+
+static uint64_t calculate_max_reg (void) 
+{
+    struct stat statinfo;
+    uint64_t mtts_per_seg = 1;
+    uint64_t num_mtt = 1 << 19;
+    uint64_t reserved_mtt = 0;
+    uint64_t max_reg, mem_total;
+
+    mem_total = calculate_total_mem ();
+
+    if (0 == stat("/sys/module/mlx5_core", &statinfo)) {
+        /* mlx5 means that we have ofed 2.0 and it can always register 2xmem_total for any mlx hca */
+        max_reg = 2 * mem_total;
+    }
+    else if (0 == stat("/sys/module/mlx4_core/parameters", &statinfo)) {
+        mtts_per_seg = 1 << read_module_param("/sys/module/mlx4_core/parameters/log_mtts_per_seg", 1);
+        num_mtt = 1 << read_module_param("/sys/module/mlx4_core/parameters/log_num_mtt", 20);
+        if (1 == num_mtt) {
+            /* NTH: is 19 a minimum? when log_num_mtt is set to 0 use 19 */
+            num_mtt = 1 << 20;
+        }
+
+        max_reg = (num_mtt - reserved_mtt) * getpagesize () * mtts_per_seg;
+    } else if (0 == stat("/sys/module/ib_mthca/parameters", &statinfo)) {
+        mtts_per_seg = 1 << read_module_param("/sys/module/ib_mthca/parameters/log_mtts_per_seg", 1);
+        num_mtt = read_module_param("/sys/module/ib_mthca/parameters/num_mtt", 1 << 20);
+        reserved_mtt = read_module_param("/sys/module/ib_mthca/parameters/fmr_reserved_mtts", 0);
+
+        max_reg = (num_mtt - reserved_mtt) * getpagesize () * mtts_per_seg;
+    } else {
+        /* Need to update to determine the registration limit for this
+           configuration */
+        max_reg = mem_total;
+    }
+
+    /* Print a warning if we can't register more than 75% of physical
+       memory.  Abort if the abort_not_enough_reg_mem MCA param was
+       set. */
+    if (max_reg < mem_total * 3 / 4) {
+        char *action;
+
+        if (mca_btl_openib_component.abort_not_enough_reg_mem) {
+            action = "Your MPI job will now abort.";
+        } else {
+            action = "Your MPI job will continue, but may be behave poorly and/or hang.";
+        }
+        orte_show_help("help-mpi-btl-openib.txt", "reg mem limit low", true,
+                       orte_process_info.nodename, (unsigned long)(max_reg >> 20),
+                       (unsigned long)(mem_total >> 20), action);
+        if (mca_btl_openib_component.abort_not_enough_reg_mem) {
+            orte_errmgr.abort(1, NULL);
+        }
+    }
+
+    /* Limit us to 87.5% of the registered memory (some fluff for QPs,
+       file systems, etc) */
+    return (max_reg * 7) >> 3;
+}
+
+
 /*
  *  add a proc to this btl module
  *    creates an endpoint that is setup on the
@@ -461,10 +685,10 @@ int mca_btl_openib_add_procs(
     size_t nprocs,
     struct ompi_proc_t **ompi_procs,
     struct mca_btl_base_endpoint_t** peers,
-    ompi_bitmap_t* reachable)
+    opal_bitmap_t* reachable)
 {
     mca_btl_openib_module_t* openib_btl = (mca_btl_openib_module_t*)btl;
-    int i,j, rc;
+    int i,j, rc, local_procs;
     int rem_subnet_id_port_cnt;
     int lcl_subnet_id_port_cnt = 0;
     int btl_rank = 0;
@@ -493,15 +717,19 @@ int mca_btl_openib_add_procs(
     }
 #endif
 
-    for (i = 0; i < (int) nprocs; i++) {
+    for (i = 0, local_procs = 0 ; i < (int) nprocs; i++) {
         struct ompi_proc_t* ompi_proc = ompi_procs[i];
         mca_btl_openib_proc_t* ib_proc;
         int remote_matching_port;
 
         opal_output(-1, "add procs: adding proc %d", i);
 
-        /* OOB, XOOB, RDMACM, IBCM does not support SELF comunication, so 
-         * mark the prco as unreachable by openib btl  */
+        if (OPAL_PROC_ON_LOCAL_NODE(ompi_proc->proc_flags)) {
+            local_procs ++;
+        }
+
+        /* OOB, XOOB, and RDMACM do not support SELF comunication, so
+         * mark the proc as unreachable by openib btl  */
         if (OPAL_EQUAL == orte_util_compare_name_fields
                 (ORTE_NS_CMP_ALL, ORTE_PROC_MY_NAME, &ompi_proc->proc_name)) {
             continue;
@@ -513,14 +741,7 @@ int mca_btl_openib_add_procs(
            we'll just mark any local peer on an iWARP NIC as
            unreachable.  See trac ticket #1352. */
         if (IBV_TRANSPORT_IWARP == openib_btl->device->ib_dev->transport_type &&
-            0 != (ompi_proc->proc_flags && OMPI_PROC_FLAG_LOCAL)) {
-            continue;
-        }
-#endif
-
-#ifdef OMPI_HAVE_RDMAOE
-        if(IBV_LINK_LAYER_ETHERNET == openib_btl->ib_port_attr.link_layer &&
-                OPAL_PROC_ON_LOCAL_NODE(ompi_proc->proc_flags)) {
+            OPAL_PROC_ON_LOCAL_NODE(ompi_proc->proc_flags)) {
             continue;
         }
 #endif
@@ -667,11 +888,14 @@ int mca_btl_openib_add_procs(
             }
         }
 
-        ompi_bitmap_set_bit(reachable, i);
+        opal_bitmap_set_bit(reachable, i);
         OPAL_THREAD_UNLOCK(&ib_proc->proc_lock);
 
         peers[i] = endpoint;
     }
+
+    openib_btl->local_procs += local_procs;
+    openib_btl->device->mem_reg_max = calculate_max_reg () / openib_btl->local_procs;
 
     return mca_btl_openib_size_queues(openib_btl, nprocs);
 }
@@ -817,6 +1041,7 @@ mca_btl_base_descriptor_t* mca_btl_openib_alloc(
     if(mca_btl_openib_component.use_message_coalescing &&
        (flags & MCA_BTL_DES_FLAGS_BTL_OWNERSHIP)) {
         int prio = !(flags & MCA_BTL_DES_FLAGS_PRIORITY);
+
         sfrag = check_coalescing(&ep->qps[qp].no_wqe_pending_frags[prio],
                 &ep->endpoint_lock, ep, size);
 
@@ -861,9 +1086,10 @@ mca_btl_base_descriptor_t* mca_btl_openib_alloc(
         to_com_frag(sfrag)->sg_entry.addr = (uint64_t)(uintptr_t)sfrag->hdr;
     }
 
-    cfrag->hdr = (mca_btl_openib_header_coalesced_t*)
-        (((unsigned char*)(sfrag->hdr + 1)) + sfrag->coalesced_length +
-        to_base_frag(sfrag)->segment.seg_len);
+    cfrag->hdr = (mca_btl_openib_header_coalesced_t*)((unsigned char*)(sfrag->hdr + 1) + 
+                  sfrag->coalesced_length +
+                  to_base_frag(sfrag)->segment.seg_len);
+    cfrag->hdr = (mca_btl_openib_header_coalesced_t*)(unsigned char*)(BTL_OPENIB_ALIGN_COALESCE_HDR((unsigned char*)(cfrag->hdr)));
     cfrag->hdr->alloc_size = size;
 
     /* point coalesced frag pointer into a data buffer */
@@ -959,7 +1185,7 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_src(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* endpoint,
     mca_mpool_base_registration_t* registration,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -975,7 +1201,7 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_src(
 
     openib_btl = (mca_btl_openib_module_t*)btl;
 
-    if(ompi_convertor_need_buffers(convertor) == false && 0 == reserve) {
+    if(opal_convertor_need_buffers(convertor) == false && 0 == reserve) {
         /* GMS  bloody HACK! */
         if(registration != NULL || max_data > btl->btl_max_send_size) {
             frag = alloc_send_user_frag();
@@ -986,7 +1212,7 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_src(
             iov.iov_len = max_data;
             iov.iov_base = NULL;
 
-            ompi_convertor_pack(convertor, &iov, &iov_count, &max_data);
+            opal_convertor_pack(convertor, &iov, &iov_count, &max_data);
 
             *size = max_data;
 
@@ -1016,10 +1242,11 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_src(
 
             assert(MCA_BTL_NO_ORDER == order);
 
-            BTL_VERBOSE(("frag->sg_entry.lkey = %lu .addr = %llu "
-                        "frag->segment.seg_key.key32[0] = %lu",
-                        frag->sg_entry.lkey, frag->sg_entry.addr,
-                        frag->sg_entry.lkey));
+            BTL_VERBOSE(("frag->sg_entry.lkey = %" PRIu32 " .addr = %" PRIx64
+                         " frag->segment.seg_key.key32[0] = %" PRIu32,
+                         frag->sg_entry.lkey, 
+                         frag->sg_entry.addr,
+                         frag->sg_entry.lkey));
 
             return &to_base_frag(frag)->base;
         }
@@ -1042,7 +1269,7 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_src(
     iov.iov_len = max_data;
     iov.iov_base = (unsigned char*)to_base_frag(frag)->segment.seg_addr.pval +
         reserve;
-    rc = ompi_convertor_pack(convertor, &iov, &iov_count, &max_data);
+    rc = opal_convertor_pack(convertor, &iov, &iov_count, &max_data);
 
     *size = max_data;
 
@@ -1070,7 +1297,7 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_dst(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* endpoint,
     mca_mpool_base_registration_t* registration,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -1089,7 +1316,7 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_dst(
         return NULL;
     }
 
-    ompi_convertor_get_current_pointer(convertor, &buffer);
+    opal_convertor_get_current_pointer(convertor, &buffer);
 
     if(NULL == registration){
         /* we didn't get a memory registration passed in, so we have to
@@ -1116,10 +1343,11 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_dst(
     to_base_frag(frag)->base.order = order;
     to_base_frag(frag)->base.des_flags = flags;
 
-    BTL_VERBOSE(("frag->sg_entry.lkey = %lu .addr = %llu "
-                "frag->segment.seg_key.key32[0] = %lu",
-                frag->sg_entry.lkey, frag->sg_entry.addr,
-                openib_reg->mr->rkey));
+    BTL_VERBOSE(("frag->sg_entry.lkey = %" PRIu32 " .addr = %" PRIx64 " "
+                 "frag->segment.seg_key.key32[0] = %" PRIu32,
+                 frag->sg_entry.lkey, 
+                 frag->sg_entry.addr,
+                 openib_reg->mr->rkey));
 
     return &to_base_frag(frag)->base;
 }
@@ -1138,41 +1366,62 @@ static int mca_btl_openib_finalize_resources(struct mca_btl_base_module_t* btl) 
     }
 
     /* Release all QPs */
-    for (ep_index=0;
-         ep_index < opal_pointer_array_get_size(openib_btl->device->endpoints);
-         ep_index++) {
-        endpoint=opal_pointer_array_get_item(openib_btl->device->endpoints,
-                                             ep_index);
-        if(!endpoint) {
-            BTL_VERBOSE(("In finalize, got another null endpoint"));
-            continue;
-        }
-        if(endpoint->endpoint_btl != openib_btl) {
-            continue;
-        }
-        for(i = 0; i < openib_btl->device->eager_rdma_buffers_count; i++) {
-            if(openib_btl->device->eager_rdma_buffers[i] == endpoint) {
-                openib_btl->device->eager_rdma_buffers[i] = NULL;
-                OBJ_RELEASE(endpoint);
+    if (NULL != openib_btl->device->endpoints) {
+        for (ep_index=0;
+             ep_index < opal_pointer_array_get_size(openib_btl->device->endpoints);
+             ep_index++) {
+            endpoint=opal_pointer_array_get_item(openib_btl->device->endpoints,
+                                                 ep_index);
+            if(!endpoint) {
+                BTL_VERBOSE(("In finalize, got another null endpoint"));
+                continue;
             }
+            if(endpoint->endpoint_btl != openib_btl) {
+                continue;
+            }
+            for(i = 0; i < openib_btl->device->eager_rdma_buffers_count; i++) {
+                if(openib_btl->device->eager_rdma_buffers[i] == endpoint) {
+                    openib_btl->device->eager_rdma_buffers[i] = NULL;
+                    OBJ_RELEASE(endpoint);
+                }
+            }
+            OBJ_RELEASE(endpoint);
         }
-        OBJ_RELEASE(endpoint);
     }
 
     /* Release SRQ resources */
     for(qp = 0; qp < mca_btl_openib_component.num_qps; qp++) {
         if(!BTL_OPENIB_QP_TYPE_PP(qp)) {
-                MCA_BTL_OPENIB_CLEAN_PENDING_FRAGS(
-                        &openib_btl->qps[qp].u.srq_qp.pending_frags[0]);
-                MCA_BTL_OPENIB_CLEAN_PENDING_FRAGS(
-                        &openib_btl->qps[qp].u.srq_qp.pending_frags[1]);
-                if (NULL != openib_btl->qps[qp].u.srq_qp.srq &&
-                        ibv_destroy_srq(openib_btl->qps[qp].u.srq_qp.srq)){
+            MCA_BTL_OPENIB_CLEAN_PENDING_FRAGS(
+                    &openib_btl->qps[qp].u.srq_qp.pending_frags[0]);
+            MCA_BTL_OPENIB_CLEAN_PENDING_FRAGS(
+                    &openib_btl->qps[qp].u.srq_qp.pending_frags[1]);
+            if (NULL != openib_btl->qps[qp].u.srq_qp.srq) {
+#if OPAL_HAVE_THREADS
+                opal_mutex_t *lock =
+                             &mca_btl_openib_component.srq_manager.lock;
+
+                opal_hash_table_t *srq_addr_table =
+                            &mca_btl_openib_component.srq_manager.srq_addr_table;
+
+                opal_mutex_lock(lock);		
+                if (OPAL_SUCCESS !=
+                        opal_hash_table_remove_value_ptr(srq_addr_table,
+                                    &openib_btl->qps[qp].u.srq_qp.srq,
+                                    sizeof(struct ibv_srq *))) {
+                    BTL_VERBOSE(("Failed to remove SRQ  %d entry from hash table.", qp));
+                    rc = OMPI_ERROR;
+                }
+                opal_mutex_unlock(lock);
+#endif
+                if (0 != ibv_destroy_srq(openib_btl->qps[qp].u.srq_qp.srq)) {
                     BTL_VERBOSE(("Failed to close SRQ %d", qp));
                     rc = OMPI_ERROR;
                 }
-                OBJ_DESTRUCT(&openib_btl->qps[qp].u.srq_qp.pending_frags[0]);
-                OBJ_DESTRUCT(&openib_btl->qps[qp].u.srq_qp.pending_frags[1]);
+            }
+
+            OBJ_DESTRUCT(&openib_btl->qps[qp].u.srq_qp.pending_frags[0]);
+            OBJ_DESTRUCT(&openib_btl->qps[qp].u.srq_qp.pending_frags[1]);
         }
     }
 
@@ -1188,6 +1437,10 @@ static int mca_btl_openib_finalize_resources(struct mca_btl_base_module_t* btl) 
     /* Release device if there are no more users */
     if(!(--openib_btl->device->btls)) {
         OBJ_RELEASE(openib_btl->device);
+    }
+
+    if (NULL != openib_btl->qps) {
+        free(openib_btl->qps); 
     }
 
     return rc;
@@ -1238,7 +1491,7 @@ int mca_btl_openib_finalize(struct mca_btl_base_module_t* btl)
  */
 int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
         struct mca_btl_base_endpoint_t* ep,
-        struct ompi_convertor_t* convertor,
+        struct opal_convertor_t* convertor,
         void* header,
         size_t header_size,
         size_t payload_size,
@@ -1259,6 +1512,7 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     ompi_free_list_item_t* item = NULL;
     mca_btl_openib_frag_t *frag;
     mca_btl_openib_header_t *hdr;
+    int send_signaled;
 
     OPAL_THREAD_LOCK(&ep->endpoint_lock);
 
@@ -1331,7 +1585,7 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
         iov.iov_len  = max_data = payload_size;
         iov_count    = 1;
 
-        (void)ompi_convertor_pack( convertor, &iov, &iov_count, &max_data);
+        (void)opal_convertor_pack( convertor, &iov, &iov_count, &max_data);
 
         assert(max_data == payload_size);
     }
@@ -1359,9 +1613,23 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
         hdr->cm_seen = cm_return;
     }
 
-    ib_rc = post_send(ep, to_send_frag(item), do_rdma);
+#if BTL_OPENIB_FAILOVER_ENABLED
+    send_signaled = 1;
+#else
+    send_signaled = qp_need_signal(ep, qp, payload_size + header_size, do_rdma);
+#endif
+    ib_rc = post_send(ep, to_send_frag(item), do_rdma, send_signaled);
 
     if(!ib_rc) {
+        if (0 == send_signaled) {
+            MCA_BTL_IB_FRAG_RETURN(frag);
+        }
+#if BTL_OPENIB_FAILOVER_ENABLED
+        else {
+            /* Return up in case needed for failover */
+            *descriptor = (struct mca_btl_base_descriptor_t *) frag;
+        }
+#endif
         OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
         return OMPI_SUCCESS;
     }
@@ -1471,7 +1739,7 @@ int mca_btl_openib_put( mca_btl_base_module_t* btl,
         return OMPI_SUCCESS;
     }
     /* post descriptor */
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     if((ep->endpoint_proc->proc_ompi->proc_arch & OPAL_ARCH_ISBIGENDIAN)
             != (ompi_proc_local()->proc_arch & OPAL_ARCH_ISBIGENDIAN)) {
         rem_addr = opal_swap_bytes8(rem_addr);
@@ -1494,7 +1762,9 @@ int mca_btl_openib_put( mca_btl_base_module_t* btl,
     /* Setting opcode on a frag constructor isn't enough since prepare_src
      * may return send_frag instead of put_frag */
     frag->sr_desc.opcode = IBV_WR_RDMA_WRITE;
-    frag->sr_desc.send_flags = ib_send_flags(descriptor->des_src->seg_len, &(ep->qps[qp]));
+    frag->sr_desc.send_flags = ib_send_flags(descriptor->des_src->seg_len, &(ep->qps[qp]), 1);
+    qp_inflight_wqe_to_frag(ep, qp, to_com_frag(frag));
+    qp_reset_signal_count(ep, qp);
     if(ibv_post_send(ep->qps[qp].qp->lcl_qp, &frag->sr_desc, &bad_wr))
         return OMPI_ERROR;
 
@@ -1552,7 +1822,7 @@ int mca_btl_openib_get(mca_btl_base_module_t* btl,
         return OMPI_SUCCESS;
     }
 
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     if((ep->endpoint_proc->proc_ompi->proc_arch & OPAL_ARCH_ISBIGENDIAN)
             != (ompi_proc_local()->proc_arch & OPAL_ARCH_ISBIGENDIAN)) {
         rem_addr = opal_swap_bytes8(rem_addr);
@@ -1572,13 +1842,17 @@ int mca_btl_openib_get(mca_btl_base_module_t* btl,
         frag->sr_desc.xrc_remote_srq_num=ep->rem_info.rem_srqs[qp].rem_srq_num;
 #endif
     descriptor->order = qp;
+
+    qp_inflight_wqe_to_frag(ep, qp, to_com_frag(frag));
+    qp_reset_signal_count(ep, qp);
+
     if(ibv_post_send(ep->qps[qp].qp->lcl_qp, &frag->sr_desc, &bad_wr))
         return OMPI_ERROR;
 
     return OMPI_SUCCESS;
 }
 
-#if OPAL_ENABLE_FT == 0
+#if OPAL_ENABLE_FT_CR == 0
 int mca_btl_openib_ft_event(int state) {
     return OMPI_SUCCESS;
 }
@@ -1627,4 +1901,4 @@ int mca_btl_openib_ft_event(int state) {
     return OMPI_SUCCESS;
 }
 
-#endif /* OPAL_ENABLE_FT */
+#endif /* OPAL_ENABLE_FT_CR */

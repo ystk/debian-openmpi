@@ -20,7 +20,6 @@
 #include "ompi_config.h"
 #include "ompi/mca/topo/base/base.h"
 #include "ompi/communicator/communicator.h"
-#include "ompi/mca/topo/topo.h"
 
 /*
  * function - determines process coords in cartesian topology given
@@ -40,7 +39,7 @@
  * @retval MPI_ERR_ARG
  */                   
 
-int mca_topo_base_cart_coords (MPI_Comm comm,
+int mca_topo_base_cart_coords (ompi_communicator_t* comm,
                            int rank,
                            int maxdims,
                            int *coords){

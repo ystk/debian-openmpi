@@ -2,13 +2,15 @@
  * VampirTrace
  * http://www.tu-dresden.de/zih/vampirtrace
  *
- * Copyright (c) 2005-2008, ZIH, TU Dresden, Federal Republic of Germany
+ * Copyright (c) 2005-2013, ZIH, TU Dresden, Federal Republic of Germany
  *
  * Copyright (c) 1998-2005, Forschungszentrum Juelich, Juelich Supercomputing
  *                          Centre, Federal Republic of Germany
  *
  * See the file COPYING in the package base directory for details
  **/
+
+#define _GNU_SOURCE
 
 #include "config.h"
 
@@ -17,17 +19,40 @@
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
+
 #include "vt_comp.h"
+#include "vt_defs.h"
 #include "vt_env.h"
 #include "vt_error.h"
 #include "vt_inttypes.h"
 #include "vt_iowrap.h"
-#include "vt_memhook.h"
+#include "vt_mallocwrap.h"
 #include "vt_pform.h"
 #include "vt_trc.h"
-#if (defined (VT_OMPI) || defined (VT_OMP))
-#  include <omp.h>
-#endif
+#include "vt_thrd.h"
+
+#if (defined(HAVE_DL) && HAVE_DL) && (defined(HAVE_DECL_RTLD_DEFAULT) && HAVE_DECL_RTLD_DEFAULT)
+# include <dlfcn.h>
+# define GET_SO_FUNC_ADDR(func) \
+  GET_IA64_FUNC_ADDR(dlsym(RTLD_DEFAULT, (func)))
+#else /* HAVE_DL && HAVE_DECL_RTLD_DEFAULT */
+# define GET_SO_FUNC_ADDR(func) 0
+#endif /* HAVE_DL && HAVE_DECL_RTLD_DEFAULT */
+
+#ifdef __ia64__
+# define GET_IA64_FUNC_ADDR(addr) (long)((addr) ? *(void**)(addr) : (addr))
+#else /* __ia64__ */
+# define GET_IA64_FUNC_ADDR(addr) (long)(addr)
+#endif /* __ia64__ */
+
+#define GET_THREAD_ID(tid) \
+  VT_CHECK_THREAD;         \
+  (tid) = VT_MY_THREAD
+
+#ifdef VT_COMPINST_CRAYCCE
+# define __cyg_profile_func_enter __pat_tp_func_entry
+# define __cyg_profile_func_exit  __pat_tp_func_return
+#endif /* VT_COMPINST_CRAYCCE */
 
 #define NM_LINE_BLK_LEN 1024
 #define NM_LINE_MAX_LEN 16384
@@ -42,8 +67,8 @@ static int gnu_init = 1;       /* is initialization needed? */
 
 typedef struct HN {
   long id;            /* hash code (address of function */
-  const char* name;   /* associated function name       */
-  const char* fname;  /*            file name           */
+  char* name;         /* associated function name       */
+  char* fname;        /*            file name           */
   int lno;            /*            line number         */
   uint32_t vtid;      /* associated region identifier   */
   struct HN* next;
@@ -52,6 +77,7 @@ typedef struct HN {
 #define HASH_MAX 1021
 
 static HashNode* htab[HASH_MAX];
+static uint32_t n_htab_entries = 0;
 
 /*
  * Stores function name `n' under hash code `h'
@@ -59,14 +85,15 @@ static HashNode* htab[HASH_MAX];
 
 static void hash_put(long h, const char* n, const char* fn, int lno) {
   long id = h % HASH_MAX;
-  HashNode *add = (HashNode*)malloc(sizeof(HashNode));
+  HashNode* add = (HashNode*)malloc(sizeof(HashNode));
   add->id = h;
-  add->name  = n;
-  add->fname = fn ? (const char*)strdup(fn) : fn;
+  add->name  = (char*)n;
+  add->fname = fn ? strdup(fn) : (char*)fn;
   add->lno   = lno;
   add->vtid = VT_NO_ID;
   add->next = htab[id];
   htab[id] = add;
+  n_htab_entries++;
 }
 
 /*
@@ -76,7 +103,7 @@ static void hash_put(long h, const char* n, const char* fn, int lno) {
 
 static HashNode* hash_get(long h) {
   long id = h % HASH_MAX;
-  HashNode *curr = htab[id];
+  HashNode* curr = htab[id];
   while ( curr ) {
     if ( curr->id == h ) {
       return curr;
@@ -96,21 +123,20 @@ static void get_symtab(void)
   char* nm_filename;
   FILE* nm_stream;
 
-  char* apppath = NULL;
-
   char* line;
   size_t line_size;
   uint32_t lineno = 0;
 
   uint8_t parse_error = 0;
 
-  VT_SUSPEND_IO_TRACING();
+  VT_SUSPEND_MALLOC_TRACING(VT_CURRENT_THREAD);
+  VT_SUSPEND_IO_TRACING(VT_CURRENT_THREAD);
 
   /* open nm-file, if given */
-  nm_filename = vt_env_nmfile();
+  nm_filename = vt_env_gnu_nmfile();
   if ( nm_filename != NULL && strlen(nm_filename) > 0 )
   {
-    vt_cntl_msg("Collecting symbols from file %s", nm_filename);
+    vt_cntl_msg(2, "Collecting symbols from file %s", nm_filename);
 
     /* open nm-file */
     if ( (nm_stream = fopen(nm_filename, "r")) == NULL )
@@ -119,52 +145,31 @@ static void get_symtab(void)
   /* otherwise, try to get symbol table automatically */
   else
   {
+    char* apppath;
     char* nm;
     size_t nm_cmd_len;
 
-    char* apppath_env;
+    vt_cntl_msg(2, "Collecting symbols by 'nm'");
 
-    vt_cntl_msg("Collecting symbols by 'nm'");
-
-    /* get executable path from VT_APPPATH, if set */
-    apppath_env = vt_env_apppath();
-    if ( apppath_env != NULL && strlen(apppath_env) > 0 )
+    /* get executable path specified by VT_APPPATH */
+    apppath = vt_env_apppath();
+    if ( apppath == NULL || strlen(apppath) == 0 )
     {
-      apppath = strdup(apppath_env);
-      if ( apppath == NULL )
-        vt_error();
-    }
-    /* otherwiese, try to get executable path from /proc file system */
-    else
-    {
-      int pid = getpid();
-      apppath = (char*)malloc(256 * sizeof(char*));
-      if ( apppath == NULL )
-        vt_error();
-
-      snprintf(apppath, 255, "/proc/%d/exe", pid);
-      if ( access(apppath, R_OK) != 0 )
-      {
-        snprintf(apppath, 255, "/proc/%d/object/exe", pid);
-        if ( access(apppath, R_OK) != 0 )
-        {
-          vt_error_msg("Could not determine path of executable.\n"
-                       "Please set the environment variable VT_APPPATH to the "
-                       "path of your executable or set VT_NMFILE to a symbol "
-                       "list file created with 'nm'.");
-        }
-      }
+      vt_error_msg("Could not determine path of executable.\n"
+                   "Please set the environment variable VT_APPPATH to the path "
+                   "of your executable or set VT_GNU_NMFILE to a symbol list "
+                   "file created with 'nm'.");
     }
 
-    /* get nm command specified by VT_NM */
-    nm = vt_env_nm();
+    /* get nm command specified by VT_GNU_NM */
+    nm = vt_env_gnu_nm();
     if ( nm == NULL )
     {
       vt_error_msg("VampirTrace was configured without an 'nm' command.\n"
-                   "Please set the environment variable VT_NM to the 'nm' "
+                   "Please set the environment variable VT_GNU_NM to the 'nm' "
                    "command including command line switches which lists "
                    "symbol/addresses of an object file in BSD-style or set "
-                   "VT_NMFILE to a pre-created symbol list file." );
+                   "VT_GNU_NMFILE to a pre-created symbol list file." );
     }
 
     /* allocate memory for nm command */
@@ -177,7 +182,7 @@ static void get_symtab(void)
     snprintf(nm_cmd, nm_cmd_len, "%s %s", nm, apppath);
 
     /* execute nm command */
-    vt_cntl_msg("Executing %s", nm_cmd);
+    vt_cntl_msg(2, "Executing %s", nm_cmd);
     nm_stream = popen(nm_cmd, "r");
     /* error handling after pclose below */
 
@@ -246,17 +251,32 @@ static void get_symtab(void)
     if ( line[strlen(line)-1] == '\n' )
       line[strlen(line)-1] = '\0';
 
+    /* ignore line if it is empty */
+    if ( *line == '\0' )
+      continue;
+
+    /* ignore nm input file name */
+    if ( line[strlen(line)-1] == ':' )
+      continue;
+
     /* split line to columns */
     col = strtok(line, delim);
     do
     {
       if ( nc == 1 ) /* column 1 (address) */
       {
-        /* ignore symbol, if it has no address */
+        /* if there is no address in the first column the symbol could be
+           defined within a shared object; try get its address later (nc==3) */
         if ( strlen(col) == 1 )
-          break;
-
-        addr = strtol(col, NULL, 16);
+        {
+          nc++; /* <- will be 3 in the next round */
+          *delim = '\t';
+        }
+        /* otherwise, convert address string */
+        else
+        {
+          addr = strtol(col, NULL, 16);
+        }
       }
       else if ( nc == 2 ) /* column 2 (type) */
       {
@@ -266,14 +286,27 @@ static void get_symtab(void)
           parse_error = 1;
           break;
         }
-        strcpy(delim, "\t");
+
+        *delim = '\t';
       }
       else if ( nc == 3 ) /* column 3 (symbol) */
       {
+        long soaddr;
+
         funcname = col;
-        strcpy(delim, ":");
+
+        /* the symbol might be defined within a shared object; try to get
+           its real address */
+        if ( ( soaddr = GET_SO_FUNC_ADDR(funcname) ) != 0 )
+          addr = soaddr;
+
+        /* ignore function, if its address could not be determined */
+        if ( addr == 0 )
+          break;
+
+        *delim = ':';
       }
-      else if( nc == 4 ) /* column 4 (filename) */
+      else if ( nc == 4 ) /* column 4 (filename) */
       {
         filename = col;
       }
@@ -293,10 +326,26 @@ static void get_symtab(void)
     {
       break;
     }
-    /* add symbol to hash table, if we have its address */
-    else if ( addr > 0 )
+    /* at least two columns must be read */
+    else if ( nc < 3 )
+    {
+      parse_error = 1;
+      break;
+    }
+    /* add symbol to hash table, if we have its address and name */
+    else if ( addr > 0 && funcname )
     {
       char* n = strdup(funcname);
+      char* p;
+
+      if ( n == NULL )
+        vt_error();
+
+      /* chop function name at '??', if necessary */
+      p = strstr(n, "??");
+      if ( p != NULL && p != n )
+        *p = '\0';
+
       hash_put(addr, n, filename, lno);
     }
   }
@@ -321,53 +370,106 @@ static void get_symtab(void)
     if ( parse_error )
     {
       vt_error_msg("Could not parse 'nm' output created with %s.\n"
-                   "Please set the environment variable VT_NM to the 'nm' "
+                   "Please set the environment variable VT_GNU_NM to the 'nm' "
                    "command including command line switches which lists "
                    "symbol/addresses of an object file in BSD-style or set "
-                   "VT_NMFILE to a pre-created symbol list file.",
+                   "VT_GNU_NMFILE to a pre-created symbol list file.",
                    nm_cmd);
     }
     else if ( nmcmd_error )
     {
       vt_error_msg("Failed to execute %s\n"
-                   "Please set the environment variable VT_NM to the 'nm' "
+                   "Please set the environment variable VT_GNU_NM to the 'nm' "
                    "command including command line switches which lists "
                    "symbol/addresses of an object file in BSD-style or set "
-                   "VT_NMFILE to a pre-created symbol list file.",
+                   "VT_GNU_NMFILE to a pre-created symbol list file.",
                    nm_cmd);
     }
 
     free(nm_cmd);
-    free(apppath);
   }
 
   free(line);
 
-  VT_RESUME_IO_TRACING();
+  VT_RESUME_IO_TRACING(VT_CURRENT_THREAD);
+  VT_RESUME_MALLOC_TRACING(VT_CURRENT_THREAD);
 }
 
 /*
  * Register new region
  */
 
-static void register_region(HashNode *hn) {
+static void register_region(uint32_t tid, HashNode* hn) {
   uint32_t fid = VT_NO_ID;
   uint32_t lno = VT_NO_LNO;
 
   /* -- register file if available -- */
   if (hn->fname != NULL)
   {
-    fid = vt_def_file(hn->fname);
+    fid = vt_def_scl_file(tid, hn->fname);
     lno = hn->lno;
   }
 
   /* -- register region and store region identifier -- */
-  hn->vtid = vt_def_region(hn->name, fid, lno, VT_NO_LNO, VT_DEF_GROUP, VT_FUNCTION);
+  hn->vtid = vt_def_region(tid, hn->name, fid, lno, VT_NO_LNO,
+                           NULL, VT_FUNCTION);
 }
 
-
+void gnu_finalize(void);
 void __cyg_profile_func_enter(void* func, void* callsite);
 void __cyg_profile_func_exit(void* func, void* callsite);
+
+/*
+ * Finalize instrumentation interface
+ */
+
+void gnu_finalize()
+{
+  int i, idx_min, idx_max;
+  uint32_t min, max;
+  double avg;
+  min = 0xffffffff;
+  max = 0;
+  idx_min = idx_max = 0;
+  avg = 0.0;
+
+  for( i = 0; i < HASH_MAX; i++ )
+  {
+    uint32_t n_bucket_entries = 0;
+
+    struct HN* p = htab[i];
+    while( p )
+    {
+      n_bucket_entries++;
+
+      /* Set assigned region id back to VT_NO_ID instead of freeing the
+         hash-node, because after a fork the hash-node will be re-used for the
+         child process. This implies a small/non-increasing memory leak. */
+      p->vtid = VT_NO_ID;
+      p = p->next;
+    }
+    if( n_bucket_entries < min ) {
+      min = n_bucket_entries;
+      idx_min = i;
+    }
+    if( n_bucket_entries > max ) {
+      max = n_bucket_entries;
+      idx_max = i;
+    }
+    vt_cntl_msg(3, "Hash bucket %i had %u entries (%.1f/1000)",
+                i, n_bucket_entries, ((double)n_bucket_entries*1000)/n_htab_entries);
+  }
+  avg = (double)n_htab_entries / HASH_MAX;
+  vt_cntl_msg( 3, "Hash statistics:\n"
+                  "\tNumber of entries: %u\n"
+                  "\tMin bucket size:   %u (%.1f/1000) at index %i\n"
+                  "\tMax bucket size:   %u (%.1f/1000) at index %i\n"
+                  "\tAvg bucket size:   %.1f",
+                  n_htab_entries,
+                  min, ((double)min*1000)/n_htab_entries, idx_min,
+                  max, ((double)max*1000)/n_htab_entries, idx_max,
+                  avg );
+}
 
 /*
  * This function is called at the entry of each function
@@ -375,57 +477,50 @@ void __cyg_profile_func_exit(void* func, void* callsite);
  */
 
 void __cyg_profile_func_enter(void* func, void* callsite) {
-  HashNode *hn;
-
-  void * funcptr = func;
-
+  long addr;
+  uint32_t tid;
   uint64_t time;
+  HashNode* hn;
 
-#ifdef __ia64__
-  funcptr = *( void ** )func;
-#endif
+  addr = GET_IA64_FUNC_ADDR(func);
 
   /* -- if not yet initialized, initialize VampirTrace -- */
   if ( gnu_init ) {
-    VT_MEMHOOKS_OFF();
     gnu_init = 0;
     vt_open();
+    vt_comp_finalize = gnu_finalize;
     get_symtab();
-    VT_MEMHOOKS_ON();
   }
 
   /* -- if VampirTrace already finalized, return -- */
   if ( !vt_is_alive ) return;
 
-  VT_MEMHOOKS_OFF();
+  /* -- get calling thread id -- */
+  GET_THREAD_ID(tid);
+
+  VT_SUSPEND_MALLOC_TRACING(tid);
 
   time = vt_pform_wtime();
 
   /* -- get region identifier -- */
-  if ( (hn = hash_get((long)funcptr))) {
+  if ( (hn = hash_get(addr)) ) {
     if ( hn->vtid == VT_NO_ID ) {
       /* -- region entered the first time, register region -- */
-#     if defined (VT_OMPI) || defined (VT_OMP)
-      if (omp_in_parallel()) {
-#       pragma omp critical (vt_comp_gnu_1)
-	{
-	  if ( hn->vtid == VT_NO_ID ) {
-	    register_region(hn);
-	  }
-	}
-      } else {
-	register_region(hn);
-      }
-#     else
-      register_region(hn);
-#     endif
+#if (defined(VT_MT) || defined(VT_HYB))
+      VTTHRD_LOCK_IDS();
+      if( hn->vtid == VT_NO_ID )
+        register_region(tid, hn);
+      VTTHRD_UNLOCK_IDS();
+#else /* VT_MT || VT_HYB */
+      register_region(tid, hn);
+#endif /* VT_MT || VT_HYB */
     }
 
     /* -- write enter record -- */
-    vt_enter(&time, hn->vtid);
+    vt_enter(tid, &time, hn->vtid);
   }
 
-  VT_MEMHOOKS_ON();
+  VT_RESUME_MALLOC_TRACING(tid);
 }
 
 /*
@@ -434,23 +529,26 @@ void __cyg_profile_func_enter(void* func, void* callsite) {
  */
 
 void __cyg_profile_func_exit(void* func, void* callsite) {
-  void * funcptr = func;
+  long addr;
+  uint32_t tid;
   uint64_t time;
+
+  addr = GET_IA64_FUNC_ADDR(func);
 
   /* -- if VampirTrace already finalized, return -- */
   if ( !vt_is_alive ) return;
 
-  VT_MEMHOOKS_OFF();
+  /* -- get calling thread id -- */
+  GET_THREAD_ID(tid);
+
+  VT_SUSPEND_MALLOC_TRACING(tid);
 
   time = vt_pform_wtime();
 
-#ifdef __ia64__
-  funcptr = *( void ** )func;
-#endif
-
-  if ( hash_get((long)funcptr) ) {
-    vt_exit(&time);
+  /* -- write exit record -- */
+  if ( hash_get(addr) ) {
+    vt_exit(tid, &time);
   }
 
-  VT_MEMHOOKS_ON();
+  VT_RESUME_MALLOC_TRACING(tid);
 }

@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC. 
  *                         All rights reserved.
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -49,17 +50,20 @@
 #include <netinet/tcp.h>
 #endif
 
+#include "opal/types.h"
 #include "opal/mca/backtrace/backtrace.h"
-#include "orte/util/show_help.h"
-#include "opal/util/if.h"
+#include "opal/util/output.h"
 #include "opal/util/net.h"
 #include "opal/util/error.h"
-
 #include "opal/class/opal_hash_table.h"
+
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/routed/routed.h"
+#include "orte/mca/ess/ess.h"
+#include "orte/mca/notifier/notifier.h"
+#include "orte/runtime/orte_wait.h"
 
 #include "oob_tcp.h"
 #include "oob_tcp_peer.h"
@@ -118,6 +122,9 @@ static void mca_oob_tcp_peer_destruct(mca_oob_tcp_peer_t * peer)
     mca_oob_tcp_peer_shutdown(peer); 
     OBJ_DESTRUCT(&(peer->peer_send_queue));
     OBJ_DESTRUCT(&(peer->peer_lock));
+    if (NULL != peer->peer_addr) {
+        OBJ_RELEASE(peer->peer_addr);
+    }
 }
 
 /*
@@ -563,10 +570,6 @@ static void mca_oob_tcp_peer_connected(mca_oob_tcp_peer_t* peer, int sd)
     peer->peer_state = MCA_OOB_TCP_CONNECTED;
     peer->peer_retries = 0;
 
-    /* Since we have a direct connection established to this peer, use
-       the connection as a direct route between peers */
-    orte_routed.update_route(&peer->peer_name, &peer->peer_name);
-
     if(opal_list_get_size(&peer->peer_send_queue) > 0) {
         if(NULL == peer->peer_send_msg) {
             peer->peer_send_msg = (mca_oob_tcp_msg_t*)
@@ -612,11 +615,18 @@ void mca_oob_tcp_peer_shutdown(mca_oob_tcp_peer_t* peer)
     /* giving up and cleanup any pending messages */
     if(peer->peer_retries++ > mca_oob_tcp_component.tcp_peer_retries) {
         mca_oob_tcp_msg_t *msg;
+        char *host;
 
-        opal_output(0, "%s-%s oob-tcp: Communication retries exceeded.  Can not communicate with peer",
+        host = orte_ess.proc_get_hostname(&(peer->peer_name));
+        opal_output(0, "%s -> %s (node: %s) oob-tcp: Number of attempts to create TCP connection has been exceeded.  Can not communicate with peer",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                    ORTE_NAME_PRINT(&(peer->peer_name)));
-
+                    ORTE_NAME_PRINT(&(peer->peer_name)),
+                    (NULL == host) ? "NULL" : host);
+        /* provide a notifier message */
+        orte_notifier.peer(ORTE_NOTIFIER_CRIT, ORTE_ERR_COMM_FAILURE, &(peer->peer_name),
+                               "OOB connection retries exceeded. Cannot communicate with peer %s.",
+                               ORTE_JOBID_PRINT(peer->peer_name.jobid));
+        
         /* There are cases during the initial connection setup where
            the peer_send_msg is NULL but there are things in the queue
            -- handle that case */
@@ -637,6 +647,18 @@ void mca_oob_tcp_peer_shutdown(mca_oob_tcp_peer_t* peer)
            not likely to suddenly become successful, so abort the
            whole thing */
         peer->peer_state = MCA_OOB_TCP_FAILED;
+        
+        /* since we cannot communicate, and the system obviously needed
+         * to do so, let's abort so we don't just hang here
+         */
+        if (ORTE_PROC_IS_HNP || ORTE_PROC_IS_DAEMON) {
+            /* just wake us up */
+            ORTE_UPDATE_EXIT_STATUS(ORTE_ERROR_DEFAULT_EXIT_CODE);
+            orte_abnormal_term_ordered = true;
+            orte_trigger_event(&orte_exit);
+        } else {
+            orte_errmgr.abort(1, NULL);
+        }
     }
 
     if (peer->peer_sd >= 0) {

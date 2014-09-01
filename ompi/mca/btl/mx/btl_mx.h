@@ -2,13 +2,14 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,16 +22,13 @@
 #ifndef MCA_PTL_MX_H
 #define MCA_PTL_MX_H
 
-/* Standard system includes */
+#include "ompi_config.h"
 #include <sys/types.h>
 #include <string.h>
 
 /* Open MPI includes */
 #include "ompi/class/ompi_free_list.h"
-#include "ompi/class/ompi_bitmap.h"
-#include "orte/util/show_help.h"
 #include "opal/event/event.h"
-#include "ompi/mca/pml/pml.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
 #include "ompi/mca/mpool/mpool.h" 
@@ -131,16 +129,6 @@ typedef struct mca_btl_mx_module_t mca_btl_mx_module_t;
 extern mca_btl_mx_module_t mca_btl_mx_module;
 
 /**
- * Register MX component parameters with the MCA framework
- */
-extern int mca_btl_mx_component_open(void);
-
-/**
- * Any final cleanup before being unloaded.
- */
-extern int mca_btl_mx_component_close(void);
-
-/**
  * MX component initialization.
  * 
  * @param num_btl_modules (OUT)           Number of BTLs returned in BTL array.
@@ -190,7 +178,7 @@ extern int mca_btl_mx_add_procs(
     size_t nprocs,
     struct ompi_proc_t **procs,
     struct mca_btl_base_endpoint_t** peers,
-    ompi_bitmap_t* reachable
+    opal_bitmap_t* reachable
 );
 
 /**
@@ -288,7 +276,7 @@ mca_btl_base_descriptor_t*
 mca_btl_mx_prepare_src( struct mca_btl_base_module_t* btl,
                         struct mca_btl_base_endpoint_t* peer,
                         struct mca_mpool_base_registration_t*,
-                        struct ompi_convertor_t* convertor,
+                        struct opal_convertor_t* convertor,
                         uint8_t order,
                         size_t reserve,
                         size_t* size,
@@ -298,7 +286,7 @@ mca_btl_base_descriptor_t*
 mca_btl_mx_prepare_dst( struct mca_btl_base_module_t* btl, 
                         struct mca_btl_base_endpoint_t* peer,
                         struct mca_mpool_base_registration_t*,
-                        struct ompi_convertor_t* convertor,
+                        struct opal_convertor_t* convertor,
                         uint8_t order,
                         size_t reserve,
                         size_t* size,

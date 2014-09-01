@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights resereved.
+ * Copyright (c) 2008-2009 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,9 +20,12 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/file/file.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_File_create_errhandler = PMPI_File_create_errhandler
 #endif
 
@@ -33,7 +36,7 @@
 static const char FUNC_NAME[] = "MPI_File_create_errhandler";
 
 
-int MPI_File_create_errhandler(MPI_File_errhandler_fn *function,
+int MPI_File_create_errhandler(MPI_File_errhandler_function *function,
 		                        MPI_Errhandler *errhandler) {
   int err = MPI_SUCCESS;
 

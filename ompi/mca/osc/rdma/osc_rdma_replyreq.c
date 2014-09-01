@@ -20,13 +20,13 @@
 #include "osc_rdma_replyreq.h"
 
 #include "opal/class/opal_list.h"
-#include "ompi/datatype/convertor.h"
+#include "opal/datatype/opal_convertor.h"
 
 int
 ompi_osc_rdma_replyreq_alloc_init(ompi_osc_rdma_module_t *module,
                                 int origin,
                                 ompi_ptr_t origin_request,
-                                OMPI_PTRDIFF_TYPE target_displacement,
+                                OPAL_PTRDIFF_TYPE target_displacement,
                                 int target_count,
                                 struct ompi_datatype_t *datatype,
                                 ompi_osc_rdma_replyreq_t **replyreq)
@@ -66,7 +66,7 @@ ompi_osc_rdma_replyreq_alloc_init(ompi_osc_rdma_module_t *module,
 
 static void ompi_osc_rdma_replyreq_construct(ompi_osc_rdma_replyreq_t *replyreq)
 {
-    OBJ_CONSTRUCT(&(replyreq->rep_target_convertor), ompi_convertor_t);
+    OBJ_CONSTRUCT(&(replyreq->rep_target_convertor), opal_convertor_t);
 }
 
 static void ompi_osc_rdma_replyreq_destruct(ompi_osc_rdma_replyreq_t *replyreq)

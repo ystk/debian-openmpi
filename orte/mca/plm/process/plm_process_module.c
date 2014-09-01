@@ -26,7 +26,6 @@
  */
 
 
-
 #include "orte_config.h"
 #include "orte/constants.h"
 
@@ -58,6 +57,7 @@
 #include <pwd.h>
 #endif
 
+#ifdef _MSC_VER
 #include <winsock2.h>
 #include <comutil.h>
 #include <Wbemidl.h>
@@ -66,10 +66,11 @@
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "comsuppw.lib")
 #pragma comment(lib, "Credui.lib")
+#endif
 
 #include "opal/mca/installdirs/installdirs.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "opal/util/if.h"
+#include "opal/util/output.h"
 #include "opal/util/os_path.h"
 #include "opal/util/path.h"
 #include "opal/event/event.h"
@@ -80,13 +81,11 @@
 #include "opal/util/basename.h"
 #include "opal/util/opal_environ.h"
 
-#include "orte/util/session_dir.h"
 #include "orte/util/name_fns.h"
 
 #include "orte/runtime/orte_wait.h"
-#include "opal/dss/dss.h"
+#include "orte/runtime/orte_globals.h"
 
-#include "orte/mca/rml/rml.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/ras/ras_types.h"
 #include "orte/mca/rmaps/rmaps.h"
@@ -99,7 +98,7 @@
 
 #define rindex(a,b) strrchr((a),(b))
 
-#if OMPI_HAVE_POSIX_THREADS && OMPI_THREADS_HAVE_DIFFERENT_PIDS && OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_HAVE_POSIX_THREADS && OPAL_THREADS_HAVE_DIFFERENT_PIDS && OPAL_ENABLE_PROGRESS_THREADS
 static int orte_plm_process_launch_threaded(orte_jobid_t jobid);
 #endif
 
@@ -107,23 +106,22 @@ static int orte_plm_process_launch_threaded(orte_jobid_t jobid);
  * Interface
  */
 static int orte_plm_process_init(void);
-static int orte_plm_process_set_hnp_name(void);
 static int orte_plm_process_launch(orte_job_t*);
-static int orte_plm_process_terminate_job(orte_jobid_t);
 static int orte_plm_process_terminate_orteds(void);
 static int orte_plm_process_signal_job(orte_jobid_t, int32_t);
 
 orte_plm_base_module_t orte_plm_process_module = {
     orte_plm_process_init,
     orte_plm_base_set_hnp_name,
-#if OMPI_HAVE_POSIX_THREADS && OMPI_THREADS_HAVE_DIFFERENT_PIDS && OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_HAVE_POSIX_THREADS && OPAL_THREADS_HAVE_DIFFERENT_PIDS && OPAL_ENABLE_PROGRESS_THREADS
     orte_plm_process_launch_threaded,
 #else
     orte_plm_process_launch,
 #endif
     NULL,
-    orte_plm_process_terminate_job,
+    orte_plm_base_orted_terminate_job,
     orte_plm_process_terminate_orteds,
+    orte_plm_base_orted_kill_local_procs,
     orte_plm_process_signal_job,
     orte_plm_process_finalize
 };
@@ -152,6 +150,13 @@ static const char * orte_plm_process_shell_name[] = {
     "unknown"
 }; 
 
+/* local global storage of timing variables */
+static struct timeval joblaunchstart, joblaunchstop;
+
+/* global storage of active jobid being launched */
+static orte_jobid_t active_job = ORTE_JOBID_INVALID;
+
+#ifdef _MSC_VER
 /*
  * local functions
  */
@@ -160,8 +165,6 @@ static int wmi_launch_child(char *prefix, char *remote_node, int argc, char **ar
 static int get_credential(char *node_name);
 static char *read_remote_registry(uint32_t root, char *sub_key, char *key, char *remote_node, char *ntlm_auth);
 
-/* local global storage of timing variables */
-static struct timeval joblaunchstart, joblaunchstop;
 
 /* local global storage of user credential */
 static char user_name[CREDUI_MAX_USERNAME_LENGTH+1];
@@ -173,66 +176,7 @@ IWbemLocator *pLoc = NULL;
 IWbemServices *pSvc_registry = NULL;
 /* namespace for \hostname\root\cimv2 */
 IWbemServices *pSvc_cimv2 = NULL;
-/* Security levels on a WMI connection */
-SEC_WINNT_AUTH_IDENTITY cID; 
 
-/* global storage of active jobid being launched */
-static orte_jobid_t active_job = ORTE_JOBID_INVALID;
-
-/**
-* Init the module
- */
-int orte_plm_process_init(void)
-{
-    int rc;
-    HRESULT hres;
-    
-    if (ORTE_SUCCESS != (rc = orte_plm_base_comm_start())) {
-        ORTE_ERROR_LOG(rc);
-    }
-
-    /* Initialize COM for WMI */
-    hres =  CoInitializeEx(0, COINIT_APARTMENTTHREADED); 
-    if (FAILED(hres)) {
-        opal_output(0, "Failed to initialize COM library. Error code = %d \n", hres);
-        return ORTE_ERROR;
-    }
-
-    /* Set general COM security levels. */
-    hres =  CoInitializeSecurity(NULL, 
-                                 -1,                          /* COM authentication */ 
-                                 NULL,                        /* Authentication services */ 
-                                 NULL,                        /* Reserved */ 
-                                 RPC_C_AUTHN_LEVEL_DEFAULT,   /* Default authentication */  
-                                 RPC_C_IMP_LEVEL_IMPERSONATE, /* Default Impersonation */  
-                                 NULL,                        /* Authentication info */ 
-                                 EOAC_NONE,                   /* Additional capabilities */  
-                                 NULL                         /* Reserved */ 
-                                );
-
-    if (FAILED(hres)) {     
-        opal_output(0, "Failed to initialize security. Error code = %d \n",hres);
-        CoUninitialize();
-        return ORTE_ERROR;
-    }
-
-    /* Obtain the initial locator to WMI. */ 
-    hres = CoCreateInstance(CLSID_WbemLocator,
-                            0,
-                            CLSCTX_INPROC_SERVER, 
-                            IID_IWbemLocator, (LPVOID *) &pLoc);
- 
-    if (FAILED(hres)) {   
-        opal_output(0,"Failed to create IWbemLocator object. Err code = %d \n", hres);
-        CoUninitialize();
-        return ORTE_ERROR;
-    }
-    
-    SecureZeroMemory(user_name, sizeof(user_name));
-    SecureZeroMemory(user_password, sizeof(user_password));
-
-    return rc;
-}
 
 
 static char *generate_commandline(char *prefix, int argc, char **argv)
@@ -362,7 +306,7 @@ static int get_credential(char *node_name)
                 /* something more to be done here. */
                 OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
                                     "%s plm:process: credential saved for %s on %s",
-                                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), user, remote_node));
+                                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), user_name, node_name));
                 printf("%c\n", ch);
                 opal_output(0, "This feature hasn't been implemented yet.");
                 break;
@@ -417,22 +361,6 @@ static char *read_remote_registry(uint32_t root, char *sub_key, char *key, char 
                              "%s plm:process: Connected to \\\\%s\\\\ROOT\\\\DEFAULT",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              remote_node));
-
-        /* default namespace */
-        hres = CoSetProxyBlanket(pSvc_registry,                  /* Indicates the proxy to set */ 
-                                 RPC_C_AUTHN_WINNT,              /* RPC_C_AUTHN_xxx */ 
-                                 RPC_C_AUTHZ_NONE,               /* RPC_C_AUTHZ_xxx */ 
-                                 NULL,                           /* Server principal name */  
-                                 RPC_C_AUTHN_LEVEL_CALL,         /* RPC_C_AUTHN_LEVEL_xxx */  
-                                 RPC_C_IMP_LEVEL_IMPERSONATE,    /* RPC_C_IMP_LEVEL_xxx */ 
-                                 &cID,                           /* client identity */ 
-                                 EOAC_NONE                       /* proxy capabilities */  
-                                );
-
-        if (FAILED(hres)) {
-            opal_output(0,"Could not set proxy blanket. Error code = %d \n", hres);
-            goto cleanup;
-        }
     }
 
     hres = pSvc_registry->GetObject(ClassName_registry, 0, NULL, &pClass_registry, NULL);
@@ -550,10 +478,11 @@ static int wmi_launch_child(char *prefix, char *remote_node, int argc, char **ar
     /*Connect to WMI through the IWbemLocator::ConnectServer method*/
     char namespace_cimv2[100];
     
-    char *ntlm_auth = (char *) malloc(sizeof(char)*(strlen("ntlmdomain:")+strlen(remote_node)+1));
-    memset(ntlm_auth, 0, sizeof(char)*(strlen("ntlmdomain:")+strlen(remote_node)+1));
+    char *domain_name = getenv("USERDOMAIN");
+    char *ntlm_auth = (char *) malloc(sizeof(char)*(strlen("ntlmdomain:")+strlen(domain_name)+1));
+    memset(ntlm_auth, 0, sizeof(char)*(strlen("ntlmdomain:")+strlen(domain_name)+1));
     strcat(ntlm_auth, "ntlmdomain:");
-    strcat(ntlm_auth, remote_node);
+    strcat(ntlm_auth, domain_name);
 
     if( 0 != get_credential(remote_node)) {
         goto cleanup;
@@ -563,7 +492,7 @@ static int wmi_launch_child(char *prefix, char *remote_node, int argc, char **ar
     char *rt_namespace_cimv2 = "\\root\\cimv2";
     strcpy(namespace_cimv2, "\\\\");  
     strcat(namespace_cimv2, remote_node );  
-    strcat(namespace_cimv2, rt_namespace_cimv2); 
+    strcat(namespace_cimv2, rt_namespace_cimv2);
 
     /* connect to cimv2 namespace */  
     hres = pLoc->ConnectServer(_com_util::ConvertStringToBSTR(namespace_cimv2),      /* namespace */ 
@@ -586,31 +515,6 @@ static int wmi_launch_child(char *prefix, char *remote_node, int argc, char **ar
                          "%s plm:process: Connected to \\\\%s\\\\ROOT\\\\CIMV2",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          remote_node));
-
-    /* Set security levels on a WMI connection */
-    cID.User           = (unsigned char *) user_name;
-    cID.UserLength     = lstrlen(user_name);
-    cID.Password       = (unsigned char *) user_password;
-    cID.PasswordLength = lstrlen(user_password);
-    cID.Domain         = (unsigned char *) remote_node;
-    cID.DomainLength   = lstrlen(remote_node);
-    cID.Flags          = SEC_WINNT_AUTH_IDENTITY_ANSI;
-
-     /* cimv2 namespace */
-    hres = CoSetProxyBlanket(pSvc_cimv2,                  /* Indicates the proxy to set */ 
-                             RPC_C_AUTHN_WINNT,           /* RPC_C_AUTHN_xxx */ 
-                             RPC_C_AUTHZ_NONE,            /* RPC_C_AUTHZ_xxx */ 
-                             NULL,                        /* Server principal name */  
-                             RPC_C_AUTHN_LEVEL_CALL,      /* RPC_C_AUTHN_LEVEL_xxx */  
-                             RPC_C_IMP_LEVEL_IMPERSONATE, /* RPC_C_IMP_LEVEL_xxx */ 
-                             &cID,                        /* client identity */ 
-                             EOAC_NONE                    /* proxy capabilities */  
-                            );
-
-    if (FAILED(hres)) {
-        opal_output(0,"Could not set proxy blanket. Error code = %d \n", hres );
-        goto cleanup;
-    }
 
     /* if there isn't a prefix ( e.g., '--noprefix' specfied,
        or Open MPI was configured without ORTE_WANT_ORTERUN_PREFIX_BY_DEFAULT), 
@@ -716,6 +620,66 @@ cleanup:
     return pid;
 }
 
+#endif /*_MSC_VER*/
+
+
+/**
+* Init the module
+ */
+int orte_plm_process_init(void)
+{
+    int rc;
+    HRESULT hres;
+    
+    if (ORTE_SUCCESS != (rc = orte_plm_base_comm_start())) {
+        ORTE_ERROR_LOG(rc);
+    }
+
+#ifdef _MSC_VER
+    /* Initialize COM for WMI */
+    hres =  CoInitializeEx(0, COINIT_APARTMENTTHREADED); 
+    if (FAILED(hres)) {
+        opal_output(0, "Failed to initialize COM library. Error code = %d \n", hres);
+        return ORTE_ERROR;
+    }
+
+    /* Set general COM security levels. */
+    hres =  CoInitializeSecurity(NULL, 
+                                 -1,                          /* COM authentication */ 
+                                 NULL,                        /* Authentication services */ 
+                                 NULL,                        /* Reserved */ 
+                                 RPC_C_AUTHN_LEVEL_CONNECT,   /* Default authentication */  
+                                 RPC_C_IMP_LEVEL_IMPERSONATE, /* Default Impersonation */  
+                                 NULL,                        /* Authentication info */ 
+                                 EOAC_NONE,                   /* Additional capabilities */  
+                                 NULL                         /* Reserved */ 
+                                );
+
+    if (FAILED(hres)) {     
+        opal_output(0, "Failed to initialize security. Error code = %d \n",hres);
+        CoUninitialize();
+        return ORTE_ERROR;
+    }
+
+    /* Obtain the initial locator to WMI. */ 
+    hres = CoCreateInstance(CLSID_WbemLocator,
+                            0,
+                            CLSCTX_INPROC_SERVER, 
+                            IID_IWbemLocator, (LPVOID *) &pLoc);
+ 
+    if (FAILED(hres)) {   
+        opal_output(0,"Failed to create IWbemLocator object. Err code = %d \n", hres);
+        CoUninitialize();
+        return ORTE_ERROR;
+    }
+    
+    SecureZeroMemory(user_name, sizeof(user_name));
+    SecureZeroMemory(user_password, sizeof(user_password));
+    
+#endif /*_MSC_VER*/
+    
+    return rc;
+}
 
 
 /**
@@ -1001,10 +965,9 @@ static void orte_plm_process_wait_daemon(pid_t pid, int status, void* cbdata)
  * you encounter an error so that orterun will be woken up and
  * the job can cleanly terminate
  */
-int orte_plm_process_launch(orte_job_t *jdata)
+static int orte_plm_process_launch(orte_job_t *jdata)
 {
     orte_job_map_t *map = NULL;
-    int node_name_index2;
     int proc_vpid_index;
     int local_exec_index;
     char *vpid_string = NULL;
@@ -1018,8 +981,9 @@ int orte_plm_process_launch(orte_job_t *jdata)
     orte_app_context_t **apps;
     orte_node_t **nodes;
     orte_std_cntr_t nnode;
-    
-    if (mca_plm_process_component.timing) {
+    orte_job_state_t job_state = ORTE_JOB_NEVER_LAUNCHED;
+
+    if (orte_timing) {
         if (0 != gettimeofday(&joblaunchstart, NULL)) {
             opal_output(0, "plm_process: could not obtain start time");
             joblaunchstart.tv_sec = 0;
@@ -1027,22 +991,16 @@ int orte_plm_process_launch(orte_job_t *jdata)
         }        
     }
     
-    /* create a jobid for this job */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_create_jobid(&jdata->jobid))) {
+    /* setup the job */
+    if (ORTE_SUCCESS != (rc = orte_plm_base_setup_job(jdata))) {
         ORTE_ERROR_LOG(rc);
-        return rc;
+        goto cleanup;
     }
     
     OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
                          "%s plm:process: launching job %s",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          ORTE_JOBID_PRINT(jdata->jobid)));
-    
-    /* setup the job */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_setup_job(jdata))) {
-        ORTE_ERROR_LOG(rc);
-        goto cleanup;
-    }
     
     /* set the active jobid */
     active_job = jdata->jobid;
@@ -1120,7 +1078,7 @@ int orte_plm_process_launch(orte_job_t *jdata)
     orte_plm_base_orted_append_basic_args(&argc, &argv,
                                           "env",
                                           &proc_vpid_index,
-                                          &node_name_index2);
+                                          false, NULL);
     
     if (0 < opal_output_get_verbosity(orte_plm_globals.output)) {
         param = opal_argv_join(argv, ' ');
@@ -1164,6 +1122,9 @@ int orte_plm_process_launch(orte_job_t *jdata)
     lib_base = opal_basename(opal_install_dirs.libdir);
     bin_base = opal_basename(opal_install_dirs.bindir);
 
+    /* set the job state to indicate we attempted to launch */
+    job_state = ORTE_JOB_STATE_FAILED_TO_START;
+    
     /*
      * Iterate through each of the nodes
      */
@@ -1340,8 +1301,12 @@ int orte_plm_process_launch(orte_job_t *jdata)
                 if (NULL != param) free(param);
             }
             
+#ifdef _MSC_VER
             /* launch remote process */
             pid = wmi_launch_child(prefix_dir, nodes[nnode]->name, argc, exec_argv);
+#else
+            pid = _spawnve( _P_NOWAIT, exec_path, exec_argv, env);
+#endif
 
             if (pid < 0) {
                 failed_launch = true;
@@ -1352,7 +1317,7 @@ int orte_plm_process_launch(orte_job_t *jdata)
             nodes[nnode]->daemon->state = ORTE_PROC_STATE_LAUNCHED;
             OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
                                  "%s plm:process: daemon launched (pid %d on %s)\n",
-                                 RTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                  pid, nodes[nnode]->name));
         
             OPAL_THREAD_LOCK(&mca_plm_process_component.lock);
@@ -1409,44 +1374,29 @@ launch_apps:
 
     /* check for failed launch - if so, force terminate */
     if( failed_launch ) {
-        orte_plm_base_launch_failed(jdata->jobid, -1, ORTE_ERROR_DEFAULT_EXIT_CODE, ORTE_JOB_STATE_FAILED_TO_START);
+        orte_plm_base_launch_failed(jdata->jobid, -1, ORTE_ERROR_DEFAULT_EXIT_CODE, job_state);
     }
 
     return rc;
 }
 
-
-/**
- * Terminate all processes for a given job
- */
-int orte_plm_process_terminate_job(orte_jobid_t jobid)
-{
-    int rc;
-    
-    /* order them to kill their local procs for this job */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_kill_local_procs(jobid))) {
-        ORTE_ERROR_LOG(rc);
-    }
-    
-    return rc;
-}
 
 /**
 * Terminate the orteds for a given job
  */
-int orte_plm_process_terminate_orteds(void)
+static int orte_plm_process_terminate_orteds(void)
 {
     int rc;
     
     /* now tell them to die! */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_EXIT_WITH_REPLY_CMD))) {
+    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_EXIT_CMD))) {
         ORTE_ERROR_LOG(rc);
     }
     
     return rc;
 }
 
-int orte_plm_process_signal_job(orte_jobid_t jobid, int32_t signal)
+static int orte_plm_process_signal_job(orte_jobid_t jobid, int32_t signal)
 {
     int rc;
     
@@ -1462,6 +1412,7 @@ int orte_plm_process_finalize(void)
 {
     int rc;
 
+#ifdef _MSC_VER
     /* release the locator and service objects*/
     if(NULL!=pLoc) {
         pLoc->Release();
@@ -1476,6 +1427,7 @@ int orte_plm_process_finalize(void)
     }
 
     CoUninitialize();
+#endif
     
     /* cleanup any pending recvs */
     if (ORTE_SUCCESS != (rc = orte_plm_base_comm_stop())) {
@@ -1489,7 +1441,7 @@ int orte_plm_process_finalize(void)
  * Handle threading issues.
  */
 
-#if OMPI_HAVE_POSIX_THREADS && OMPI_THREADS_HAVE_DIFFERENT_PIDS && OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_HAVE_POSIX_THREADS && OPAL_THREADS_HAVE_DIFFERENT_PIDS && OPAL_ENABLE_PROGRESS_THREADS
 
 struct orte_plm_process_stack_t {
     opal_condition_t cond;

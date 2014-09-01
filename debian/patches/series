@@ -1,6 +1,18 @@
+ompi_autogen_sh.patch
 build_hurd
-#manpage_macros
-arm_support
-missinglib.diff
-
 manpage_macros
+# ARM support is incorporated upstream
+#arm_support
+# Link fix is obsolete, since we do not ship .la files anymore
+#openmpi-link-fix
+#configure_arm_fix.patch
+# 658600: Regression of bug 531522
+#fix-fakeroot-execution.patch
+arm_detection.diff
+fix-bashims.diff
+fix-testsuite-compile
+mips-detection.diff
+mips-support-upstream-1.7.3.diff
+mips-support-fix.diff
+basic-arm64-support.diff
+ppc64el-support.patch

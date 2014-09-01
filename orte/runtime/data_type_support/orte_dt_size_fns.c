@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2005 The Trustees of Indiana University.
+ * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -15,14 +15,19 @@
  */
 
 #include "orte_config.h"
-#include "orte/constants.h"
-#include "orte/types.h"
 
+#ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
+#endif
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
 
 #include "opal/util/argv.h"
 
 #include "opal/dss/dss.h"
+#include "orte/constants.h"
+#include "orte/types.h"
 #include "orte/mca/plm/plm_types.h"
 #include "orte/mca/errmgr/errmgr.h"
 
@@ -125,7 +130,7 @@ int orte_dt_size_job(size_t *size, orte_job_t *src, opal_data_type_t type)
         }
     }
 
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     if (NULL != src->ckpt_snapshot_ref) {
         *size += strlen(src->ckpt_snapshot_ref);
     }
@@ -184,7 +189,7 @@ int orte_dt_size_proc(size_t *size, orte_proc_t *src, opal_data_type_t type)
         *size += strlen(src->slot_list);
     }
     
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     if (NULL != src->ckpt_snapshot_ref) {
         *size += strlen(src->ckpt_snapshot_ref);
     }
@@ -227,6 +232,8 @@ int orte_dt_size_app_context(size_t *size, orte_app_context_t *src, opal_data_ty
         *size += strlen(src->add_hostfile);  /* add_hostfile name */
     }
     
+    *size += opal_argv_len(src->add_host);
+
     *size += opal_argv_len(src->dash_host);
     
     if (NULL != src->prefix_dir) {

@@ -12,6 +12,9 @@
  * Copyright (c) 2006      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -28,15 +31,15 @@
 
 #include "opal/constants.h"
 #include "opal/runtime/opal.h"
-#include "opal/util/output.h"
-#include "opal/util/show_help.h"
+#include "opal/datatype/opal_datatype.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/threads/mutex.h"
 #include "opal/mca/paffinity/base/base.h"
+#include "opal/mca/shmem/base/base.h"
 
 int opal_register_params(void)
 {
-    int value;
+    int ret;
 
     /*
      * This string is going to be used in opal/util/stacktrace.c
@@ -76,7 +79,20 @@ int opal_register_params(void)
         free(string);
     }
 
-#if OMPI_ENABLE_DEBUG
+    {
+        int j;
+
+        mca_base_param_reg_int_name("opal", "profile", 
+                                    "Set to non-zero to profile component selections",
+                                    false, false, (int)false, &j);
+        opal_profile = OPAL_INT_TO_BOOL(j);
+
+        mca_base_param_reg_string_name("opal", "profile_file", 
+                                       "Name of the file containing the cluster configuration information",
+                                       false, false, NULL, &opal_profile_file);
+    }
+    
+#if OPAL_ENABLE_DEBUG
 
 
     mca_base_param_reg_int_name("opal", "progress_debug", 
@@ -84,6 +100,7 @@ int opal_register_params(void)
                                 false, false, 0, NULL);
 
     {
+        int value;
         mca_base_param_reg_int_name("opal", "debug_locks",
                                     "Debug mutex usage within Open MPI.  On a "
                                     "non-threaded build, this enables integer counters and "
@@ -92,32 +109,17 @@ int opal_register_params(void)
         if (value) opal_mutex_check_locks = true;
     }
 #endif
+    /* The ddt engine has a few parameters */
+    ret = opal_datatype_register_params();
+    if (OPAL_SUCCESS != ret) {
+        return ret;
+    }
 
-    /*
-     * Do we want the "warning: your mmap file is on NFS!" message?  Per a
-     * thread on the OMPI devel list
-     * (http://www.open-mpi.org/community/lists/devel/2011/12/10054.php),
-     * on some systems, it doesn't seem to matter.  But per older threads,
-     * it definitely does matter on some systems.  Perhaps newer kernels
-     * are smarter about this kind of stuff...?  Regardless, we should
-     * provide the ability to turn off this message for systems where the
-     * effect doesn't matter.
-     *
-     * v1.4.x-specific note: the MCA param name is "shmem_mmap_...",
-     * where "shmem" is not a framework that exists in the v1.4
-     * series.  This parameter was added right before 1.4.5, and at a
-     * similar time as 1.5.5 (where the "shmem" framework *does*
-     * exist).  The idea was to have a consistent MCA param name
-     * starting with v1.4.5.  Hence, we put a slightly non-sensiscal
-     * name here in v1.4.x so that we'd have a correct/good name
-     * moving forward.
-     */
-    mca_base_param_reg_int_name("shmem",
-                                "mmap_enable_nfs_warning", 
-                                "Enable the warning emitted when Open MPI detects that its shared memory backing file is located on a network filesystem (1 = enabled, 0 = disabled).",
-                                false, false,
-                                (int)true, &value);
-    opal_mmap_on_nfs_warning = OPAL_INT_TO_BOOL(value);
+    /* shmem base also has a few parameters */
+    ret = opal_shmem_base_register_params();
+    if (OPAL_SUCCESS != ret) {
+        return ret;
+    }
 
     /* Paffinity base also has some parameters */
     return opal_paffinity_base_register_params();

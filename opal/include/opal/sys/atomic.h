@@ -56,16 +56,16 @@
 /* do some quick #define cleanup in cases where we are doing
    testing... */
 #ifdef OMPI_DISABLE_INLINE_ASM
-#undef OMPI_C_GCC_INLINE_ASSEMBLY
-#define OMPI_C_GCC_INLINE_ASSEMBLY 0
+#undef OPAL_C_GCC_INLINE_ASSEMBLY
+#define OPAL_C_GCC_INLINE_ASSEMBLY 0
 #undef OMPI_CXX_GCC_INLINE_ASSEMBLY
 #define OMPI_CXX_GCC_INLINE_ASSEMBLY 0
-#undef OMPI_C_DEC_INLINE_ASSEMBLY
-#define OMPI_C_DEC_INLINE_ASSEMBLY 0
+#undef OPAL_C_DEC_INLINE_ASSEMBLY
+#define OPAL_C_DEC_INLINE_ASSEMBLY 0
 #undef OMPI_CXX_DEC_INLINE_ASSEMBLY
 #define OMPI_CXX_DEC_INLINE_ASSEMBLY 0
-#undef OMPI_C_XLC_INLINE_ASSEMBLY
-#define OMPI_C_XLC_INLINE_ASSEMBLY 0
+#undef OPAL_C_XLC_INLINE_ASSEMBLY
+#define OPAL_C_XLC_INLINE_ASSEMBLY 0
 #undef OMPI_CXX_XLC_INLINE_ASSEMBLY
 #define OMPI_CXX_XLC_INLINE_ASSEMBLY 0
 #endif
@@ -78,15 +78,13 @@
 #define OMPI_DEC_INLINE_ASSEMBLY OMPI_CXX_DEC_INLINE_ASSEMBLY
 #define OMPI_XLC_INLINE_ASSEMBLY OMPI_CXX_XLC_INLINE_ASSEMBLY
 #else
-#define OMPI_GCC_INLINE_ASSEMBLY OMPI_C_GCC_INLINE_ASSEMBLY
-#define OMPI_DEC_INLINE_ASSEMBLY OMPI_C_DEC_INLINE_ASSEMBLY
-#define OMPI_XLC_INLINE_ASSEMBLY OMPI_C_XLC_INLINE_ASSEMBLY
+#define OMPI_GCC_INLINE_ASSEMBLY OPAL_C_GCC_INLINE_ASSEMBLY
+#define OMPI_DEC_INLINE_ASSEMBLY OPAL_C_DEC_INLINE_ASSEMBLY
+#define OMPI_XLC_INLINE_ASSEMBLY OPAL_C_XLC_INLINE_ASSEMBLY
 #endif
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 /**********************************************************************
  *
  * Data structures for atomic ops
@@ -141,28 +139,30 @@ typedef struct opal_atomic_lock_t opal_atomic_lock_t;
  *********************************************************************/
 #if defined(DOXYGEN)
 /* don't include system-level gorp when generating doxygen files */ 
-#elif OMPI_ASSEMBLY_ARCH == OMPI_WINDOWS
+#elif OPAL_ASSEMBLY_ARCH == OMPI_WINDOWS
 /* windows first, as they have API-level primitives for this stuff */
 #include "opal/sys/win32/atomic.h"
-#elif OMPI_ASSEMBLY_ARCH == OMPI_ALPHA
+#elif OPAL_ASSEMBLY_ARCH == OMPI_ALPHA
 #include "opal/sys/alpha/atomic.h"
-#elif OMPI_ASSEMBLY_ARCH == OMPI_AMD64
+#elif OPAL_ASSEMBLY_ARCH == OMPI_AMD64
 #include "opal/sys/amd64/atomic.h"
-#elif OMPI_ASSEMBLY_ARCH == OMPI_IA32
+#elif OPAL_ASSEMBLY_ARCH == OMPI_ARM
+#include "opal/sys/arm/atomic.h"
+#elif OPAL_ASSEMBLY_ARCH == OMPI_IA32
 #include "opal/sys/ia32/atomic.h"
-#elif OMPI_ASSEMBLY_ARCH == OMPI_IA64
+#elif OPAL_ASSEMBLY_ARCH == OMPI_IA64
 #include "opal/sys/ia64/atomic.h"
-#elif OMPI_ASSEMBLY_ARCH == OMPI_MIPS
+#elif OPAL_ASSEMBLY_ARCH == OMPI_MIPS
 #include "opal/sys/mips/atomic.h"
-#elif OMPI_ASSEMBLY_ARCH == OMPI_POWERPC32
+#elif OPAL_ASSEMBLY_ARCH == OMPI_POWERPC32
 #include "opal/sys/powerpc/atomic.h"
-#elif OMPI_ASSEMBLY_ARCH == OMPI_POWERPC64
+#elif OPAL_ASSEMBLY_ARCH == OMPI_POWERPC64
 #include "opal/sys/powerpc/atomic.h"
-#elif OMPI_ASSEMBLY_ARCH == OMPI_SPARC
+#elif OPAL_ASSEMBLY_ARCH == OMPI_SPARC
 #include "opal/sys/sparc/atomic.h"
-#elif OMPI_ASSEMBLY_ARCH == OMPI_SPARCV9_32
+#elif OPAL_ASSEMBLY_ARCH == OMPI_SPARCV9_32
 #include "opal/sys/sparcv9/atomic.h"
-#elif OMPI_ASSEMBLY_ARCH == OMPI_SPARCV9_64
+#elif OPAL_ASSEMBLY_ARCH == OMPI_SPARCV9_64
 #include "opal/sys/sparcv9/atomic.h"
 #endif
 
@@ -450,7 +450,7 @@ int64_t opal_atomic_sub_64(volatile int64_t *addr, int64_t delta);
  *  interface and can catch type errors.  When not in debug mode,
  * just make it a macro, so that there's no performance penalty
  */
-#if defined(DOXYGEN) || OMPI_ENABLE_DEBUG
+#if defined(DOXYGEN) || OPAL_ENABLE_DEBUG
 static inline size_t
 opal_atomic_add_size_t(volatile size_t *addr, int delta)
 {
@@ -521,8 +521,8 @@ static inline int opal_atomic_cmpset_rel_ptr(volatile void* addr,
  * See opal_atomic_cmpset_* for pseudo-code.
  */
 #define opal_atomic_cmpset( ADDR, OLDVAL, NEWVAL )                  \
-   opal_atomic_cmpset_xx( (volatile void*)(ADDR), (int64_t)(OLDVAL), \
-                          (int64_t)(NEWVAL), sizeof(*(ADDR)) )
+   opal_atomic_cmpset_xx( (volatile void*)(ADDR), (intptr_t)(OLDVAL), \
+                          (intptr_t)(NEWVAL), sizeof(*(ADDR)) )
 
 /**
  * Atomic compare and set of pointer with acquire semantics. This
@@ -616,8 +616,6 @@ static inline int64_t opal_atomic_sub_ptr( volatile void* addr, void* delta );
  *********************************************************************/
 #include "opal/sys/atomic_impl.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OPAL_SYS_ATOMIC_H */

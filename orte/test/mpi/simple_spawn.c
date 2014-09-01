@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include <mpi.h>
 
@@ -52,5 +53,6 @@ printf("%d completed MPI_Init\n", rank);
     }
 
     MPI_Finalize();
+    fprintf(stderr, "%d: exiting\n", pid);
     return 0;
 }

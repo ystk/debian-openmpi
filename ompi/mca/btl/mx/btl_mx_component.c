@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,12 +23,9 @@
 #include "ompi_config.h"
 #include "opal/prefetch.h"
 #include "opal/util/opal_environ.h"
-#include "opal/util/if.h"
-#include "opal/util/argv.h"
 #include "ompi/constants.h"
 
 #include "opal/mca/base/mca_base_param.h"
-#include "orte/mca/errmgr/errmgr.h"
 #include "ompi/runtime/ompi_module_exchange.h"
 #include "ompi/mca/btl/base/btl_base_error.h"
 #include "ompi/mca/common/mx/common_mx.h"
@@ -42,6 +40,11 @@
 #include "mx_internals/mx__driver_interface.h"
 #endif  /* MX_HAVE_MAPPER_STATE */
 
+static int mca_btl_mx_component_register(void);
+static int mca_btl_mx_component_open(void);
+static int mca_btl_mx_component_close(void);
+
+
 mca_btl_mx_component_t mca_btl_mx_component = {
     {
         /* First, the mca_base_component_t struct containing meta information
@@ -55,7 +58,9 @@ mca_btl_mx_component_t mca_btl_mx_component = {
             OMPI_MINOR_VERSION,  /* MCA component minor version */
             OMPI_RELEASE_VERSION,  /* MCA component release version */
             mca_btl_mx_component_open,  /* component open */
-            mca_btl_mx_component_close  /* component close */
+            mca_btl_mx_component_close,  /* component close */
+            NULL, /* component query */
+            mca_btl_mx_component_register, /* component register */
         },
         {
             /* The component is checkpoint ready */
@@ -67,20 +72,9 @@ mca_btl_mx_component_t mca_btl_mx_component = {
     }
 };
 
-/*
- *  Called by MCA framework to open the component, registers
- *  component parameters.
- */
 
-int mca_btl_mx_component_open(void)
+static int mca_btl_mx_component_register(void)
 {
-    /* initialize state */
-    mca_btl_mx_component.mx_num_btls = 0;
-    mca_btl_mx_component.mx_btls = NULL;
-    mca_btl_mx_component.mx_use_unexpected = 0;
-
-    /* initialize objects */ 
-    OBJ_CONSTRUCT(&mca_btl_mx_component.mx_procs, opal_list_t);
     mca_base_param_reg_int( (mca_base_component_t*)&mca_btl_mx_component, "max_btls",
                             "Maximum number of accepted Myrinet cards",
                             false, false, 8, &mca_btl_mx_component.mx_max_btls );
@@ -167,6 +161,24 @@ int mca_btl_mx_component_open(void)
     mca_btl_base_param_register(&mca_btl_mx_component.super.btl_version,
                                 &mca_btl_mx_module.super);
 
+    return OMPI_SUCCESS;
+}
+
+
+/*
+ *  Called by MCA framework to open the component, registers
+ *  component parameters.
+ */
+
+static int mca_btl_mx_component_open(void)
+{
+    /* initialize state */
+    mca_btl_mx_component.mx_num_btls = 0;
+    mca_btl_mx_component.mx_btls = NULL;
+    mca_btl_mx_component.mx_use_unexpected = 0;
+
+    /* initialize objects */ 
+    OBJ_CONSTRUCT(&mca_btl_mx_component.mx_procs, opal_list_t);
     if( 0 == mca_btl_mx_component.mx_support_sharedmem )
         opal_setenv( "MX_DISABLE_SHMEM", "1", true, &environ );
     if( 0 == mca_btl_mx_component.mx_support_self )
@@ -181,16 +193,18 @@ int mca_btl_mx_component_open(void)
  * component cleanup - sanity checking of queue lengths
  */
 
-int mca_btl_mx_component_close(void)
+static int mca_btl_mx_component_close(void)
 {
-    if( NULL == mca_btl_mx_component.mx_btls )
-        return OMPI_SUCCESS;
-    
+   
     if(OMPI_SUCCESS != ompi_common_mx_finalize()) { 
         return OMPI_ERROR;
     }
 
+    if( NULL == mca_btl_mx_component.mx_btls )
+        return OMPI_SUCCESS;
+
     /* release resources */
+    OBJ_DESTRUCT(&mca_btl_mx_component.mx_procs);
     OBJ_DESTRUCT(&mca_btl_mx_component.mx_send_eager_frags);
     OBJ_DESTRUCT(&mca_btl_mx_component.mx_send_user_frags);
     OBJ_DESTRUCT(&mca_btl_mx_component.mx_procs);
@@ -347,7 +361,7 @@ static mca_btl_mx_module_t* mca_btl_mx_create(uint32_t board_num)
 
     mx_btl = malloc(sizeof(mca_btl_mx_module_t));
     if( NULL == mx_btl ) {
-        opal_output( 0, "mca_btl_mx_init: unable to allocate %d bytes of memory\n",
+        opal_output( 0, "mca_btl_mx_init: unable to allocate %lu bytes of memory\n",
                      sizeof(mca_btl_mx_module_t) );
         mx_close_endpoint(mx_endpoint);
         return NULL;
@@ -421,20 +435,6 @@ mca_btl_base_module_t** mca_btl_mx_component_init(int *num_btl_modules,
 
     *num_btl_modules = 0;
 
-    /**
-     * As the MX MTL get initialized before the MX BTL it will call the
-     * mx_init and the environment variables set by the BTL will be useless.
-     * Closing the MX will force the next call to mx_init to take these
-     * environment variables into account.
-     */
-    /*(void)ompi_common_mx_finalize();*/
-
-    /* set the MX error handle to always return. This function is the only MX function
-     * allowed to be called before mx_init in order to make sure that if the MX is not
-     * up and running the MX library does not exit the application.
-     */
-    mx_set_error_handler(MX_ERRORS_RETURN);
-
     /* First check if MX is available ... */
     if( OMPI_SUCCESS != ompi_common_mx_initialize() ) { 
         ompi_modex_send(&mca_btl_mx_component.super.btl_version, NULL, 0);
@@ -470,9 +470,9 @@ mca_btl_base_module_t** mca_btl_mx_component_init(int *num_btl_modules,
 
     ompi_free_list_init_new( &mca_btl_mx_component.mx_send_eager_frags,
                          sizeof(mca_btl_mx_frag_t) + mca_btl_mx_module.super.btl_eager_limit,
-                         CACHE_LINE_SIZE,
+                         opal_cache_line_size,
                          OBJ_CLASS(mca_btl_mx_frag_t),
-                         0,CACHE_LINE_SIZE,
+                         0,opal_cache_line_size,
                          mca_btl_mx_component.mx_free_list_num,
                          mca_btl_mx_component.mx_free_list_max,
                          mca_btl_mx_component.mx_free_list_inc,
@@ -480,9 +480,9 @@ mca_btl_base_module_t** mca_btl_mx_component_init(int *num_btl_modules,
 
     ompi_free_list_init_new( &mca_btl_mx_component.mx_send_user_frags,
                          sizeof(mca_btl_mx_frag_t),
-                         CACHE_LINE_SIZE,
+                         opal_cache_line_size,
                          OBJ_CLASS(mca_btl_mx_frag_t),
-                         0,CACHE_LINE_SIZE,
+                         0,opal_cache_line_size,
                          mca_btl_mx_component.mx_free_list_num,
                          mca_btl_mx_component.mx_free_list_max,
                          mca_btl_mx_component.mx_free_list_inc,
@@ -525,7 +525,7 @@ mca_btl_base_module_t** mca_btl_mx_component_init(int *num_btl_modules,
         }
         mx_addrs[count].unique_network_id = mx_btl->mx_unique_network_id;
 
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
         BTL_MX_ADDR_HTON(mx_addrs[count]);
 #endif
         mca_btl_mx_component.mx_btls[count] = mx_btl;

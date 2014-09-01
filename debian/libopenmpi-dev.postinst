@@ -3,7 +3,7 @@
 set -e
 
 update-alternatives \
-	--install /usr/include/mpi mpi /usr/lib/openmpi/include 40 \
+	--install /usr/include/mpi mpi /usr/lib/openmpi/include 50 \
 	--slave /usr/lib/libmpi.so libmpi.so /usr/lib/openmpi/lib/libmpi.so \
 	--slave /usr/lib/libmpi++.so libmpi++.so /usr/lib/openmpi/lib/libmpi_cxx.so \
 	--slave /usr/lib/libmpif77.so libmpif77.so /usr/lib/openmpi/lib/libmpi_f77.so \

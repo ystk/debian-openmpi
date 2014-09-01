@@ -18,7 +18,6 @@
 
 #include "ompi_config.h"
 
-#include "opal/class/opal_hash_table.h"
 #include "orte/util/name_fns.h"
 #include "ompi/runtime/ompi_module_exchange.h"
 
@@ -32,16 +31,16 @@ OBJ_CLASS_INSTANCE(mca_btl_mx_proc_t,
         opal_list_item_t, mca_btl_mx_proc_construct, 
         mca_btl_mx_proc_destruct);
 
-void mca_btl_mx_proc_construct(mca_btl_mx_proc_t* proc)
+void mca_btl_mx_proc_construct(mca_btl_mx_proc_t* mx_proc)
 {
-    proc->proc_ompi           = 0;
-    proc->mx_peers_count      = 0;
-    proc->mx_peers            = NULL;
-    proc->mx_routing          = NULL;
-    OBJ_CONSTRUCT(&proc->proc_lock, opal_mutex_t);
+    mx_proc->proc_ompi           = 0;
+    mx_proc->mx_peers_count      = 0;
+    mx_proc->mx_peers            = NULL;
+    mx_proc->mx_routing          = NULL;
+    OBJ_CONSTRUCT(&mx_proc->proc_lock, opal_mutex_t);
     /* add to list of all proc instance */
     OPAL_THREAD_LOCK(&mca_btl_mx_component.mx_lock);
-    opal_list_append(&mca_btl_mx_component.mx_procs, &proc->super);
+    opal_list_append(&mca_btl_mx_component.mx_procs, &mx_proc->super);
     OPAL_THREAD_UNLOCK(&mca_btl_mx_component.mx_lock);
 }
 
@@ -49,22 +48,23 @@ void mca_btl_mx_proc_construct(mca_btl_mx_proc_t* proc)
  * Cleanup MX proc instance
  */
 
-void mca_btl_mx_proc_destruct(mca_btl_mx_proc_t* proc)
+void mca_btl_mx_proc_destruct(mca_btl_mx_proc_t* mx_proc)
 {
     /* remove from list of all proc instances */
     OPAL_THREAD_LOCK(&mca_btl_mx_component.mx_lock);
-    opal_list_remove_item(&mca_btl_mx_component.mx_procs, &proc->super);
+    opal_list_remove_item(&mca_btl_mx_component.mx_procs, &mx_proc->super);
     OPAL_THREAD_UNLOCK(&mca_btl_mx_component.mx_lock);
 
     /* release resources */
-    if( NULL != proc->mx_peers ) {
-        free(proc->mx_peers);
-        proc->mx_peers = NULL;
+    if( NULL != mx_proc->mx_peers ) {
+        free(mx_proc->mx_peers);
+        mx_proc->mx_peers = NULL;
     }
-    if( NULL != proc->mx_routing ) {
-        free(proc->mx_routing);
-	proc->mx_routing = NULL;
+    if( NULL != mx_proc->mx_routing ) {
+        free(mx_proc->mx_routing);
+        mx_proc->mx_routing = NULL;
     }
+    OBJ_DESTRUCT(&mx_proc->proc_lock);
 }
 
 
@@ -144,7 +144,7 @@ mca_btl_mx_proc_t* mca_btl_mx_proc_create(ompi_proc_t* ompi_proc)
 
     for( i = 0; i < mx_peers_count; i++ ) {
         mca_btl_mx_module_t* mx_btl;
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
         BTL_MX_ADDR_NTOH(mx_peers[rc]);
 #endif
 	for( j = 0; j < mca_btl_mx_component.mx_num_btls; j++ ) {

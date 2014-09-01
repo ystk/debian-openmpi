@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2006 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -36,7 +37,7 @@ int ompi_request_default_wait(
 
     ompi_request_wait_completion(req);
 
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     OMPI_CRCP_REQUEST_COMPLETE(req);
 #endif
         
@@ -51,7 +52,7 @@ int ompi_request_default_wait(
            3.2.5, p.22 */
         status->MPI_TAG    = req->req_status.MPI_TAG;
         status->MPI_SOURCE = req->req_status.MPI_SOURCE;
-        status->_count     = req->req_status._count;
+        OMPI_STATUS_SET_COUNT(&status->_ucount, &req->req_status._ucount);
         status->_cancelled = req->req_status._cancelled;
     }
     if( req->req_persistent ) {
@@ -81,7 +82,7 @@ int ompi_request_default_wait_any(
     int *index,
     ompi_status_public_t * status)
 {
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     int c;
 #endif
     size_t i=0, num_requests_null_inactive=0;
@@ -90,7 +91,7 @@ int ompi_request_default_wait_any(
     ompi_request_t **rptr=NULL;
     ompi_request_t *request=NULL;
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     /* poll for completion */
     OPAL_THREAD_ADD32(&opal_progress_thread_count,1);
     for (c = 0; completed < 0 && c < opal_progress_spin_count; c++) {
@@ -157,14 +158,14 @@ int ompi_request_default_wait_any(
     ompi_request_waiting--;
     OPAL_THREAD_UNLOCK(&ompi_request_lock);
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
 finished:
-#endif  /* OMPI_ENABLE_PROGRESS_THREADS */
+#endif  /* OPAL_ENABLE_PROGRESS_THREADS */
 
     if(num_requests_null_inactive == count) {
         *index = MPI_UNDEFINED;
         if (MPI_STATUS_IGNORE != status) {
-            *status = ompi_status_empty;
+            OMPI_STATUS_SET(status, &ompi_status_empty);
         }
     } else {
         assert( true == request->req_complete );
@@ -177,7 +178,7 @@ finished:
             /* Do *NOT* set status->MPI_ERROR here!  See MPI-1.1 doc,
                sec 3.2.5, p.22 */
             int old_error = status->MPI_ERROR;
-            *status = request->req_status;
+            OMPI_STATUS_SET(status, &request->req_status);
             status->MPI_ERROR = old_error;
         }
         rc = request->req_status.MPI_ERROR;
@@ -193,7 +194,7 @@ finished:
         *index = completed;
     }
 
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     if( opal_cr_is_enabled) {
         rptr = requests;
         for (i = 0; i < count; i++, rptr++) {
@@ -237,7 +238,7 @@ int ompi_request_default_wait_all( size_t count,
          */
         OPAL_THREAD_LOCK(&ompi_request_lock);
         ompi_request_waiting++;
-#if OMPI_HAVE_THREAD_SUPPORT
+#if OPAL_HAVE_THREAD_SUPPORT
         /*
          * confirm the status of the pending requests. We have to do it before
          * taking the condition or otherwise we can miss some requests completion (the
@@ -250,7 +251,7 @@ int ompi_request_default_wait_all( size_t count,
                 completed++;
             }
         }
-#endif  /* OMPI_HAVE_THREAD_SUPPORT */
+#endif  /* OPAL_HAVE_THREAD_SUPPORT */
         while( completed != count ) {
             /* check number of pending requests */
             size_t start = ompi_request_completed;
@@ -276,7 +277,7 @@ int ompi_request_default_wait_all( size_t count,
         OPAL_THREAD_UNLOCK(&ompi_request_lock);
     }
 
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     if( opal_cr_is_enabled) {
         rptr = requests;
         for (i = 0; i < count; i++, rptr++) {
@@ -298,7 +299,7 @@ int ompi_request_default_wait_all( size_t count,
                 ompi_grequest_invoke_query(request, &request->req_status);
             }
 
-            statuses[i] = request->req_status;
+            OMPI_STATUS_SET(&statuses[i], &request->req_status);
 
             if( request->req_persistent ) {
                 request->req_state = OMPI_REQUEST_INACTIVE;
@@ -360,7 +361,7 @@ int ompi_request_default_wait_some(
     int * indices,
     ompi_status_public_t * statuses)
 {
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     int c;
 #endif
     size_t i, num_requests_null_inactive=0, num_requests_done=0;
@@ -373,7 +374,7 @@ int ompi_request_default_wait_some(
         indices[i] = 0;
     }
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     /* poll for completion */
     OPAL_THREAD_ADD32(&opal_progress_thread_count,1);
     for (c = 0; c < opal_progress_spin_count; c++) {
@@ -438,11 +439,11 @@ int ompi_request_default_wait_some(
     ompi_request_waiting--;
     OPAL_THREAD_UNLOCK(&ompi_request_lock);
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
 finished:
-#endif  /* OMPI_ENABLE_PROGRESS_THREADS */
+#endif  /* OPAL_ENABLE_PROGRESS_THREADS */
 
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     if( opal_cr_is_enabled) {
         rptr = requests;
         for (i = 0; i < count; i++, rptr++) {
@@ -478,7 +479,7 @@ finished:
                 ompi_grequest_invoke_query(request, &request->req_status);
             }
             if (MPI_STATUSES_IGNORE != statuses) {
-                statuses[i] = request->req_status;
+                OMPI_STATUS_SET(&statuses[i], &request->req_status);
             }
 
             if (MPI_SUCCESS != request->req_status.MPI_ERROR) {

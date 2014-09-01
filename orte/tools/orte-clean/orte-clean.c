@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -53,7 +53,6 @@
 #endif  /* HAVE_PWD_H */
 
 #include "opal/util/cmd_line.h"
-#include "opal/util/argv.h"
 #include "opal/util/opal_environ.h"
 #include "opal/util/os_dirpath.h"
 #include "opal/util/basename.h"
@@ -62,11 +61,9 @@
 
 #include "orte/util/show_help.h"
 #include "orte/util/proc_info.h"
-#include "opal/util/os_path.h"
-#include "orte/util/session_dir.h"
 
 #include "opal/runtime/opal.h"
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
 #include "opal/runtime/opal_cr.h"
 #endif
 #include "orte/runtime/runtime.h"
@@ -130,7 +127,7 @@ main(int argc, char *argv[])
     char *tmp_env_var;
 
     /* This is needed so we can print the help message */
-    if (ORTE_SUCCESS != (ret = opal_init_util())) {
+    if (ORTE_SUCCESS != (ret = opal_init_util(&argc, &argv))) {
         return ret;
     }
 
@@ -138,7 +135,7 @@ main(int argc, char *argv[])
         return ret;
     }
 
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     /* Disable the checkpoint notification routine for this
      * tool. As we will never need to checkpoint this tool.
      * Note: This must happen before opal_init().
@@ -157,10 +154,11 @@ main(int argc, char *argv[])
     opal_setenv(tmp_env_var,
                 "1", true, NULL);
     free(tmp_env_var);
-#endif
+#else
     tmp_env_var = NULL; /* Silence compiler warning */
+#endif
 
-    if (ORTE_SUCCESS != (ret = orte_init(ORTE_TOOL_WITH_NAME))) {
+    if (ORTE_SUCCESS != (ret = orte_init(&argc, &argv, ORTE_PROC_TOOL))) {
         return ret;
     }
 
@@ -406,7 +404,7 @@ void kill_procs(void) {
                     
                 }
                 /* if we are a singleton, check the hnp_pid as well */
-                if (orte_process_info.singleton) {
+                if (ORTE_PROC_IS_SINGLETON) {
                     if (procpid != orte_process_info.hnp_pid) {
                         (void)kill(procpid, SIGKILL);
                     }

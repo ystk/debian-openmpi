@@ -22,8 +22,10 @@
 
 
 #include "orte_config.h"
-#include "orte/constants.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
 #include <assert.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -49,13 +51,14 @@
 
 #include "opal/dss/dss_types.h"
 #include "opal/class/opal_object.h"
+#include "opal/util/output.h"
 #include "opal/class/opal_list.h"
 #include "opal/event/event.h"
 #include "opal/threads/mutex.h"
 #include "opal/threads/condition.h"
 #include "opal/sys/atomic.h"
 
-#include "orte/util/show_help.h"
+#include "orte/constants.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
@@ -76,7 +79,7 @@ static void message_event_destructor(orte_message_event_t *ev)
     if (NULL != ev->buffer) {
         OBJ_RELEASE(ev->buffer);
     }
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if (NULL != ev->file) {
         free(ev->file);
     }
@@ -87,7 +90,7 @@ static void message_event_constructor(orte_message_event_t *ev)
 {
     ev->ev = (opal_event_t*)malloc(sizeof(opal_event_t));
     ev->buffer = OBJ_NEW(opal_buffer_t);
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     ev->file = NULL;
 #endif
 }
@@ -238,7 +241,7 @@ static int register_callback(pid_t pid, orte_wait_fn_t callback,
 static int unregister_callback(pid_t pid);
 void orte_wait_signal_callback(int fd, short event, void *arg);
 static pid_t internal_waitpid(pid_t pid, int *status, int options);
-#if  OMPI_THREADS_HAVE_DIFFERENT_PIDS
+#if  OPAL_THREADS_HAVE_DIFFERENT_PIDS
 static void internal_waitpid_callback(int fd, short event, void *arg);
 #endif
 
@@ -375,7 +378,7 @@ orte_waitpid(pid_t wpid, int *status, int options)
             /* if we have pthreads and progress threads and we are the
                event thread, opal_condition_timedwait won't progress
                anything, so we need to do it. */
-#if OMPI_HAVE_POSIX_THREADS && OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_HAVE_POSIX_THREADS && OPAL_ENABLE_PROGRESS_THREADS
             if (opal_using_threads()) {
                 opal_mutex_unlock(&mutex);
                 opal_event_loop(OPAL_EVLOOP_NONBLOCK);
@@ -402,7 +405,7 @@ orte_waitpid(pid_t wpid, int *status, int options)
                from under it. Yes, it's spinning.  No, we won't spin
                for long. */
 
-            if (!OMPI_HAVE_THREAD_SUPPORT || opal_event_progress_thread()) {
+            if (!OPAL_HAVE_THREAD_SUPPORT || opal_event_progress_thread()) {
                 opal_event_loop(OPAL_EVLOOP_NONBLOCK);
             }
         }
@@ -515,10 +518,10 @@ int orte_wait_event(opal_event_t **event, orte_trigger_event_t *trig,
     trig->channel = p[1];
     
     /* define the event to fire when someone writes to the pipe */
-    opal_event_set(*event, p[0], OPAL_EV_READ, cbfunc, NULL);
+    opal_event_set(*event, p[0], OPAL_EV_READ, cbfunc, trig);
     
-	/* Add it to the active events, without a timeout */
-	opal_event_add(*event, NULL);
+    /* Add it to the active events, without a timeout */
+    opal_event_add(*event, NULL);
 
     /* all done */
     return ORTE_SUCCESS;
@@ -716,7 +719,7 @@ unregister_callback(pid_t pid)
 static pid_t
 internal_waitpid(pid_t pid, int *status, int options)
 {
-#if  OMPI_THREADS_HAVE_DIFFERENT_PIDS
+#if  OPAL_THREADS_HAVE_DIFFERENT_PIDS
     waitpid_callback_data_t data;
     struct timeval tv;
     struct opal_event ev;
@@ -758,7 +761,7 @@ internal_waitpid(pid_t pid, int *status, int options)
 }
 
 
-#if  OMPI_THREADS_HAVE_DIFFERENT_PIDS
+#if  OPAL_THREADS_HAVE_DIFFERENT_PIDS
 static void
 internal_waitpid_callback(int fd, short event, void *arg)
 {

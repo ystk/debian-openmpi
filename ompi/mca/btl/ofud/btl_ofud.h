@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2011 The University of Tennessee and The University
@@ -11,6 +11,8 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Sandia National Laboratories. All rights
  *                         reserved.
+ * Copyright (c) 2011      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Oracle and/or all affliates.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,15 +30,13 @@
    modular arithmetic with it. */
 #define MCA_BTL_UD_NUM_QP 4
 
-/* Standard system includes */
+#include "ompi_config.h"
 #include <sys/types.h>
 #include <infiniband/verbs.h>
 
 /* Open MPI includes */
 #include "opal/class/opal_hash_table.h"
-#include "orte/util/show_help.h"
 #include "ompi/class/ompi_free_list.h"
-#include "ompi/class/ompi_bitmap.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/btl_base_error.h"
 #include "ompi/mca/btl/base/base.h"
@@ -45,9 +45,7 @@
 /* TODO - If I want this to go away, addr_t has to come over here */
 #include "btl_ofud_endpoint.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 
 /**
@@ -59,6 +57,12 @@ struct mca_btl_ud_component_t {
 
     uint32_t max_btls;  /**< Maximum number of BTL modules */
     uint32_t num_btls;  /**< Number of available/initialized BTL modules */
+
+    char* if_include;
+    char** if_include_list;
+    char* if_exclude;
+    char** if_exclude_list;
+    char** if_list;
 
     struct mca_btl_ud_module_t* ud_btls;    /**< array of available BTLs */
 
@@ -92,7 +96,7 @@ typedef mca_btl_base_recv_reg_t mca_btl_ud_recv_reg_t;
  * Profiling variables
  */
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 #define MCA_BTL_UD_ENABLE_PROFILE 0
 #else
 #define MCA_BTL_UD_ENABLE_PROFILE 0
@@ -161,20 +165,6 @@ extern mca_btl_ud_module_t mca_btl_ofud_module;
 
 
 /**
- * Open the component; register UD/IB parameters with the MCA framework
- */
-
-extern int mca_btl_ud_component_open(void);
-
-
-/**
- * Any final cleanup before being unloaded.
- */
-
-extern int mca_btl_ud_component_close(void);
-
-
-/**
  * IB component initialization.
  *
  * @param num_btl_modules (OUT)
@@ -226,7 +216,7 @@ extern int mca_btl_ud_add_procs(struct mca_btl_base_module_t* btl,
                                 size_t nprocs,
                                 struct ompi_proc_t **procs,
                                 struct mca_btl_base_endpoint_t** peers,
-                                ompi_bitmap_t* reachable);
+                                opal_bitmap_t* reachable);
 
 
 /**
@@ -307,7 +297,7 @@ mca_btl_base_descriptor_t* mca_btl_ud_prepare_src(
                                     struct mca_btl_base_module_t* btl,
                                     struct mca_btl_base_endpoint_t* peer,
                                     mca_mpool_base_registration_t* registration,
-                                    struct ompi_convertor_t* convertor,
+                                    struct opal_convertor_t* convertor,
                                     uint8_t order,
                                     size_t reserve,
                                     size_t* size,
@@ -354,7 +344,5 @@ do {                                                                         \
 #define MCA_BTL_UD_SHOW_TIME(var)
 #endif
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif

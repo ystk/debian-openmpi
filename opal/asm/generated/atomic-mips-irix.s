@@ -31,7 +31,7 @@ retry1:
 	bne    $3, $5, done1   
 	or     $2, $6, 0      
 	sc     $2, 0($4)         
-	bne    $2, 1, retry1
+	beqz   $2, retry1
 done1:                 
 	.set reorder          
 
@@ -48,7 +48,7 @@ retry2:
 	bne    $3, $5, done2   
 	or     $2, $6, 0      
 	sc     $2, 0($4)         
-	bne    $2, 1, retry2   
+	beqz   $2, retry2   
 done2:                 
 	sync
 	.set reorder          
@@ -67,7 +67,7 @@ retry3:
 	bne    $3, $5, done3   
 	or     $2, $6, 0      
 	sc     $2, 0($4)         
-	bne    $2, 1, retry3   
+	beqz   $2, retry3   
 done3:                 
 	.set reorder          
 
@@ -84,7 +84,7 @@ retry4:
 	bne    $3, $5, done4   
 	or     $2, $6, 0      
 	scd    $2, 0($4)         
-	bne    $2, 1, retry4   
+	beqz   $2, retry4   
 done4:                 
 	.set reorder          
 
@@ -101,7 +101,7 @@ retry5:
 	bne    $3, $5, done5   
 	or     $2, $6, 0      
 	scd    $2, 0($4)         
-	bne    $2, 1, retry5   
+	beqz   $2, retry5   
 done5:                 
 	.set reorder          
 	sync
@@ -119,7 +119,7 @@ retry6:
 	bne    $3, $5, done6   
 	or     $2, $6, 0      
 	scd    $2, 0($4)         
-	bne    $2, 1, retry6   
+	beqz   $2, retry6   
 done6:                 
 	.set reorder          
 

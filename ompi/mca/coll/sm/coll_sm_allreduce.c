@@ -24,6 +24,7 @@
 #include "ompi/communicator/communicator.h"
 #include "coll_sm.h"
 
+
 /**
  * Shared memory allreduce.
  *
@@ -54,6 +55,6 @@ int mca_coll_sm_allreduce_intra(void *sbuf, void *rbuf, int count,
         ret = mca_coll_sm_reduce_intra(sbuf, rbuf, count, dtype, op, 0, 
                                        comm, module);
     }
-    return (OMPI_SUCCESS == ret) ?
+    return (ret == OMPI_SUCCESS) ?
         mca_coll_sm_bcast_intra(rbuf, count, dtype, 0, comm, module) : ret;
 }

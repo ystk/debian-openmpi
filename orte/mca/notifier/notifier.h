@@ -44,9 +44,25 @@
 
 BEGIN_C_DECLS
 
-/* define priorities - this will eventually be replaced by OPAL_SOS priorities */
-#define ORTE_NOTIFIER_INFRA     LOG_CRIT
-#define ORTE_NOTIFIER_WARNING   LOG_WARNING
+/* The maximum size of any on-stack buffers used in the notifier
+ * so we can try to avoid calling malloc in OUT_OF_RESOURCES conditions.
+ * The code has NOT been auditied for use of malloc, so this still
+ * may fail to get the "OUT_OF_RESOURCE" message out.  Oh Well.
+ */
+#define ORTE_NOTIFIER_MAX_BUF	512
+
+/* define severities - this will eventually be replaced by OPAL_SOS
+   priorities */
+enum {
+    ORTE_NOTIFIER_EMERG  = LOG_EMERG,
+    ORTE_NOTIFIER_ALERT  = LOG_ALERT,
+    ORTE_NOTIFIER_CRIT   = LOG_CRIT,
+    ORTE_NOTIFIER_ERROR  = LOG_ERR,
+    ORTE_NOTIFIER_WARN   = LOG_WARNING,
+    ORTE_NOTIFIER_NOTICE = LOG_NOTICE,
+    ORTE_NOTIFIER_INFO   = LOG_INFO,
+    ORTE_NOTIFIER_DEBUG  = LOG_DEBUG
+};
 
 /*
  * Component functions - all MUST be provided!
@@ -59,10 +75,15 @@ typedef int (*orte_notifier_base_module_init_fn_t)(void);
 typedef void (*orte_notifier_base_module_finalize_fn_t)(void);
 
 /* Log a failure message */
-typedef void (*orte_notifier_base_module_log_fn_t)(int priority, const char *msg, ...);
+typedef void (*orte_notifier_base_module_log_fn_t)(int severity, int errcode, const char *msg, ...)
+    __opal_attribute_format_funcptr__(__printf__, 3, 0);
 
 /* Log a failure that is based upon a show_help message */
-typedef void (*orte_notifier_base_module_log_show_help_fn_t)(int priority, const char *file, const char *topic, ...);
+typedef void (*orte_notifier_base_module_log_show_help_fn_t)(int severity, int errcode, const char *file, const char *topic, ...);
+
+/* Log a failure related to a peer */
+typedef void (*orte_notifier_base_module_log_peer_fn_t)(int severity, int errcode, orte_process_name_t *peer_proc, const char *msg, ...)
+    __opal_attribute_format_funcptr__(__printf__, 4, 0);
 
 /*
  * Ver 1.0
@@ -71,7 +92,8 @@ struct orte_notifier_base_module_1_0_0_t {
     orte_notifier_base_module_init_fn_t             init;
     orte_notifier_base_module_finalize_fn_t         finalize;
     orte_notifier_base_module_log_fn_t              log;
-    orte_notifier_base_module_log_show_help_fn_t    log_help;
+    orte_notifier_base_module_log_show_help_fn_t    help;
+    orte_notifier_base_module_log_peer_fn_t         peer;
 };
 
 typedef struct orte_notifier_base_module_1_0_0_t orte_notifier_base_module_1_0_0_t;

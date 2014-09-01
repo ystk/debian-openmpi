@@ -19,11 +19,14 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/mca/pml/pml.h"
 #include "ompi/memchecker.h"
 #include "ompi/request/request.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Iprobe = PMPI_Iprobe
 #endif
 
@@ -58,6 +61,7 @@ int MPI_Iprobe(int source, int tag, MPI_Comm comm, int *flag, MPI_Status *status
     }
 
     if (MPI_PROC_NULL == source) {
+        *flag = 1;
         if (MPI_STATUS_IGNORE != status) {
             *status = ompi_request_empty.req_status;
             /*

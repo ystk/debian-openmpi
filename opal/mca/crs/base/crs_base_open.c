@@ -18,9 +18,13 @@
 
 #include "opal_config.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
-#include "opal/include/opal/constants.h"
+#include "opal/constants.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
 #include "opal/util/output.h"

@@ -48,6 +48,7 @@ int mca_pml_ob1_start(size_t count, ompi_request_t** requests)
          * completes - and create a new request.
          */
 
+        reuse_old_request = true;
         switch(pml_request->req_ompi.req_state) {
             case OMPI_REQUEST_INACTIVE:
                 if(pml_request->req_pml_complete == true)
@@ -124,7 +125,7 @@ int mca_pml_ob1_start(size_t count, ompi_request_t** requests)
                      * Reset the convertor in case we're dealing with the original
                      * request, which when completed do not reset the convertor.
                      */
-                    ompi_convertor_set_position( &sendreq->req_send.req_base.req_convertor,
+                    opal_convertor_set_position( &sendreq->req_send.req_base.req_convertor,
                                                  &offset );
                 }
                 MCA_PML_OB1_SEND_REQUEST_START(sendreq, rc);

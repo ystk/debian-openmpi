@@ -25,6 +25,8 @@
 #ifndef OPAL_BASENAME_H
 #define OPAL_BASENAME_H
 
+#include "opal_config.h"
+
 BEGIN_C_DECLS
 
 /**
@@ -61,8 +63,10 @@ BEGIN_C_DECLS
  * F: returns "F:"
  *
  * G:\ returns "G:"
+ *
+ * The caller is responsible for freeing the returned string.
  */
-OPAL_DECLSPEC char *opal_basename(const char* filename);
+OPAL_DECLSPEC char *opal_basename(const char* filename) __opal_attribute_malloc__ __opal_attribute_warn_unused_result__;
 
 /**
  * Return the dirname of a filename.
@@ -98,8 +102,10 @@ OPAL_DECLSPEC char *opal_basename(const char* filename);
  * F: returns ""
  *
  * G:\ returns ""
+ *
+ * The caller is responsible for freeing the returned string.
  */
-OPAL_DECLSPEC char *opal_dirname(const char* filename);
+OPAL_DECLSPEC char *opal_dirname(const char* filename) __opal_attribute_malloc__ __opal_attribute_warn_unused_result__;
 
 END_C_DECLS
 

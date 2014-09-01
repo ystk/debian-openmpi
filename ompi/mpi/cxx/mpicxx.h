@@ -12,6 +12,7 @@
 //                         All rights reserved.
 // Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
 // Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
+// Copyright (c) 2011      FUJITSU LIMITED.  All rights reserved.
 // $COPYRIGHT$
 // 
 // Additional copyrights may follow
@@ -27,10 +28,11 @@
 // hasn't included <mpicxx.h> just "for completeness"
 //
 
-#if defined(__cplusplus) || defined(c_plusplus) 
+// We do not include the opal_config.h and may not replace extern "C" {
+#if defined(c_plusplus) || defined(__cplusplus) 
 
 // do not include ompi_config.h.  it will smash free() as a symbol
-#include <mpi.h>
+#include "mpi.h"
 
 // we include all this here so that we escape the silly namespacing issues
 #include <map>
@@ -67,7 +69,7 @@ static const int SEEK_CUR = ompi_stdio_seek_cur;
 static const int SEEK_END = ompi_stdio_seek_end;
 #endif
 
-#ifdef OMPI_HAVE_SYS_SYNCH_H
+#ifdef OPAL_HAVE_SYS_SYNCH_H
 // Solaris threads.h pulls in sys/synch.h which in certain versions 
 // defines LOCK_SHARED.  
 
@@ -191,6 +193,7 @@ namespace MPI {
 #endif
 
   typedef MPI_Aint Aint;
+  typedef MPI_Fint Fint;
   typedef MPI_Offset Offset;
 
 #ifdef OMPI_BUILDING_CXX_BINDINGS_LIBRARY
@@ -300,5 +303,5 @@ namespace MPI {
 #endif
 #endif
 
-#endif // #if defined(__cplusplus) || defined(c_plusplus) 
+#endif // #if defined(c_plusplus) || defined(__cplusplus) 
 #endif // #ifndef MPIPP_H_

@@ -21,7 +21,6 @@
 
 #include <string.h>
 
-#include "orte/util/show_help.h"
 #include "opal/util/argv.h"
 #include "opal/util/if.h"
 
@@ -124,12 +123,12 @@ int orte_ras_base_node_insert(opal_list_t* nodes, orte_job_t *jdata)
                 /* if the node name is different, store it as an alias */
                 if (0 != strcmp(node->name, hnp_node->name)) {
                     /* add to list of aliases for this node - only add if unique */
-                    opal_argv_append_unique_nosize(&hnp_node->alias, node->name);
+                    opal_argv_append_unique_nosize(&hnp_node->alias, node->name, false);
                 }
                 if (NULL != node->alias) {
                     /* now copy over any aliases that are unique */
                     for (i=0; NULL != node->alias[i]; i++) {
-                        opal_argv_append_unique_nosize(&hnp_node->alias, node->alias[i]);
+                        opal_argv_append_unique_nosize(&hnp_node->alias, node->alias[i], false);
                     }
                 }
             }

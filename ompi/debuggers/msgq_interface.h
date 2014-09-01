@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007      Cisco, Inc.  All rights resereved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
@@ -118,14 +118,13 @@
 #ifndef _MPI_INTERFACE_INCLUDED
 #define _MPI_INTERFACE_INCLUDED
 
+#include "ompi_config.h"
 #include <stdio.h>				/* For FILENAME_MAX */
 
 /* No MPI2 support yet */
 #define FOR_MPI2 0
 
-#ifdef	__cplusplus
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /***********************************************************************
  * Version of the interface this header represents 
@@ -692,7 +691,6 @@ extern int mqs_next_new_process (mqs_process *, mqs_process_location *);
 extern int mqs_set_process_identity (mqs_process *, int); 
 #endif
 
-#ifdef	__cplusplus
-}
-#endif
+END_C_DECLS
+
 #endif /* defined (_MPI_INTERFACE_INCLUDED) */

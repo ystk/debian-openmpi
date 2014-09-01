@@ -25,9 +25,7 @@
 #include "ompi/mca/btl/btl.h"
 #include "pml_ob1_hdr.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 typedef enum {
     MCA_PML_OB1_RDMA_PUT,
@@ -43,7 +41,7 @@ struct mca_pml_ob1_rdma_frag_t {
     mca_btl_base_segment_t rdma_segs[MCA_BTL_DES_MAX_SEGMENTS];
     void *rdma_req;
     struct mca_bml_base_endpoint_t* rdma_ep;
-    ompi_convertor_t convertor;
+    opal_convertor_t convertor;
     mca_mpool_base_registration_t* reg;
     uint32_t retries;
 };
@@ -67,8 +65,6 @@ do {                                                            \
 } while(0)
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif
 

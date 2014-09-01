@@ -23,10 +23,10 @@
 #ifndef ALLOCATOR_BASIC_H 
 #define ALLOCATOR_BASIC_H 
 
+#include "ompi_config.h"
 #include <stdlib.h>
 #include <string.h>
 #include "opal/threads/mutex.h"
-#include "opal/class/opal_object.h"
 #include "ompi/class/ompi_free_list.h"
 #include "ompi/mca/allocator/allocator.h"
 
@@ -58,9 +58,7 @@ struct mca_allocator_basic_module_t {
 typedef struct mca_allocator_basic_module_t mca_allocator_basic_module_t;
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /*
  * Component open/cleanup.
@@ -158,9 +156,7 @@ mca_allocator_base_module_t* mca_allocator_basic_component_init(
 
 OMPI_DECLSPEC extern mca_allocator_base_component_t mca_allocator_basic_component;
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* ALLOCATOR_BUCKET_ALLOC_H */
 

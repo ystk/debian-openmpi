@@ -27,20 +27,16 @@
  */
 #include "orte_config.h"
 #include "orte/constants.h"
-#include "orte/types.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 
-#include "orte/mca/rml/rml.h"
-#include "orte/runtime/orte_globals.h"
-#include "orte/util/name_fns.h"
 
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/errmgr/base/base.h"
 #include "orte/mca/errmgr/base/errmgr_private.h"
+#include "orte/util/proc_info.h"
 
 #include "errmgr_default.h"
 
@@ -95,17 +91,18 @@ int orte_errmgr_default_component_close(void)
 
 int orte_errmgr_default_component_query(mca_base_module_t **module, int *priority)
 {
-    /* If we are not an HNP, then don't pick us! */
-    if (!orte_process_info.hnp) {
-        /* don't take me! */
-        *module = NULL;
-        return ORTE_ERROR;
+    /* If we are an HNP or a CM, then pick us! */
+    if (ORTE_PROC_IS_HNP || ORTE_PROC_IS_CM) {
+        /* Return a module (choose an arbitrary, positive priority --
+         it's only relevant compared to other components). */
+        
+        *priority = 100;
+        *module = (mca_base_module_t *)&orte_errmgr_default;
+        return ORTE_SUCCESS;
     }
     
-    /* Return a module (choose an arbitrary, positive priority --
-       it's only relevant compared to other components). */
-
-    *priority = 10;
-    *module = (mca_base_module_t *)&orte_errmgr_default;
-    return ORTE_SUCCESS;
+    /* otherwise, don't take me! */
+    *module = NULL;
+    return ORTE_ERROR;
+    
 }

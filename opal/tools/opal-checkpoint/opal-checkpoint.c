@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2009 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -61,7 +61,6 @@
 #include "opal/util/show_help.h"
 #include "opal/util/opal_environ.h"
 #include "opal/util/output.h"
-#include "opal/util/os_path.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 
@@ -149,7 +148,7 @@ int
 main(int argc, char *argv[])
 {
     int ret, exit_status = OPAL_SUCCESS;
-    char *fname;
+    char *fname = NULL;
     opal_crs_state_type_t cr_state;
 
     /***************
@@ -209,7 +208,7 @@ static int initialize(int argc, char *argv[]) {
      * to ensure installdirs is setup properly
      * before calling mca_base_open();
      */
-    if( OPAL_SUCCESS != (ret = opal_init_util()) ) {
+    if( OPAL_SUCCESS != (ret = opal_init_util(&argc, &argv)) ) {
         return ret;
     }
 
@@ -253,7 +252,7 @@ static int initialize(int argc, char *argv[]) {
     /*
      * Initialize OPAL
      */
-    if (OPAL_SUCCESS != (ret = opal_init())) {
+    if (OPAL_SUCCESS != (ret = opal_init(&argc, &argv))) {
         exit_status = ret;
         goto cleanup;
     }

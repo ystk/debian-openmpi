@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2009 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -27,7 +27,6 @@
 #include "opal/util/output.h"
 #include "opal/mca/base/mca_base_param.h"
 
-#include "opal/util/argv.h"
 #include "opal/util/opal_environ.h"
 
 #include "ompi/mca/crcp/crcp.h"
@@ -46,15 +45,15 @@ static ompi_crcp_base_module_t loc_module = {
     ompi_crcp_bkmrk_module_finalize,
 
     /** PML Wrapper */
-    ompi_crcp_bkmrk_pml_enable,
+    NULL, /* ompi_crcp_bkmrk_pml_enable, */
 
-    ompi_crcp_bkmrk_pml_add_comm,
-    ompi_crcp_bkmrk_pml_del_comm,
+    NULL, /* ompi_crcp_bkmrk_pml_add_comm, */
+    NULL, /* ompi_crcp_bkmrk_pml_del_comm, */
 
     ompi_crcp_bkmrk_pml_add_procs,
     ompi_crcp_bkmrk_pml_del_procs,
 
-    ompi_crcp_bkmrk_pml_progress,
+    NULL, /* ompi_crcp_bkmrk_pml_progress, */
 
     ompi_crcp_bkmrk_pml_iprobe,
     ompi_crcp_bkmrk_pml_probe,

@@ -9,11 +9,12 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2009 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
  * Copyright (c) 2007-2009 Mellanox Technologies.  All rights reserved.
+ * Copyright (c) 2010-2012 Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,7 +27,7 @@
 
 #include "opal/class/opal_list.h"
 #include "opal/event/event.h"
-#include "ompi/mca/pml/pml.h"
+#include "opal/util/output.h"
 #include "ompi/mca/btl/btl.h"
 #include "btl_openib.h"
 #include "btl_openib_frag.h"
@@ -35,6 +36,8 @@
 #include <string.h>
 #include "ompi/mca/btl/base/btl_base_error.h"
 #include "connect/base.h"
+
+#define QP_TX_BATCH_COUNT 64
 
 BEGIN_C_DECLS
 
@@ -132,6 +135,8 @@ typedef struct mca_btl_openib_qp_t {
     struct ibv_qp *lcl_qp;
     uint32_t lcl_psn;
     int32_t  sd_wqe;      /**< number of available send wqe entries */
+    int32_t  sd_wqe_inflight;
+    int wqe_count;
     int users;
     opal_mutex_t lock;
 } mca_btl_openib_qp_t;
@@ -268,6 +273,55 @@ static inline int32_t qp_put_wqe(mca_btl_openib_endpoint_t *ep, const int qp)
 {
     return OPAL_THREAD_ADD32(&ep->qps[qp].qp->sd_wqe, 1);
 }
+
+
+static inline int32_t qp_inc_inflight_wqe(mca_btl_openib_endpoint_t *ep, const int qp, mca_btl_openib_com_frag_t *frag)
+{
+    frag->n_wqes_inflight = 0;
+    return OPAL_THREAD_ADD32(&ep->qps[qp].qp->sd_wqe_inflight, 1);
+}
+
+static inline void qp_inflight_wqe_to_frag(mca_btl_openib_endpoint_t *ep, const int qp, mca_btl_openib_com_frag_t *frag)
+{
+
+    frag->n_wqes_inflight = ep->qps[qp].qp->sd_wqe_inflight;
+    ep->qps[qp].qp->sd_wqe_inflight = 0;
+}
+
+static inline int qp_frag_to_wqe(mca_btl_openib_endpoint_t *ep, const int qp, mca_btl_openib_com_frag_t *frag)
+{
+    int n;
+    n = frag->n_wqes_inflight;
+    OPAL_THREAD_ADD32(&ep->qps[qp].qp->sd_wqe, n);
+    frag->n_wqes_inflight = 0;
+
+    return n;
+}
+
+static inline int qp_need_signal(mca_btl_openib_endpoint_t *ep, const int qp, size_t size, int rdma)
+{
+
+    /* note that size here is payload only */
+    if (ep->qps[qp].qp->sd_wqe <= 0  || 
+            size + sizeof(mca_btl_openib_header_t) + (rdma ? sizeof(mca_btl_openib_footer_t) : 0) > ep->qps[qp].ib_inline_max ||
+             (!BTL_OPENIB_QP_TYPE_PP(qp) && ep->endpoint_btl->qps[qp].u.srq_qp.sd_credits <= 0)) {
+        ep->qps[qp].qp->wqe_count = QP_TX_BATCH_COUNT;
+        return 1;
+    }
+
+    if (0 < --ep->qps[qp].qp->wqe_count) {
+        return 0;
+    }
+
+    ep->qps[qp].qp->wqe_count = QP_TX_BATCH_COUNT;
+    return 1;
+}
+
+static inline void qp_reset_signal_count(mca_btl_openib_endpoint_t *ep, const int qp)
+{
+    ep->qps[qp].qp->wqe_count = QP_TX_BATCH_COUNT;
+}
+
 
 int mca_btl_openib_endpoint_send(mca_btl_base_endpoint_t*,
         mca_btl_openib_send_frag_t*);
@@ -456,10 +510,14 @@ static inline int check_endpoint_state(mca_btl_openib_endpoint_t *ep,
 }
 
 static inline __opal_attribute_always_inline__ int
-ib_send_flags(uint32_t size, mca_btl_openib_endpoint_qp_t *qp)
+ib_send_flags(uint32_t size, mca_btl_openib_endpoint_qp_t *qp, int do_signal)
 {
-    return IBV_SEND_SIGNALED |
-        ((size <= qp->ib_inline_max) ? IBV_SEND_INLINE : 0);
+    if (do_signal) {
+        return IBV_SEND_SIGNALED |
+            ((size <= qp->ib_inline_max) ? IBV_SEND_INLINE : 0);
+    } else {
+        return   ((size <= qp->ib_inline_max) ? IBV_SEND_INLINE : 0);
+    }
 }
 
 static inline int
@@ -474,7 +532,7 @@ acquire_eager_rdma_send_credit(mca_btl_openib_endpoint_t *endpoint)
 }
 
 static inline int post_send(mca_btl_openib_endpoint_t *ep,
-        mca_btl_openib_send_frag_t *frag, const bool rdma)
+        mca_btl_openib_send_frag_t *frag, const bool rdma, int do_signal)
 {
     mca_btl_openib_module_t *openib_btl = ep->endpoint_btl;
     mca_btl_base_segment_t *seg = &to_base_frag(frag)->segment;
@@ -486,7 +544,7 @@ static inline int post_send(mca_btl_openib_endpoint_t *ep,
     sg->length = seg->seg_len + sizeof(mca_btl_openib_header_t) +
         (rdma ? sizeof(mca_btl_openib_footer_t) : 0) + frag->coalesced_length;
 
-    sr_desc->send_flags = ib_send_flags(sg->length, &(ep->qps[qp]));
+    sr_desc->send_flags = ib_send_flags(sg->length, &(ep->qps[qp]), do_signal);
 
     if(ep->nbo)
         BTL_OPENIB_HEADER_HTON(*frag->hdr);
@@ -494,15 +552,17 @@ static inline int post_send(mca_btl_openib_endpoint_t *ep,
     if(rdma) {
         int32_t head;
         mca_btl_openib_footer_t* ftr =
-            (mca_btl_openib_footer_t*)(((char*)frag->hdr) + sg->length -
-                    sizeof(mca_btl_openib_footer_t));
+            (mca_btl_openib_footer_t*)(((char*)frag->hdr) + sg->length +
+                     BTL_OPENIB_FTR_PADDING(sg->length) - sizeof(mca_btl_openib_footer_t));
         sr_desc->opcode = IBV_WR_RDMA_WRITE;
         MCA_BTL_OPENIB_RDMA_FRAG_SET_SIZE(ftr, sg->length);
         MCA_BTL_OPENIB_RDMA_MAKE_LOCAL(ftr);
-#if OMPI_ENABLE_DEBUG
-	do {
-	  ftr->seq = ep->eager_rdma_remote.seq;
-	} while (!OPAL_ATOMIC_CMPSET_32(&ep->eager_rdma_remote.seq, ftr->seq, ftr->seq+1));
+#if OPAL_ENABLE_DEBUG
+        do {
+          ftr->seq = ep->eager_rdma_remote.seq;
+        } while (!OPAL_ATOMIC_CMPSET_32((int32_t*) &ep->eager_rdma_remote.seq,
+                                        (int32_t) ftr->seq,
+                                        (int32_t) (ftr->seq+1)));
 #endif
         if(ep->nbo)
             BTL_OPENIB_FOOTER_HTON(*ftr);
@@ -515,13 +575,13 @@ static inline int post_send(mca_btl_openib_endpoint_t *ep,
             sizeof(mca_btl_openib_header_t) +
             mca_btl_openib_component.eager_limit +
             sizeof(mca_btl_openib_footer_t);
-        sr_desc->wr.rdma.remote_addr -= sg->length;
+        sr_desc->wr.rdma.remote_addr -= (sg->length + BTL_OPENIB_FTR_PADDING(sg->length));
     } else {
         if(BTL_OPENIB_QP_TYPE_PP(qp)) {
             sr_desc->opcode = IBV_WR_SEND;
         } else {
             sr_desc->opcode = IBV_WR_SEND_WITH_IMM;
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
             sr_desc->imm_data = htonl(ep->rem_info.rem_index);
 #else
             sr_desc->imm_data = ep->rem_info.rem_index;
@@ -534,6 +594,12 @@ static inline int post_send(mca_btl_openib_endpoint_t *ep,
         sr_desc->xrc_remote_srq_num = ep->rem_info.rem_srqs[qp].rem_srq_num;
 #endif
     assert(sg->addr == (uint64_t)(uintptr_t)frag->hdr);
+
+    if (sr_desc->send_flags & IBV_SEND_SIGNALED) {
+        qp_inflight_wqe_to_frag(ep, qp, to_com_frag(frag));
+    } else {
+        qp_inc_inflight_wqe(ep, qp, to_com_frag(frag));
+    }
 
     return ibv_post_send(ep->qps[qp].qp->lcl_qp, sr_desc, &bad_wr);
 }

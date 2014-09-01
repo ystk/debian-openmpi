@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007-2008 Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007-2009 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007 Mellanox Technologies, Inc.  All rights reserved.
  *
  * $COPYRIGHT$
@@ -18,15 +18,13 @@
 #if HAVE_XRC
 #include "connect/btl_openib_connect_xoob.h"
 #endif
-#if OMPI_HAVE_RDMACM && OMPI_HAVE_THREADS
+#if OMPI_HAVE_RDMACM && OPAL_HAVE_THREADS
 #include "connect/btl_openib_connect_rdmacm.h"
-#endif
-#if OMPI_HAVE_IBCM && OMPI_HAVE_THREADS
-#include "connect/btl_openib_connect_ibcm.h"
 #endif
 
 #include "orte/util/show_help.h"
 #include "opal/util/argv.h"
+#include "opal/util/output.h"
 
 /*
  * Array of all possible connection functions
@@ -44,16 +42,8 @@ static ompi_btl_openib_connect_base_component_t *all[] = {
 
     /* Always have an entry here so that the CP indexes will always be
        the same: if RDMA CM is not available, use the "empty" CPC */
-#if OMPI_HAVE_RDMACM && OMPI_HAVE_THREADS
+#if OMPI_HAVE_RDMACM && OPAL_HAVE_THREADS
     &ompi_btl_openib_connect_rdmacm,
-#else
-    &ompi_btl_openib_connect_empty,
-#endif
-
-    /* Always have an entry here so that the CP indexes will always be
-       the same: if IB CM is not available, use the "empty" CPC */
-#if OMPI_HAVE_IBCM && OMPI_HAVE_THREADS
-    &ompi_btl_openib_connect_ibcm,
 #else
     &ompi_btl_openib_connect_empty,
 #endif
@@ -429,6 +419,10 @@ int ompi_btl_openib_connect_base_alloc_cts(mca_btl_base_endpoint_t *endpoint)
         BTL_ERROR(("Failed to reg mr!"));
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
+    /* NOTE: We do not need to register this memory with the
+       opal_memory subsystem, because this is OMPI-controlled memory
+       -- we do not need to worry about this memory being freed out
+       from underneath us. */
 
     /* Copy the lkey where it needs to go */
     endpoint->endpoint_cts_frag.super.sg_entry.lkey = 
@@ -452,6 +446,9 @@ int ompi_btl_openib_connect_base_alloc_cts(mca_btl_base_endpoint_t *endpoint)
 
 int ompi_btl_openib_connect_base_free_cts(mca_btl_base_endpoint_t *endpoint)
 {
+    /* NOTE: We don't need to deregister this memory with opal_memory
+       because it was not registered there in the first place (see
+       comment above, near call to ibv_reg_mr). */
     if (NULL != endpoint->endpoint_cts_mr) {
         ibv_dereg_mr(endpoint->endpoint_cts_mr);
         endpoint->endpoint_cts_mr = NULL;

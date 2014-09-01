@@ -22,14 +22,13 @@
 #include "unistd.h"
 #endif
 
-#include "opal/include/opal/constants.h"
+#include "opal/constants.h"
 #include "opal/util/output.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
-#include "opal/runtime/opal_cr.h"
 
 int opal_crs_base_select(void)
 {

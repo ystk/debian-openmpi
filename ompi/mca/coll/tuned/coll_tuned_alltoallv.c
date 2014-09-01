@@ -21,12 +21,11 @@
 
 #include "mpi.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
 #include "ompi/mca/pml/pml.h"
-#include "ompi/op/op.h"
 #include "coll_tuned.h"
 #include "coll_tuned_topo.h"
 #include "coll_tuned_util.h"
@@ -51,14 +50,14 @@ ompi_coll_tuned_alltoallv_intra_pairwise(void *sbuf, int *scounts, int *sdisps,
     OPAL_OUTPUT((ompi_coll_tuned_stream,
                  "coll:tuned:alltoallv_intra_pairwise rank %d", rank));
 
-    ompi_ddt_type_extent(sdtype, &sext);
-    ompi_ddt_type_extent(rdtype, &rext);
+    ompi_datatype_type_extent(sdtype, &sext);
+    ompi_datatype_type_extent(rdtype, &rext);
 
     psnd = ((char *) sbuf) + (sdisps[rank] * sext);
     prcv = ((char *) rbuf) + (rdisps[rank] * rext);
 
     if (0 != scounts[rank]) {
-        err = ompi_ddt_sndrcv(psnd, scounts[rank], sdtype,
+        err = ompi_datatype_sndrcv(psnd, scounts[rank], sdtype,
                               prcv, rcounts[rank], rdtype);
         if (MPI_SUCCESS != err) {
             return err;
@@ -130,14 +129,14 @@ ompi_coll_tuned_alltoallv_intra_basic_linear(void *sbuf, int *scounts, int *sdis
     OPAL_OUTPUT((ompi_coll_tuned_stream,
                  "coll:tuned:alltoallv_intra_basic_linear rank %d", rank));
 
-    ompi_ddt_type_extent(sdtype, &sext);
-    ompi_ddt_type_extent(rdtype, &rext);
+    ompi_datatype_type_extent(sdtype, &sext);
+    ompi_datatype_type_extent(rdtype, &rext);
 
     /* Simple optimization - handle send to self first */
     psnd = ((char *) sbuf) + (sdisps[rank] * sext);
     prcv = ((char *) rbuf) + (rdisps[rank] * rext);
     if (0 != scounts[rank]) {
-        err = ompi_ddt_sndrcv(psnd, scounts[rank], sdtype,
+        err = ompi_datatype_sndrcv(psnd, scounts[rank], sdtype,
                               prcv, rcounts[rank], rdtype);
         if (MPI_SUCCESS != err) {
             return err;
@@ -234,8 +233,11 @@ int ompi_coll_tuned_alltoallv_intra_check_forced_init(coll_tuned_force_algorithm
                                  "Can be locked down to choice of: 0 ignore, "
                                  "1 basic linear, 2 pairwise.",
                                  false, false, 0, NULL);
+    if (mca_param_indices->algorithm_param_index < 0) {
+        return mca_param_indices->algorithm_param_index;
+    }
     mca_base_param_lookup_int(mca_param_indices->algorithm_param_index, &(requested_alg));
-    if (requested_alg > max_alg) {
+    if (0 > requested_alg || requested_alg > max_alg) {
         if (0 == ompi_comm_rank( MPI_COMM_WORLD)) {
             opal_output(0, "Alltoallv algorithm #%d is not available (range [0..%d]). "
                         "Switching back to ignore(0)\n",

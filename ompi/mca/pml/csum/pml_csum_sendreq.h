@@ -1,8 +1,9 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -10,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2009      IBM Corporation.  All rights reserved.
- * Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2009-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
  * $COPYRIGHT$
@@ -30,7 +31,7 @@
 #include "pml_csum_hdr.h"
 #include "pml_csum_rdma.h"
 #include "pml_csum_rdmafrag.h"
-#include "ompi/datatype/convertor.h"
+#include "opal/datatype/opal_convertor.h"
 #include "ompi/mca/bml/bml.h" 
 
 BEGIN_C_DECLS
@@ -132,7 +133,6 @@ get_request_from_send_pending(mca_pml_csum_send_pending_t *type)
         }                                                               \
     }
 
-
 #define MCA_PML_CSUM_SEND_REQUEST_INIT(sendreq,                                 \
                                        buf,                                     \
                                        count,                                   \
@@ -152,10 +152,17 @@ get_request_from_send_pending(mca_pml_csum_send_pending_t *type)
                                        comm,                                    \
                                        sendmode,                                \
                                        persistent,                              \
-                                       0);                                      \
+                                       0);                \
         (sendreq)->req_recv.pval = NULL;                                        \
     }
 
+#define MCA_PML_CSUM_SEND_REQUEST_RESET(sendreq)                               \
+    {                                                                          \
+        size_t _position = 0;                                                  \
+        opal_convertor_set_position(&sendreq->req_send.req_base.req_convertor, \
+                                    &_position);                               \
+        assert( 0 == _position );                                              \
+    }
 
 static inline void mca_pml_csum_free_rdma_resources(mca_pml_csum_send_request_t* sendreq)
 {
@@ -186,15 +193,15 @@ static inline void mca_pml_csum_free_rdma_resources(mca_pml_csum_send_request_t*
  * Mark a send request as completed at the MPI level.
  */
 
-#define MCA_PML_CSUM_SEND_REQUEST_MPI_COMPLETE(sendreq, with_signal)                  \
+#define MCA_PML_CSUM_SEND_REQUEST_MPI_COMPLETE(sendreq, with_signal)                 \
 do {                                                                                 \
    (sendreq)->req_send.req_base.req_ompi.req_status.MPI_SOURCE =                     \
        (sendreq)->req_send.req_base.req_comm->c_my_rank;                             \
    (sendreq)->req_send.req_base.req_ompi.req_status.MPI_TAG =                        \
         (sendreq)->req_send.req_base.req_tag;                                        \
    (sendreq)->req_send.req_base.req_ompi.req_status.MPI_ERROR = OMPI_SUCCESS;        \
-   (sendreq)->req_send.req_base.req_ompi.req_status._count =                         \
-        (int)(sendreq)->req_send.req_bytes_packed;                                   \
+   (sendreq)->req_send.req_base.req_ompi.req_status._ucount =                        \
+        (sendreq)->req_send.req_bytes_packed;                                        \
    ompi_request_complete( &((sendreq)->req_send.req_base.req_ompi), (with_signal) ); \
                                                                                      \
    PERUSE_TRACE_COMM_EVENT( PERUSE_COMM_REQ_COMPLETE,                                \
@@ -377,9 +384,9 @@ mca_pml_csum_send_request_start_btl( mca_pml_csum_send_request_t* sendreq,
         if(sendreq->req_send.req_send_mode == MCA_PML_BASE_SEND_BUFFERED) {
             rc = mca_pml_csum_send_request_start_buffered(sendreq, bml_btl, size);
         } else if
-                (ompi_convertor_need_buffers(&sendreq->req_send.req_base.req_convertor) == false) {
+                (opal_convertor_need_buffers(&sendreq->req_send.req_base.req_convertor) == false) {
             unsigned char *base;
-            ompi_convertor_get_current_pointer( &sendreq->req_send.req_base.req_convertor, (void**)&base );
+            opal_convertor_get_current_pointer( &sendreq->req_send.req_base.req_convertor, (void**)&base );
             
             if( 0 != (sendreq->req_rdma_cnt = (uint32_t)mca_pml_csum_rdma_btls(
                                                                               sendreq->req_endpoint,

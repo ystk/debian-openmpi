@@ -13,7 +13,7 @@
  * Copyright (c) 2006-2007 University of Houston. All rights reserved.
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2007      Cisco, Inc. All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc. All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -35,13 +35,27 @@
 
 char* ompi_dpm_base_dyn_init (void)
 {
-    char *envvarname=NULL, *port_name=NULL;
+    char *envvarname=NULL, *port_name=NULL, *tmp, *ptr;
 
     /* check for appropriate env variable */
     asprintf(&envvarname, "OMPI_PARENT_PORT");
-    port_name = getenv(envvarname);
+    tmp = getenv(envvarname);
     free (envvarname);
-
+    if (NULL != tmp) {
+        /* the value passed to us may have quote marks around it to protect
+         * the value if passed on the command line. We must remove those
+         * to have a correct string
+         */
+        if ('"' == tmp[0]) {
+            /* if the first char is a quote, then so will the last one be */
+            tmp[strlen(tmp)-1] = '\0';
+            ptr = &tmp[1];
+        } else {
+            ptr = &tmp[0];
+        }
+        port_name = strdup(ptr);
+    }
+    
     return port_name;
 }
 
@@ -106,7 +120,8 @@ ompi_dpm_base_disconnect_obj *ompi_dpm_base_disconnect_init ( ompi_communicator_
     int i;
 
     obj = (ompi_dpm_base_disconnect_obj *) calloc(1,sizeof(ompi_dpm_base_disconnect_obj));
-        if ( NULL == obj ) {
+    if ( NULL == obj ) {
+        printf("Could not allocate disconnect object\n");
         return NULL;
     }
 
@@ -119,6 +134,7 @@ ompi_dpm_base_disconnect_obj *ompi_dpm_base_disconnect_init ( ompi_communicator_
     obj->comm = comm;
     obj->reqs = (ompi_request_t **) malloc(2*obj->size*sizeof(ompi_request_t *));
     if ( NULL == obj->reqs ) {
+        printf("Could not allocate request array for disconnect object\n");
         free (obj);
         return NULL;
     }
@@ -131,17 +147,18 @@ ompi_dpm_base_disconnect_obj *ompi_dpm_base_disconnect_init ( ompi_communicator_
                      &(obj->reqs[2*i])));
 
         if ( OMPI_SUCCESS != ret ) {
+            printf("dpm_base_disconnect_init: error %d in irecv to process %d\n", ret, i);
             free (obj->reqs);
             free (obj);
             return NULL;
         }
-
         ret = MCA_PML_CALL(isend (&(obj->buf), 0, MPI_INT, i,
                      OMPI_COMM_BARRIER_TAG,
                      MCA_PML_BASE_SEND_SYNCHRONOUS,
                      comm, &(obj->reqs[2*i+1])));
 
         if ( OMPI_SUCCESS != ret ) {
+            printf("dpm_base_disconnect_init: error %d in isend to process %d\n", ret, i);
             free (obj->reqs);
             free (obj);
             return NULL;
@@ -204,11 +221,6 @@ void ompi_dpm_base_disconnect_waitall (int count, ompi_dpm_base_disconnect_obj *
 
     free (reqs);
 
-    /* decrease the counter for dynamic communicators by 'count'.
-       Attention, this approach now requires, that we are just using
-       these routines for communicators which have been flagged dynamic */
-    ompi_comm_num_dyncomm -=count;
-
     return;
 }
 
@@ -247,20 +259,20 @@ void ompi_dpm_base_mark_dyncomm (ompi_communicator_t *comm)
     for (i=1; i< size; i++) {
         proc = ompi_group_peer_lookup(grp,i);
         if (thisjobid != proc->proc_name.jobid) {
+            /* at least one is different */
             found = true;
             goto complete;
         }
     }
 
     /* if inter-comm, loop over all processes in remote_group
-     * and perform the same check
+     * and see if any are different from thisjobid
      */
     grp = comm->c_remote_group;
-    proc = ompi_group_peer_lookup(grp,0);
-    thisjobid = proc->proc_name.jobid;
-    for (i=1; i< rsize; i++) {
+    for (i=0; i< rsize; i++) {
         proc = ompi_group_peer_lookup(grp,i);
         if (thisjobid != proc->proc_name.jobid) {
+            /* at least one is different */
             found = true;
             break;
         }

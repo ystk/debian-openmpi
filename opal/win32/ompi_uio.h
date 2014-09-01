@@ -19,6 +19,8 @@
 #ifndef OMPI_UIO_H
 #define OMPI_UIO_H
 
+#include "opal_config.h"
+
 #ifndef OMPI_WIN_COMPAT_H
 #error This file is supposed to be included only from win_compat.h
 #endif  /* OMPI_WIN_COMPAT_H */
@@ -30,9 +32,7 @@ struct iovec {
 #define iov_base data.buf
 #define iov_len data.len
 
-#if defined(c_plusplus) || defined (__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 /*
  * writev:
    writev  writes  data  to  file  descriptor  fd,  and  from  the buffers
@@ -51,8 +51,6 @@ OPAL_DECLSPEC int writev (int fd, struct iovec *iov, int cnt);
  */
 OPAL_DECLSPEC int readv (int fd, struct iovec *iov, int cnt);
 
-#if defined(c_plusplus) || defined (__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OMPI_UIO_H */

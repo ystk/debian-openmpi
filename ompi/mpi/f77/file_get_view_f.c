@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,7 +23,7 @@
 #include "ompi/mpi/f77/f77_strings.h"
 #include "ompi/file/file.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_FILE_GET_VIEW = mpi_file_get_view_f
 #pragma weak pmpi_file_get_view = mpi_file_get_view_f
 #pragma weak pmpi_file_get_view_ = mpi_file_get_view_f
@@ -37,14 +38,14 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_FILE_GET_VIEW,
                            (fh, disp, etype, filetype, datarep, ierr, datarep_len) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_FILE_GET_VIEW = mpi_file_get_view_f
 #pragma weak mpi_file_get_view = mpi_file_get_view_f
 #pragma weak mpi_file_get_view_ = mpi_file_get_view_f
 #pragma weak mpi_file_get_view__ = mpi_file_get_view_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_FILE_GET_VIEW,
                            mpi_file_get_view,
                            mpi_file_get_view_,
@@ -55,7 +56,7 @@ OMPI_GENERATE_F77_BINDINGS (MPI_FILE_GET_VIEW,
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
@@ -71,7 +72,7 @@ void mpi_file_get_view_f(MPI_Fint *fh, MPI_Offset *disp,
     *ierr = OMPI_INT_2_FINT(MPI_File_get_view(c_fh, &c_disp, &c_etype, 
 					      &c_filetype, c_datarep));
     if (MPI_SUCCESS == OMPI_FINT_2_INT(*ierr)) {
-        *disp = (MPI_Fint) c_disp;
+        *disp = (MPI_Offset) c_disp;
         *etype = MPI_Type_c2f(c_etype);
         *filetype = MPI_Type_c2f(c_filetype);
         ompi_fortran_string_c2f(c_datarep, datarep, datarep_len);

@@ -1,19 +1,18 @@
-usr/bin/opal_wrapper    usr/bin/mpic++.openmpi
-usr/bin/opal_wrapper    usr/bin/mpicc.openmpi
-usr/bin/opal_wrapper    usr/bin/mpiCC.openmpi
-usr/bin/opal_wrapper    usr/bin/mpicxx.openmpi
-usr/bin/opal_wrapper    usr/bin/mpif77.openmpi
-usr/bin/opal_wrapper    usr/bin/mpif90.openmpi
-usr/bin/opal_wrapper    usr/bin/opalc++
-usr/bin/opal_wrapper    usr/bin/opalcc
-usr/bin/opal_wrapper    usr/bin/ortec++
-usr/bin/opal_wrapper    usr/bin/ortecc
+## Man pages (link provided by upstream, needs recreation because of renaming):
 usr/share/man/man1/mpic++.openmpi.1     usr/share/man/man1/mpiCC.openmpi.1
-usr/lib/libmca_common_sm.so.1   usr/lib/libmca_common_sm.so
-usr/lib/libopen-pal.so.0        usr/lib/libopen-pal.so
-usr/lib/libopen-rte.so.0        usr/lib/libopen-rte.so
-usr/lib/libmpi_cxx.so.0         usr/lib/libmpi_cxx.so
-usr/lib/libmpi_f77.so.0         usr/lib/libmpi_f77.so
-usr/lib/libmpi_f90.so.0         usr/lib/libmpi_f90.so
-# Convenience link for header files, see bug #493875
+# Missing links
+usr/share/man/man1/opal_wrapper.1	usr/share/man/man1/opalCC.1
+usr/share/man/man1/opal_wrapper.1	usr/share/man/man1/opalc++.1
+usr/share/man/man1/opal_wrapper.1	usr/share/man/man1/orteCC.1
+usr/share/man/man1/opal_wrapper.1	usr/share/man/man1/ortec++.1
+usr/share/man/man1/opal_wrapper.1	usr/share/man/man1/ortecc.1
+## SONAME symlinks
+usr/lib/libmca_common_sm.so.3	usr/lib/libmca_common_sm.so
+usr/lib/libmpi_cxx.so.1		usr/lib/libmpi_cxx.so
+usr/lib/libmpi_f77.so.1		usr/lib/libmpi_f77.so
+usr/lib/libmpi_f90.so.1		usr/lib/libmpi_f90.so
+usr/lib/libompitrace.so.0	usr/lib/libompitrace.so
+usr/lib/libopen-pal.so.4	usr/lib/libopen-pal.so
+usr/lib/libopen-rte.so.4	usr/lib/libopen-rte.so
+## Convenience link for header files, see bug #493875
 usr/lib/openmpi/include/	usr/include/openmpi

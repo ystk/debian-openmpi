@@ -1,11 +1,15 @@
 /*
- * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
+ * Copyright (c) 2010      The University of Tennessee and The University
+ *                         of Tennessee Research Foundation.  All rights
+ *                         reserved.
+ * Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
  *
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -15,11 +19,13 @@
 
 #include "ompi_config.h"
 
+#include "opal/datatype/opal_convertor.h"
+#include "opal/datatype/opal_datatype.h"
+#include "opal/datatype/opal_datatype_internal.h"
+
 #include "ompi/communicator/communicator.h"
 #include "ompi/group/group.h"
-#include "ompi/datatype/datatype.h"
-#include "ompi/datatype/convertor.h"
-#include "ompi/datatype/datatype_internal.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/request/request.h"
 #include "opal/mca/memchecker/base/base.h"
 
@@ -33,50 +39,48 @@
 #endif /* OMPI_WANT_MEMCHECKER */
 
 
-static inline int memchecker_convertor_call (int (*f)(void *, size_t), ompi_convertor_t* pConvertor)
-{  
-    if (!opal_memchecker_base_runindebugger()) {
+static inline int memchecker_convertor_call (int (*f)(void *, size_t), opal_convertor_t* pConvertor)
+{
+    if (!opal_memchecker_base_runindebugger() ||
+        (0 == pConvertor->count) ) {
         return OMPI_SUCCESS;
     }
-
-    if ( 0 == pConvertor->count )
-        return OMPI_SUCCESS;
 
     if( OPAL_LIKELY(pConvertor->flags & CONVERTOR_NO_OP) ) {
         /*  We have a contiguous type. */
         f( (void *)pConvertor->pBaseBuf , pConvertor->local_size);
     } else {
         /* Now we got a noncontigous data. */
-        uint32_t         elem_pos = 0, i;
-        ptrdiff_t        stack_disp  = 0;
+        uint32_t elem_pos = 0, i;
+        ptrdiff_t  stack_disp  = 0;
         dt_elem_desc_t*  description = pConvertor->use_desc->desc;
         dt_elem_desc_t*  pElem       = &(description[elem_pos]);
         unsigned char   *source_base = pConvertor->pBaseBuf;
-            
-        if ( NULL != pConvertor->pDesc ) 
+
+        if ( NULL != pConvertor->pDesc )
             stack_disp = pConvertor->pDesc->ub - pConvertor->pDesc->lb;
-    
+
         for (i = 0; i < pConvertor->count; i++){
-            while ( DT_LOOP == pElem->elem.common.flags ) {
+            while ( OPAL_DATATYPE_LOOP == pElem->elem.common.flags ) {
                 elem_pos++;
                 pElem = &(description[elem_pos]);
             }
-            
-            while( pElem->elem.common.flags & DT_FLAG_DATA ) {
+
+            while( pElem->elem.common.flags & OPAL_DATATYPE_FLAG_DATA ) {
                 /* now here we have a basic datatype */
                 f( (void *)(source_base + pElem->elem.disp), pElem->elem.count*pElem->elem.extent );
                 elem_pos++;       /* advance to the next data */
                 pElem = &(description[elem_pos]);
                 continue;
             }
-              
+
             elem_pos = 0;
             pElem = &(description[elem_pos]);
             /* starting address of next stack. */
             source_base += stack_disp;
         }
     }
-    
+
     return OMPI_SUCCESS;
 }
 
@@ -91,42 +95,43 @@ static inline int memchecker_call (int (*f)(void *, size_t), void * addr,
     if (!opal_memchecker_base_runindebugger()) {
         return OMPI_SUCCESS;
     }
-        
-    if( datatype->size == (size_t) (datatype->true_ub - datatype->true_lb) ) {
+
+    if( datatype->super.size == (size_t) (datatype->super.true_ub - datatype->super.true_lb) ) {
         /*  We have a contiguous type. */
-        f( addr , datatype->size * count );
+        f( addr , datatype->super.size * count );
     } else {
         /* Now we got a noncontigous type. */
         uint32_t         elem_pos = 0, i;
         ptrdiff_t        stack_disp  = 0;
-        dt_elem_desc_t*  description = datatype->opt_desc.desc;
+        dt_elem_desc_t*  description = datatype->super.opt_desc.desc;
         dt_elem_desc_t*  pElem       = &(description[elem_pos]);
         unsigned char   *source_base = (unsigned char *) addr;
 
-        if ( NULL != datatype ) 
-            stack_disp = datatype->ub - datatype->lb;
-    
-        for (i = 0; i < count; i++){
-            while ( DT_LOOP == pElem->elem.common.flags ) {
+        if ( NULL != datatype ) {
+            stack_disp = datatype->super.ub - datatype->super.lb;
+        }
+
+        for (i = 0; i < count; i++) {
+            while ( OPAL_DATATYPE_LOOP == pElem->elem.common.flags ) {
                 elem_pos++;
                 pElem = &(description[elem_pos]);
             }
-            
-            while( pElem->elem.common.flags & DT_FLAG_DATA ) {
+
+            while( pElem->elem.common.flags & OPAL_DATATYPE_FLAG_DATA ) {
                 /* now here we have a basic datatype */
                 f( (void *)(source_base + pElem->elem.disp), pElem->elem.count*pElem->elem.extent );
                 elem_pos++;       /* advance to the next data */
                 pElem = &(description[elem_pos]);
                 continue;
             }
-            
+
             elem_pos = 0;
             pElem = &(description[elem_pos]);
             /* starting address of next stack. */
             source_base += stack_disp;
         }
     }
-    
+
     return OMPI_SUCCESS;
 }
 
@@ -165,7 +170,7 @@ static inline int memchecker_comm(MPI_Comm comm)
     /* c_base */
     opal_memchecker_base_isdefined (&comm->c_base.obj_class, sizeof(opal_class_t *));
     opal_memchecker_base_isdefined ((void*)&comm->c_base.obj_reference_count, sizeof(volatile int32_t));
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     opal_memchecker_base_isdefined (&comm->c_base.obj_magic_id, sizeof(opal_object_t));
     opal_memchecker_base_isdefined (&comm->c_base.cls_init_file_name, sizeof(const char *));
     opal_memchecker_base_isdefined (&comm->c_base.cls_init_lineno, sizeof(int));
@@ -173,12 +178,12 @@ static inline int memchecker_comm(MPI_Comm comm)
     /* c_lock */
     opal_memchecker_base_isdefined (&comm->c_lock.super.obj_class, sizeof(opal_class_t *));
     opal_memchecker_base_isdefined ((void*)&comm->c_lock.super.obj_reference_count, sizeof(volatile int32_t));
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     opal_memchecker_base_isdefined (&comm->c_lock.super.obj_magic_id, sizeof(uint64_t));
     opal_memchecker_base_isdefined (&comm->c_lock.super.cls_init_file_name, sizeof(const char *));
     opal_memchecker_base_isdefined (&comm->c_lock.super.cls_init_lineno, sizeof(int));
 #endif
-#if OMPI_HAVE_POSIX_THREADS
+#if OPAL_HAVE_POSIX_THREADS
 /*
   opal_memchecker_base_isdefined (&comm->c_lock.m_lock_pthread.__m_reserved, sizeof(int));
   opal_memchecker_base_isdefined (&comm->c_lock.m_lock_pthread.__m_count, sizeof(int));
@@ -188,7 +193,7 @@ static inline int memchecker_comm(MPI_Comm comm)
   opal_memchecker_base_isdefined (&comm->c_lock.m_lock_pthread.__m_lock.__spinlock, sizeof(int));
 */
 #endif
-#if OMPI_HAVE_SOLARIS_THREADS
+#if OPAL_HAVE_SOLARIS_THREADS
     opal_memchecker_base_isdefined (&comm->c_lock.m_lock_solaris, sizeof(mutex_t));
 #endif
     /*
@@ -264,7 +269,7 @@ static inline int memchecker_request(MPI_Request *request)
 #if 0
     opal_memchecker_base_isdefined (&(*request)->super.super.super.obj_class, sizeof(opal_class_t *));
     opal_memchecker_base_isdefined ((void*)&(*request)->super.super.super.obj_reference_count, sizeof(volatile int32_t));
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     opal_memchecker_base_isdefined (&(*request)->super.super.super.obj_magic_id, sizeof(uint64_t));
     opal_memchecker_base_isdefined (&(*request)->super.super.super.cls_init_file_name, sizeof(const char *));
     opal_memchecker_base_isdefined (&(*request)->super.super.super.cls_init_lineno, sizeof(int));
@@ -272,7 +277,7 @@ static inline int memchecker_request(MPI_Request *request)
 
     opal_memchecker_base_isdefined ((void*)&(*request)->super.super.opal_list_next, sizeof(volatile struct opal_list_item_t *));
     opal_memchecker_base_isdefined ((void*)&(*request)->super.super.opal_list_prev, sizeof(volatile struct opal_list_item_t *));
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     opal_memchecker_base_isdefined ((void*)&(*request)->super.super.opal_list_item_refcount, sizeof(volatile int32_t));
     opal_memchecker_base_isdefined ((void*)&(*request)->super.super.opal_list_item_belong_to, sizeof(volatile struct opal_list_t *));
 #endif
@@ -287,8 +292,8 @@ static inline int memchecker_request(MPI_Request *request)
     opal_memchecker_base_isdefined (&(*request)->req_status.MPI_SOURCE, sizeof(int));
     opal_memchecker_base_isdefined (&(*request)->req_status.MPI_TAG, sizeof(int));
     opal_memchecker_base_isdefined (&(*request)->req_status.MPI_ERROR, sizeof(int));
-    opal_memchecker_base_isdefined (&(*request)->req_status._count, sizeof(int));
     opal_memchecker_base_isdefined (&(*request)->req_status._cancelled, sizeof(int));
+    opal_memchecker_base_isdefined (&(*request)->req_status._ucount, sizeof(size_t));
 #endif
 
     opal_memchecker_base_isdefined ((void*)&(*request)->req_complete, sizeof(volatile _Bool));
@@ -322,8 +327,8 @@ static inline int memchecker_status(MPI_Status *status)
     opal_memchecker_base_isdefined (&status->MPI_SOURCE, sizeof(int));
     opal_memchecker_base_isdefined (&status->MPI_TAG, sizeof(int));
     opal_memchecker_base_isdefined (&status->MPI_ERROR, sizeof(int));
-    opal_memchecker_base_isdefined (&status->_count, sizeof(int));
     opal_memchecker_base_isdefined (&status->_cancelled, sizeof(int));
+    opal_memchecker_base_isdefined (&status->_ucount, sizeof(size_t));
 
     return OMPI_SUCCESS;
 }
@@ -342,32 +347,33 @@ static inline int memchecker_datatype(MPI_Datatype type)
         return OMPI_SUCCESS;
     }
 
-    /* the data description.*/
-    opal_memchecker_base_isdefined (&type->size, sizeof(size_t));
-    opal_memchecker_base_isdefined (&type->align, sizeof(uint32_t));
-    opal_memchecker_base_isdefined (&type->true_lb, sizeof(ptrdiff_t));
-    opal_memchecker_base_isdefined (&type->true_ub, sizeof(ptrdiff_t));
-    opal_memchecker_base_isdefined (&type->lb, sizeof(ptrdiff_t));
-    opal_memchecker_base_isdefined (&type->ub, sizeof(ptrdiff_t));
-    opal_memchecker_base_isdefined (&type->flags, sizeof(uint16_t));
-    opal_memchecker_base_isdefined (&type->id, sizeof(uint16_t));
-    opal_memchecker_base_isdefined (&type->nbElems, sizeof(uint32_t));
-    opal_memchecker_base_isdefined (&type->bdt_used, sizeof(uint64_t));
+    /* the data description in the opal_datatype_t super class */
+    opal_memchecker_base_isdefined (&type->super.flags, sizeof(uint16_t));
+    opal_memchecker_base_isdefined (&type->super.id, sizeof(uint16_t));
+    opal_memchecker_base_isdefined (&type->super.bdt_used, sizeof(uint32_t));
+    opal_memchecker_base_isdefined (&type->super.size, sizeof(size_t));
+    opal_memchecker_base_isdefined (&type->super.true_lb, sizeof(OPAL_PTRDIFF_T));
+    opal_memchecker_base_isdefined (&type->super.true_ub, sizeof(OPAL_PTRDIFF_T));
+    opal_memchecker_base_isdefined (&type->super.lb, sizeof(OPAL_PTRDIFF_T));
+    opal_memchecker_base_isdefined (&type->super.ub, sizeof(OPAL_PTRDIFF_T));
+    opal_memchecker_base_isdefined (&type->super.align, sizeof(uint32_t));
+    opal_memchecker_base_isdefined (&type->super.nbElems, sizeof(uint32_t));
+    /* name... */
+    opal_memchecker_base_isdefined (&type->super.desc.length, sizeof(opal_datatype_count_t));
+    opal_memchecker_base_isdefined (&type->super.desc.used, sizeof(opal_datatype_count_t));
+    opal_memchecker_base_isdefined (&type->super.desc.desc, sizeof(dt_elem_desc_t *));
+    opal_memchecker_base_isdefined (&type->super.opt_desc.length, sizeof(opal_datatype_count_t));
+    opal_memchecker_base_isdefined (&type->super.opt_desc.used, sizeof(opal_datatype_count_t));
+    opal_memchecker_base_isdefined (&type->super.opt_desc.desc, sizeof(dt_elem_desc_t *));
+    opal_memchecker_base_isdefined (&type->super.btypes, OPAL_DATATYPE_MAX_PREDEFINED * sizeof(uint32_t));
 
-    /* Attribute fields */
-    opal_memchecker_base_isdefined (&type->d_keyhash, sizeof(opal_hash_table_t *));
+    opal_memchecker_base_isdefined (&type->id, sizeof(int32_t));
     opal_memchecker_base_isdefined (&type->d_f_to_c_index, sizeof(int32_t));
-    opal_memchecker_base_isdefined (&type->name, sizeof(char [64]));
-    opal_memchecker_base_isdefined (&type->desc.length, sizeof(opal_ddt_count_t));
-    opal_memchecker_base_isdefined (&type->desc.used, sizeof(opal_ddt_count_t));
-    opal_memchecker_base_isdefined (&type->desc.desc, sizeof(dt_elem_desc_t *));
-    opal_memchecker_base_isdefined (&type->opt_desc.length, sizeof(opal_ddt_count_t));
-    opal_memchecker_base_isdefined (&type->opt_desc.used, sizeof(opal_ddt_count_t));
-    opal_memchecker_base_isdefined (&type->opt_desc.desc, sizeof(dt_elem_desc_t *));
+    opal_memchecker_base_isdefined (&type->d_keyhash, sizeof(opal_hash_table_t *));
     opal_memchecker_base_isdefined (&type->args, sizeof(void *));
     opal_memchecker_base_isdefined (&type->packed_description, sizeof(void *));
-    opal_memchecker_base_isdefined (&type->btypes, sizeof(uint32_t [42]));
-    
+    opal_memchecker_base_isdefined (&type->name, MPI_MAX_OBJECT_NAME * sizeof(char));
+
     return OMPI_SUCCESS;
 }
 #else
@@ -375,3 +381,4 @@ static inline int memchecker_datatype(MPI_Datatype type)
 #endif /* OMPI_WANT_MEMCHECKER_MPI_OBJECTS */
 
 #endif /* OMPI_MEMCHECKER_H */
+

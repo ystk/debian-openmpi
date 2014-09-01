@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,11 +21,7 @@
 #define ORTERUN_ORTERUN_H
 
 #include "orte_config.h"
-
-#include "opal/threads/condition.h"
-#include "opal/util/cmd_line.h"
-
-#include "orte/runtime/orte_globals.h"
+#include "opal/threads/mutex.h"
 
 BEGIN_C_DECLS
 
@@ -42,7 +38,8 @@ struct orterun_globals_t {
     bool version;
     bool verbose;
     bool quiet;
-    bool report_pid;
+    char *report_pid;
+    char *report_uri;
     bool exit;
     bool by_node;
     bool by_slot;
@@ -67,6 +64,12 @@ struct orterun_globals_t {
     bool wait_for_server;
     int server_wait_timeout;
     char *stdin_target;
+    char *prefix;
+    char *path_to_mpirun;
+#if OPAL_ENABLE_FT_CR == 1
+    char *sstore_load;
+#endif
+    bool disable_recovery;
 };
 
 /**

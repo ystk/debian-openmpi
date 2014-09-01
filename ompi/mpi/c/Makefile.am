@@ -9,14 +9,13 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+# Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
 # 
 # $HEADER$
 #
-
-
 
 SUBDIRS = profile
 
@@ -190,6 +189,7 @@ libmpi_c_mpi_la_SOURCES = \
         keyval_free.c \
         lookup_name.c \
         op_c2f.c \
+        op_commutative.c \
         op_create.c \
         op_f2c.c \
         op_free.c \
@@ -205,6 +205,7 @@ libmpi_c_mpi_la_SOURCES = \
         recv_init.c \
         recv.c \
         reduce.c \
+        reduce_local.c \
         reduce_scatter.c \
         request_c2f.c \
         request_f2c.c \

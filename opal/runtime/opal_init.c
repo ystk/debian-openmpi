@@ -9,8 +9,11 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2008 Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,14 +33,17 @@
 #include "opal/mca/base/base.h"
 #include "opal/runtime/opal.h"
 #include "opal/util/net.h"
+#include "opal/datatype/opal_datatype.h"
 #include "opal/mca/installdirs/base/base.h"
 #include "opal/mca/memory/base/base.h"
 #include "opal/mca/memcpy/base/base.h"
+#include "opal/mca/hwloc/base/base.h"
 #include "opal/mca/paffinity/base/base.h"
 #include "opal/mca/timer/base/base.h"
 #include "opal/mca/memchecker/base/base.h"
 #include "opal/dss/dss.h"
 #include "opal/mca/carto/base/base.h"
+#include "opal/mca/shmem/base/base.h"
 
 #include "opal/runtime/opal_cr.h"
 #include "opal/mca/crs/base/base.h"
@@ -52,16 +58,18 @@
 #include "opal/util/keyval_parse.h"
 #include "opal/util/sys_limits.h"
 
-#if OMPI_CC_USE_PRAGMA_IDENT
+#if OPAL_CC_USE_PRAGMA_IDENT
 #pragma ident OPAL_IDENT_STRING
-#elif OMPI_CC_USE_IDENT
+#elif OPAL_CC_USE_IDENT
 #ident OPAL_IDENT_STRING
 #endif
 const char opal_version_string[] = OPAL_IDENT_STRING;
 
 int opal_initialized = 0;
 int opal_util_initialized = 0;
-bool opal_mmap_on_nfs_warning;
+bool opal_profile = false;
+char *opal_profile_file = NULL;
+int opal_cache_line_size;
 
 static const char *
 opal_err2str(int errnum)
@@ -174,7 +182,7 @@ opal_err2str(int errnum)
 
 
 int
-opal_init_util(void)
+opal_init_util(int* pargc, char*** pargv)
 {
     int ret;
     char *error = NULL;
@@ -186,12 +194,25 @@ opal_init_util(void)
         return OPAL_SUCCESS;
     }
 
+    /* JMS See note in runtime/opal.h -- this is temporary; to be
+       replaced with real hwloc information soon (in trunk/v1.5 and
+       beyond, only).  This *used* to be a #define, so it's important
+       to define it very early.  */
+    opal_cache_line_size = 128;
+
     /* initialize the memory allocator */
     opal_malloc_init();
 
     /* initialize the output system */
     opal_output_init();
 
+    /* initialize install dirs code */
+    if (OPAL_SUCCESS != (ret = opal_installdirs_base_open())) {
+        fprintf(stderr, "opal_installdirs_base_open() failed -- process will likely abort (%s:%d, returned %d instead of OPAL_INIT)\n",
+                __FILE__, __LINE__, ret);
+        return ret;
+    }
+    
     /* initialize the help system */
     opal_show_help_init();
 
@@ -201,13 +222,6 @@ opal_init_util(void)
                                    OPAL_ERR_BASE, OPAL_ERR_MAX, opal_err2str))) {
         error = "opal_error_register";
         goto return_error;
-    }
-
-    /* initialize install dirs code */
-    if (OPAL_SUCCESS != (ret = opal_installdirs_base_open())) {
-        fprintf(stderr, "opal_installdirs_base_open() failed -- process will likely abort (%s:%d, returned %d instead of OPAL_INIT)\n",
-                __FILE__, __LINE__, ret);
-        return ret;
     }
 
     /* init the trace function */
@@ -247,13 +261,18 @@ opal_init_util(void)
         goto return_error;
     }
 
-    /*
-     * Initialize the data storage service.
-     */
+    /* initialize the datatype engine */
+    if (OPAL_SUCCESS != (ret = opal_datatype_init ())) {
+        error = "opal_datatype_init";
+        goto return_error;
+    }
+
+    /* Initialize the data storage service. */
     if (OPAL_SUCCESS != (ret = opal_dss_open())) {
         error = "opal_dss_open";
         goto return_error;
     }
+
     return OPAL_SUCCESS;
 
  return_error:
@@ -265,7 +284,7 @@ opal_init_util(void)
 
 
 int
-opal_init(void)
+opal_init(int* pargc, char*** pargv)
 {
     int ret;
     char *error = NULL;
@@ -278,13 +297,21 @@ opal_init(void)
     }
 
     /* initialize util code */
-    if (OPAL_SUCCESS != (ret = opal_init_util())) {
+    if (OPAL_SUCCESS != (ret = opal_init_util(pargc, pargv))) {
         return ret;
     }
 
     /* initialize the mca */
     if (OPAL_SUCCESS != (ret = mca_base_open())) {
         error = "mca_base_open";
+        goto return_error;
+    }
+
+    /* open hwloc - since this is a static framework, no
+     * select is required
+     */
+    if (OPAL_SUCCESS != (ret = opal_hwloc_base_open())) {
+        error = "opal_paffinity_base_open";
         goto return_error;
     }
 
@@ -297,7 +324,7 @@ opal_init(void)
         error = "opal_paffinity_base_select";
         goto return_error;
     }
-
+    
     /* the memcpy component should be one of the first who get
      * loaded in order to make sure we ddo have all the available
      * versions of memcpy correctly configured.
@@ -377,6 +404,17 @@ opal_init(void)
     }
     /* we want to tick the event library whenever possible */
     opal_progress_event_users_increment();
+
+    /* setup the shmem framework */
+    if (OPAL_SUCCESS != (ret = opal_shmem_base_open())) {
+        error = "opal_shmem_base_open";
+        goto return_error;
+    }
+
+    if (OPAL_SUCCESS != (ret = opal_shmem_base_select())) {
+        error = "opal_shmem_base_select";
+        goto return_error;
+    }
 
     /*
      * Initalize the checkpoint/restart functionality

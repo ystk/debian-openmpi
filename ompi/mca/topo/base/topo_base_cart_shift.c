@@ -20,7 +20,6 @@
 #include "ompi_config.h"
 #include "ompi/mca/topo/base/base.h"
 #include "ompi/communicator/communicator.h"
-#include "ompi/mca/topo/topo.h"
 
 /*
  * function - Returns the shifted source and destination ranks, given a
@@ -41,7 +40,7 @@
  * @retval MPI_ERR_COMM
  * @retval MPI_ERR_ARG
  */                  
-int mca_topo_base_cart_shift (MPI_Comm comm,
+int mca_topo_base_cart_shift (ompi_communicator_t* comm,
                           int direction,
                           int disp,
                           int *rank_source,

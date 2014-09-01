@@ -2,7 +2,7 @@
  * VampirTrace
  * http://www.tu-dresden.de/zih/vampirtrace
  *
- * Copyright (c) 2005-2008, ZIH, TU Dresden, Federal Republic of Germany
+ * Copyright (c) 2005-2013, ZIH, TU Dresden, Federal Republic of Germany
  *
  * Copyright (c) 1998-2005, Forschungszentrum Juelich, Juelich Supercomputing
  *                          Centre, Federal Republic of Germany
@@ -13,15 +13,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "vt_memhook.h"
+#include "vt_comp.h"
+#include "vt_defs.h"
+#include "vt_mallocwrap.h"
 #include "vt_pform.h"
+#include "vt_thrd.h"
 #include "vt_trc.h"
-#if (defined (VT_OMPI) || defined (VT_OMP))
-#  include <omp.h>
-#endif
 
 extern void* vftr_getname(void);
 extern int vftr_getname_len(void);
+
+/*
+ * Macro for getting id of calling thread
+ */
+
+#define GET_THREAD_ID(tid) \
+  VT_CHECK_THREAD;         \
+  (tid) = VT_MY_THREAD
 
 /*
  *-----------------------------------------------------------------------------
@@ -75,22 +83,40 @@ static uint32_t hash_get(long h) {
  * Register new region
  */
 
-static uint32_t register_region(char *func, int len) {
+static uint32_t register_region(uint32_t tid, char *func, int len) {
   uint32_t rid;
   static char fname[1024];
 
   strncpy(fname, func, len);
   fname[len] = '\0';
-  rid = vt_def_region(fname, VT_NO_ID, VT_NO_LNO, VT_NO_LNO,
-                       VT_DEF_GROUP, VT_FUNCTION);
+  rid = vt_def_region(tid, fname, VT_NO_ID, VT_NO_LNO, VT_NO_LNO,
+                      NULL, VT_FUNCTION);
   hash_put((long) func, rid);
   return rid;
 }
 
-
+void ftrace_finalize(void);
 void _ftrace_enter2_(void);
 void _ftrace_exit2_(void);
 void _ftrace_stop2_(void);
+
+/*
+ * Finalize instrumentation interface
+ */
+
+void ftrace_finalize()
+{
+  int i;
+
+  for ( i = 0; i < HASH_MAX; i++ )
+  {
+    if ( htab[i] ) {
+      free(htab[i]);
+      htab[i] = NULL;
+    }
+  }
+  necsx_init = 1;  
+}
 
 /*
  * This function is called at the entry of each function
@@ -100,15 +126,15 @@ void _ftrace_stop2_(void);
 void _ftrace_enter2_() {
   char *func = (char *)vftr_getname();
   int len = vftr_getname_len();
+  uint32_t tid;
   uint32_t rid;
   uint64_t time;
 
   /* -- if not yet initialized, initialize VampirTrace -- */
   if ( necsx_init ) {
-    VT_MEMHOOKS_OFF();
     necsx_init = 0;
     vt_open();
-    VT_MEMHOOKS_ON();
+    vt_comp_finalize = &ftrace_finalize;
   }
 
   /* -- if VampirTrace already finalized, return -- */
@@ -117,33 +143,30 @@ void _ftrace_enter2_() {
   /* -- ignore NEC OMP runtime functions -- */
   if ( strchr(func, '$') != NULL ) return;
 
-  VT_MEMHOOKS_OFF();
+  /* -- get calling thread id -- */
+  GET_THREAD_ID(tid);
+
+  VT_SUSPEND_MALLOC_TRACING(tid);
 
   time = vt_pform_wtime();
 
   /* -- get region identifier -- */
   if ( (rid = hash_get((long) func)) == VT_NO_ID ) {
     /* -- region entered the first time, register region -- */
-#   if defined (VT_OMPI) || defined (VT_OMP)
-    if (omp_in_parallel()) {
-#     pragma omp critical (vt_comp_ftrace_1)
-      {
-        if ( (rid = hash_get((long) func)) == VT_NO_ID ) {
-          rid = register_region(func, len);
-        }
-      }
-    } else {
-      rid = register_region(func, len);
-    }
-#   else
-    rid = register_region(func, len);
-#   endif
+#if (defined(VT_MT) || defined(VT_HYB))
+    VTTHRD_LOCK_IDS();
+    if ( (rid = hash_get((long) func)) == VT_NO_ID )
+      rid = register_region(tid, func, len);
+    VTTHRD_UNLOCK_IDS();
+#else /* VT_MT || VT_HYB */
+    rid = register_region(tid, func, len);
+#endif /* VT_MT || VT_HYB */
   }
 
   /* -- write enter record -- */
-  vt_enter(&time, rid);
+  vt_enter(tid, &time, rid);
 
-  VT_MEMHOOKS_ON();
+  VT_RESUME_MALLOC_TRACING(tid);
 }
 
 /*
@@ -153,27 +176,31 @@ void _ftrace_enter2_() {
 
 void _ftrace_exit2_() {
   char *func;
+  uint32_t tid;
   uint64_t time;
 
   /* -- if VampirTrace already finalized, return -- */
   if ( !vt_is_alive ) return;
 
-  VT_MEMHOOKS_OFF();
+  /* -- get calling thread id -- */
+  GET_THREAD_ID(tid);
+
+  VT_SUSPEND_MALLOC_TRACING(tid);
 
   func = (char *)vftr_getname();
 
   /* -- ignore NEC OMP runtime functions -- */
   if ( strchr(func, '$') != NULL )
   {
-    VT_MEMHOOKS_ON();
+    VT_RESUME_MALLOC_TRACING(tid);
     return;
   }
 
   /* -- write exit record -- */
   time = vt_pform_wtime();
-  vt_exit(&time);
+  vt_exit(tid, &time);
 
-  VT_MEMHOOKS_ON();
+  VT_RESUME_MALLOC_TRACING(tid);
 }
 
 /*

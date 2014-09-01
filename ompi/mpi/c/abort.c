@@ -20,11 +20,13 @@
 
 #include "orte/util/show_help.h"
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/runtime/mpiruntime.h"
 #include "ompi/memchecker.h"
 #include "ompi/communicator/communicator.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Abort = PMPI_Abort
 #endif
 
@@ -52,7 +54,7 @@ int MPI_Abort(MPI_Comm comm, int errorcode)
 
     orte_show_help("help-mpi-api.txt", "mpi-abort", true,
                    ompi_comm_rank(comm), 
-                   (NULL != comm->c_name) ? comm->c_name : "<Unknown>",
+                   ('\0' != comm->c_name[0]) ? comm->c_name : "<Unknown>",
                    errorcode);
     return ompi_mpi_abort(comm, errorcode, true);
 }

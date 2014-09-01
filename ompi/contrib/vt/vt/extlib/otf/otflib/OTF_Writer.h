@@ -1,5 +1,5 @@
 /*
- This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2008.
+ This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2013.
  Authors: Andreas Knuepfer, Holger Brunst, Ronny Brendel, Thomas Kriebitzsch
 */
 
@@ -316,6 +316,18 @@ OTF_MasterControl* OTF_Writer_getMasterControl( OTF_Writer* writer );
 void OTF_Writer_setMasterControl( OTF_Writer* writer, OTF_MasterControl* mc );
 
 
+/** For a process with id 'processId' return a stream id of the stream the
+    data is to be written to. If no mapping has been set so far it is defined
+    in a way such that it is added to the stream with the least processes.
+	\ingroup writer */
+uint32_t OTF_Writer_mapProcess( OTF_Writer* writer, uint32_t processId );
+
+
+/** Return the stream with the given stream id. If there is no such stream yet
+    create one and append it to 'streams'. \ingroup writer */
+OTF_WStream* OTF_Writer_getStream( OTF_Writer* writer, uint32_t stream );
+
+
 /* Methods for writing public definition records ************************** */
 
 
@@ -335,6 +347,20 @@ void OTF_Writer_setMasterControl( OTF_Writer* writer, OTF_MasterControl* mc );
 int OTF_Writer_writeDefinitionComment( OTF_Writer* writer, 
                                        uint32_t stream, 
                                        const char* comment );
+
+
+/**
+ * Write a comment record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefinitionComment()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefinitionCommentKV( OTF_Writer* writer, 
+                                       uint32_t stream, 
+                                       const char* comment,
+				       OTF_KeyValueList* list );
 
 
 /**
@@ -359,6 +385,20 @@ int OTF_Writer_writeDefTimerResolution( OTF_Writer* writer,
 
 
 /**
+ * Write the timer resolution definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeTimerResolution()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefTimerResolutionKV( OTF_Writer* writer, 
+                                        uint32_t stream,
+                                        uint64_t ticksPerSecond,
+					OTF_KeyValueList* list );
+
+
+/**
  * Write a process definition record. 
  *
  * @param writer   Pointer to an initialized OTF_Writer object. See 
@@ -380,6 +420,22 @@ int OTF_Writer_writeDefProcess( OTF_Writer* writer,
                                 uint32_t process, 
                                 const char* name, 
                                 uint32_t parent );
+
+
+/**
+ * Write a process definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefProcess()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefProcessKV( OTF_Writer* writer, 
+                                uint32_t stream,
+                                uint32_t process, 
+                                const char* name, 
+                                uint32_t parent,
+				OTF_KeyValueList* list );
 
 
 /**
@@ -412,6 +468,100 @@ int OTF_Writer_writeDefProcessGroup( OTF_Writer* writer,
                                      const char* name, 
                                      uint32_t numberOfProcs, 
                                      const uint32_t* procs );
+
+
+/**
+ * Write a process group definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefProcessGroup()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefProcessGroupKV( OTF_Writer* writer, 
+                                     uint32_t stream,
+                                     uint32_t procGroup, 
+                                     const char* name, 
+                                     uint32_t numberOfProcs, 
+                                     const uint32_t* procs,
+				     OTF_KeyValueList* list );
+
+
+/**
+ * Write an attribute list definition record.
+ *
+ * Defines a list of attributes that is assigned to a unique token.
+ *
+ * @param writer       Pointer to an initialized OTF_Writer object. See 
+ *                     also OTF_Writer_open().
+ * @param stream       Target stream identifier with 
+ *                     0 < stream <= number of streams as defined in 
+ *                     OTF_Writer_open().
+ * @param attr_token   Arbitrary but unique attribute list identifier > 0.
+ * @param num          Number of elements in the attribute list array.
+ * @param array        An array of different attributes with type of OTF_ATTR_TYPE(). 
+ *
+ * @return             1 on success, 0 if an error occurs.
+ * 
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefAttributeList( OTF_Writer* writer,
+				      uint32_t stream,
+				      uint32_t attr_token,
+				      uint32_t num,
+				      OTF_ATTR_TYPE* array );
+
+
+/**
+ * Write an attribute list definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefAttributeList()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefAttributeListKV( OTF_Writer* writer,
+				      uint32_t stream,
+				      uint32_t attr_token,
+				      uint32_t num,
+				      OTF_ATTR_TYPE* array,
+				      OTF_KeyValueList* list );
+
+
+/**
+ * Write a process or group attributes definition record.
+ *
+ * @param writer       Pointer to an initialized OTF_Writer object. See 
+ *                     also OTF_Writer_open().
+ * @param stream       Target stream identifier with 
+ *                     0 < stream <= number of streams as defined in 
+ *                     OTF_Writer_open().
+ * @param proc_token   Arbitrary but unique process or process group identifier > 0.
+ * @param attr_token   A unique token that was defined with OTF_Writer_writeDefAttributeList().
+ *
+ * @return             1 on success, 0 if an error occurs.
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefProcessOrGroupAttributes( OTF_Writer* writer,
+						 uint32_t stream,
+						 uint32_t proc_token,
+						 uint32_t attr_token );
+
+
+/**
+ * Write a process or group attributes definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefProcessOrGroupAttributes()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefProcessOrGroupAttributesKV( OTF_Writer* writer,
+						 uint32_t stream,
+						 uint32_t proc_token,
+						 uint32_t attr_token,
+						 OTF_KeyValueList* list );
 
 
 /**
@@ -449,6 +599,23 @@ int OTF_Writer_writeDefFunction( OTF_Writer* writer,
 
 
 /**
+ * Write a function definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefFunction()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefFunctionKV( OTF_Writer* writer, 
+                                 uint32_t stream,
+                                 uint32_t func, 
+                                 const char* name, 
+                                 uint32_t funcGroup, 
+                                 uint32_t source,
+				 OTF_KeyValueList* list );
+
+
+/**
  * Write a function group definition record.
  *
  * @param writer     Pointer to an initialized OTF_Writer object. See 
@@ -467,6 +634,21 @@ int OTF_Writer_writeDefFunctionGroup( OTF_Writer* writer,
                                       uint32_t stream,
                                       uint32_t funcGroup, 
                                       const char* name );
+
+
+/**
+ * Write a function group definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefFunctionGroup()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefFunctionGroupKV( OTF_Writer* writer, 
+                                      uint32_t stream,
+                                      uint32_t funcGroup, 
+                                      const char* name,
+				      OTF_KeyValueList* list );
 
 
 /**
@@ -494,6 +676,22 @@ int OTF_Writer_writeDefCollectiveOperation( OTF_Writer* writer,
                                             uint32_t collOp,
                                             const char* name,
                                             uint32_t type );
+
+
+/**
+ * Write a collective operation definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefCollectiveOperation()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefCollectiveOperationKV( OTF_Writer* writer, 
+                                            uint32_t stream,
+                                            uint32_t collOp,
+                                            const char* name,
+                                            uint32_t type,
+					    OTF_KeyValueList* list );
 
 
 /**
@@ -543,6 +741,24 @@ int OTF_Writer_writeDefCounter( OTF_Writer* writer,
 
 
 /**
+ * Write a counter definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefCounter()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefCounterKV( OTF_Writer* writer,
+                                uint32_t stream,
+                                uint32_t counter,
+                                const char* name,
+                                uint32_t properties, 
+                                uint32_t counterGroup, 
+                                const char* unit,
+				OTF_KeyValueList* list );
+
+
+/**
  * Write a counter group definition record.
  *
  * @param writer       Initialized OTF_Writer instance.
@@ -560,6 +776,21 @@ int OTF_Writer_writeDefCounterGroup( OTF_Writer* writer,
                                      uint32_t stream,
                                      uint32_t counterGroup, 
                                      const char* name );
+
+
+/**
+ * Write a counter group definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefCounterGroup()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefCounterGroupKV( OTF_Writer* writer, 
+                                     uint32_t stream,
+                                     uint32_t counterGroup, 
+                                     const char* name,
+				     OTF_KeyValueList* list );
 
 
 /**
@@ -587,6 +818,22 @@ int OTF_Writer_writeDefScl( OTF_Writer* writer,
 
 
 /**
+ * Write a source code location (SCL) record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefScl()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefSclKV( OTF_Writer* writer,
+                            uint32_t stream,
+                            uint32_t source,
+                            uint32_t sourceFile, 
+                            uint32_t line,
+			    OTF_KeyValueList* list );
+
+
+/**
  * Write a source code location (SCL) file record.
  *
  * @param writer       Initialized OTF_Writer instance.
@@ -605,6 +852,21 @@ int OTF_Writer_writeDefSclFile( OTF_Writer* writer,
                                 uint32_t stream, 
                                 uint32_t sourceFile,
                                 const char* name );
+
+
+/**
+ * Write a source code location (SCL) file record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefSclFile()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefSclFileKV( OTF_Writer* writer,
+                                uint32_t stream, 
+                                uint32_t sourceFile,
+                                const char* name,
+				OTF_KeyValueList* list );
 
 
 /**
@@ -634,6 +896,19 @@ int OTF_Writer_writeDefCreator( OTF_Writer* writer, uint32_t stream,
                                 const char* creator );
 
 
+/**
+ * Write a creator record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefCreator()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefCreatorKV( OTF_Writer* writer, uint32_t stream,
+                                const char* creator,
+				OTF_KeyValueList* list );
+
+
 
 
 /**
@@ -660,6 +935,22 @@ int OTF_Writer_writeDefFile( OTF_Writer* writer,
 
 
 /**
+ * Write a file definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefFile()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefFileKV( OTF_Writer* writer,
+                             uint32_t stream,
+                             uint32_t token,
+                             const char* name,
+                             uint32_t group,
+			     OTF_KeyValueList* list );
+
+
+/**
  * Write a file group definition record
  *
  * @param writer       Initialized OTF_Writer instance.
@@ -678,6 +969,178 @@ int OTF_Writer_writeDefFileGroup( OTF_Writer* writer,
                                   uint32_t stream,
                                   uint32_t token,
                                   const char* name );
+
+
+/**
+ * Write a file group definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefFileGroup()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefFileGroupKV( OTF_Writer* writer,
+                                  uint32_t stream,
+                                  uint32_t token,
+                                  const char* name,
+				  OTF_KeyValueList* list );
+
+
+/**
+ * Write a key value definition record
+ *
+ * @param writer       Initialized OTF_Writer instance.
+ * @param stream       Target stream identifier with 
+ *                     0 < stream <= number of streams as defined in 
+ *                     OTF_Writer_open().
+ * @param key          Arbitrary, unique identifier for the key value pair.
+ * @param type         Type of the key.
+ * @param name         Name of the key value pair.
+ * @param description  Description of the key value pair.
+ *
+ * @return             1 on success, 0 if an error occurs.       
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefKeyValue( OTF_Writer* writer,
+				 uint32_t stream, 
+				 uint32_t key,
+				 OTF_Type type,
+				 const char* name,
+				 const char* description );
+
+
+/**
+ * Write a key value definition record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefKeyValue()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefKeyValueKV( OTF_Writer* writer,
+				 uint32_t stream, 
+				 uint32_t key,			   
+				 OTF_Type type,
+				 const char* name,
+				 const char* description,
+				 OTF_KeyValueList* list );
+
+
+/**
+ * Writes a TimeRange definition
+ *
+ * @param writer       Initialized OTF_Writer instance.
+ * @param streamid     Identifies the stream to which this definition
+ *                     belongs to. stream = 0 represents a global
+ *                     definition.
+ * @param minTime      The smallest timestamp of the events in this @a streamid.
+ * @param maxTime      The greates timestamp of the events in this @a streamid (inclusive).
+ * @param list         Pointer to an OTF_KeyValueList() that contains individual data.
+ *
+ * @return             1 on success, 0 if an error occurs.
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefTimeRange( OTF_Writer*       writer,
+                                  uint32_t          streamid,
+                                  uint64_t          minTime,
+                                  uint64_t          maxTime,
+                                  OTF_KeyValueList* list );
+
+/**
+ * Writes a CounterAssignments definition
+ *
+ * @param writer       Initialized OTF_Writer instance.
+ * @param streamid     Identifies the stream to which this definition
+ *                     belongs to. stream = 0 represents a global
+ *                     definition.
+ * @param counter_token     Counter id.
+ * @param number_of_members Number of entries in @procs_or_groups array.
+ * @param procs_or_groups   The processes or process groups which have recorded
+ *                          counter data for counter @counter_token.
+ * @param list         Pointer to an OTF_KeyValueList() that contains individual data.
+ *
+ * @return             1 on success, 0 if an error occurs.
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefCounterAssignments( OTF_Writer*       writer,
+                                           uint32_t          streamid,
+                                           uint32_t          counter_token,
+                                           uint32_t          number_of_members,
+                                           const uint32_t*   procs_or_groups,
+                                           OTF_KeyValueList* list );
+
+
+/**
+ * Writes a ProcessSubstitutes definition record
+ *
+ * @param writer       Initialized OTF_Writer instance.
+ * @param streamid     Identifies the stream to which this definition
+ *                     belongs to. stream = 0 represents a global
+ *                     definition.
+ * @param representative     Process ID of the process that represents several others.
+ * @param numberOfProcs      Number of entries in @procs array.
+ * @param procs              The processes which are represented by
+ *                           @representative. It may or may not include 
+ *                           @representative itself.
+ * @param list         Pointer to an OTF_KeyValueList() that contains individual data.
+ *
+ * @return             1 on success, 0 if an error occurs.
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefProcessSubstitutes( OTF_Writer*       writer,
+                                           uint32_t          streamid,
+                                           uint32_t          representative,
+                                           uint32_t          numberOfProcs,
+                                           const uint32_t*   procs,
+                                           OTF_KeyValueList* list );
+
+
+/**
+ * Write a auxiliary sample point definition record.
+ *
+ * @param writer       Initialized OTF_Writer instance.
+ * @param stream       Target stream identifier with
+ *                     0 < stream <= number of streams as defined in
+ *                     OTF_Writer_open().
+ * @param time         Time at which the auxiliary sample point information
+ *                     is available.
+ * @param type         Type of the auxiliary sample point.
+ *                     See @a OTF_AuxSamplePointType.
+ *
+ * @param list         Pointer to an OTF_KeyValueList() that contains individual data.
+ *
+ * @return             1 on success, 0 if an error occurs.
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefAuxSamplePoint( OTF_Writer*            writer,
+                                       uint32_t               streamid,
+                                       uint64_t               time,
+                                       OTF_AuxSamplePointType type,
+                                       OTF_KeyValueList*      list );
+
+
+/**
+ * Write a no-operation record. This can be used to write an OTF_KeyValueList
+ * that is not attached to a special event record.
+ *
+ * @param writer    Initialized OTF_Writer instance.
+ * @param time      The time when the NoOp event took place.
+ * @param process   Process where action took place.
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @return          1 on success, 0 if an error occurs.       
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeNoOpKV( OTF_Writer* writer,
+			    uint64_t time,
+			    uint32_t process,
+                            OTF_KeyValueList* list );
 
 
 /**
@@ -702,6 +1165,22 @@ int OTF_Writer_writeEnter( OTF_Writer* writer,
 
 
 /**
+ * Write a function entry record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeEnter()
+ * \ingroup writer
+ */
+int OTF_Writer_writeEnterKV( OTF_Writer* writer, 
+                           uint64_t time, 
+                           uint32_t function, 
+                           uint32_t process, 
+                           uint32_t source,
+			   OTF_KeyValueList* list );
+
+
+/**
  * Write a function leave record.
  *
  * @param writer    Initialized OTF_Writer instance.
@@ -720,6 +1199,22 @@ int OTF_Writer_writeLeave( OTF_Writer* writer,
                            uint32_t function, 
                            uint32_t process, 
                            uint32_t source );
+
+
+/**
+ * Write a function leave record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeLeave()
+ * \ingroup writer
+ */
+int OTF_Writer_writeLeaveKV( OTF_Writer* writer, 
+                           uint64_t time, 
+                           uint32_t function, 
+                           uint32_t process, 
+                           uint32_t source,
+			   OTF_KeyValueList* list );
 
 
 /**
@@ -750,6 +1245,25 @@ int OTF_Writer_writeRecvMsg( OTF_Writer* writer,
 
 
 /**
+ * Write a message retrieval record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeRecvMsg()
+ * \ingroup writer
+ */
+int OTF_Writer_writeRecvMsgKV( OTF_Writer* writer, 
+                             uint64_t time, 
+                             uint32_t receiver, 
+                             uint32_t sender, 
+                             uint32_t procGroup, 
+                             uint32_t tag, 
+                             uint32_t length, 
+                             uint32_t source,
+			     OTF_KeyValueList* list );
+
+
+/**
  * Write a message send record.
  *
  * @param writer    Initialized OTF_Writer instance.
@@ -777,6 +1291,25 @@ int OTF_Writer_writeSendMsg( OTF_Writer* writer,
 
 
 /**
+ * Write a message send record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeSendMsg()
+ * \ingroup writer
+ */
+int OTF_Writer_writeSendMsgKV( OTF_Writer* writer, 
+                             uint64_t time, 
+                             uint32_t sender, 
+                             uint32_t receiver, 
+                             uint32_t procGroup, 
+                             uint32_t tag, 
+                             uint32_t length, 
+                             uint32_t source,
+			     OTF_KeyValueList* list );
+
+
+/**
  * Write a counter measurement record.
  *
  * @param writer    Initialized OTF_Writer instance.
@@ -797,7 +1330,26 @@ int OTF_Writer_writeCounter( OTF_Writer* writer,
 
 
 /**
+ * Write a counter measurement record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeCounter()
+ * \ingroup writer
+ */
+int OTF_Writer_writeCounterKV( OTF_Writer* writer, 
+                             uint64_t time, 
+                             uint32_t process, 
+                             uint32_t counter, 
+                             uint64_t value,
+			     OTF_KeyValueList* list );
+
+
+/**
  * Write a collective operation member record.
+ * @deprecated This event record has been deprecated due to usage constraints.
+ *             Please use OTF_Writer_writeBeginCollectiveOperation() and
+ *             OTF_Writer_writeEndCollectiveOperation(), repectively.
  *
  * @param writer      Initialized OTF_Writer instance.
  * @param time        Time when collective operation was entered by member.
@@ -828,6 +1380,117 @@ int OTF_Writer_writeCollectiveOperation( OTF_Writer* writer,
 
 
 /**
+ * Write a collective operation member record including an OTF_KeyValueList.
+ * @deprecated This event record has been deprecated due to usage constraints.
+ *             Please use OTF_Writer_writeBeginCollectiveOperationEV() and
+ *             OTF_Writer_writeEndCollectiveOperationEV(), repectively.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeCollectiveOperation()
+ * \ingroup writer
+ */
+int OTF_Writer_writeCollectiveOperationKV( OTF_Writer* writer, 
+                                         uint64_t time, 
+                                         uint32_t process, 
+                                         uint32_t collective, 
+                                         uint32_t procGroup, 
+                                         uint32_t rootProc, 
+                                         uint32_t sent, 
+                                         uint32_t received, 
+                                         uint64_t duration, 
+                                         uint32_t source,
+					 OTF_KeyValueList* list );
+
+
+/**
+ * Write a begin collective operation member record.
+ *
+ * @param writer      Initialized OTF_Writer instance.
+ * @param time        Time when collective operation was entered by member.
+ * @param process     Process identifier i.e. collective member. 
+ * @param collOp      Collective identifier to be defined with
+ *                    OTF_Writer_writeDefCollectiveOperation(). 
+ * @param matchingId  Identifier for finding the associated end collective event
+ *                    record. It must be unique within this procGroup.
+ * @param procGroup   Group of processes participating in this collective.
+ * @param rootProc    Root process if != 0.
+ * @param sent        Data volume sent by member or 0.
+ * @param received    Data volume received by member or 0.
+ * @param scltoken    Explicit source code location or 0.
+ *
+ * @return            1 on success, 0 if an error occurs.       
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeBeginCollectiveOperation( OTF_Writer* writer,
+					      uint64_t time,
+					      uint32_t process,
+					      uint32_t collOp,
+					      uint64_t matchingId,
+					      uint32_t procGroup,
+					      uint32_t rootProc,
+					      uint64_t sent,
+					      uint64_t received,
+					      uint32_t scltoken );
+
+
+/**
+ * Write a begin collective operation member record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeBeginCollectiveOperation()
+ * \ingroup writer
+ */
+int OTF_Writer_writeBeginCollectiveOperationKV( OTF_Writer* writer,
+					      uint64_t time,
+					      uint32_t process,
+					      uint32_t collOp,
+					      uint64_t matchingId,
+					      uint32_t procGroup,
+					      uint32_t rootProc,
+					      uint64_t sent,
+					      uint64_t received,
+					      uint32_t scltoken,
+					      OTF_KeyValueList* list );
+
+
+/**
+ * Write an end collective operation member record.
+ *
+ * @param writer      Initialized OTF_Writer instance.
+ * @param time        Time when collective operation was entered by member.
+ * @param process     Process identifier i.e. collective member. 
+ * @param matchingId  Matching identifier, must match a previous start
+ *                    collective operation.
+ *
+ * @return            1 on success, 0 if an error occurs.       
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeEndCollectiveOperation( OTF_Writer* writer,
+					    uint64_t time,
+					    uint32_t process,
+					    uint64_t matchingId );
+
+
+/**
+ * Write an end collective operation member record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeEndCollectiveOperation()
+ * \ingroup writer
+ */
+int OTF_Writer_writeEndCollectiveOperationKV( OTF_Writer* writer,
+					    uint64_t time,
+					    uint32_t process,
+					    uint64_t matchingId,
+					    OTF_KeyValueList* list );
+
+
+/**
  * Write a comment record.
  *
  * @param writer    Initialized OTF_Writer instance.
@@ -849,6 +1512,21 @@ int OTF_Writer_writeEventComment( OTF_Writer* writer,
 
 
 /**
+ * Write a comment record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeEventComment()
+ * \ingroup writer
+ */
+int OTF_Writer_writeEventCommentKV( OTF_Writer* writer, 
+                                  uint64_t time, 
+                                  uint32_t process, 
+                                  const char* comment,
+				  OTF_KeyValueList* list );
+
+
+/**
  * Write a begin process record
  *
  * @param writer    Initialized OTF_Writer instance.
@@ -863,6 +1541,20 @@ int OTF_Writer_writeEventComment( OTF_Writer* writer,
 int OTF_Writer_writeBeginProcess( OTF_Writer* writer,
                                   uint64_t time,
                                   uint32_t process );
+
+
+/**
+ * Write a begin process record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeBeginProcess()
+ * \ingroup writer
+ */
+int OTF_Writer_writeBeginProcessKV( OTF_Writer* writer,
+                                  uint64_t time,
+                                  uint32_t process,
+				  OTF_KeyValueList* list );
 
 
 /**
@@ -883,20 +1575,31 @@ int OTF_Writer_writeEndProcess( OTF_Writer* writer,
 
 
 /**
- * Write an file operation record
+ * Write a end process record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeEndProcess()
+ * \ingroup writer
+ */
+int OTF_Writer_writeEndProcessKV( OTF_Writer* writer,
+                                uint64_t time,
+                                uint32_t process,
+				OTF_KeyValueList* list );
+
+
+/**
+ * Write a file operation record
+ * @deprecated This event record has been deprecated due to usage constraints.
+ *             Please use OTF_Writer_writeBeginFileOperation() and
+ *             OTF_Writer_writeEndFileOperation(), respectively.
  *
  * @param writer    Initialized OTF_Writer instance.
- *
- * @param time      Time when process was referenced for the last time. 
- *
+ * @param time      Start time of the file operation. 
  * @param fileid    File identifier > 0.
- *
  * @param handleid  File open identifier.
- *
  * @param process   Process identifier > 0.
- *
  * @param operation Type of file operation @see OTF_Handler_FileOperation()
- *
  * @param bytes     Depends on operation @see OTF_Handler_FileOperation()
  * @param duration  time spent in the file operation
  *
@@ -913,6 +1616,326 @@ int OTF_Writer_writeFileOperation( OTF_Writer* writer,
                                    uint64_t bytes,
                                    uint64_t duration,
                                    uint32_t source );
+
+
+/**
+ * Write a file operation record including an OTF_KeyValueList.
+ * @deprecated This event record has been deprecated due to usage constraints.
+ *             Please use OTF_Writer_writeBeginFileOperationKV() and
+ *             OTF_Writer_writeEndFileOperationKV(), respectively.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeFileOperation()
+ * \ingroup writer
+ */
+int OTF_Writer_writeFileOperationKV( OTF_Writer* writer,
+                                   uint64_t time,
+                                   uint32_t fileid,
+                                   uint32_t process,
+                                   uint64_t handleid,
+                                   uint32_t operation,
+                                   uint64_t bytes,
+                                   uint64_t duration,
+                                   uint32_t source,
+				   OTF_KeyValueList* list );
+
+
+/**
+ * Write a begin file operation record
+ *
+ * @param writer      Initialized OTF_Writer instance.
+ * @param time        Start time of file operation. 
+ * @param process     Process identifier > 0.
+ * @param matchingId  Operation identifier, used for finding the associated end
+ *                    file operation event record.
+ * @param scltoken    Optional reference to source code.
+ *
+ * @return            1 on success, 0 if an error occurs.       
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeBeginFileOperation( OTF_Writer* writer,
+					uint64_t time,
+					uint32_t process,
+					uint64_t matchingId,
+					uint32_t scltoken );
+
+
+/**
+ * Write a begin file operation record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeBeginFileOperation()
+ * \ingroup writer
+ */
+int OTF_Writer_writeBeginFileOperationKV( OTF_Writer* writer,
+					uint64_t time,
+					uint32_t process,
+					uint64_t matchingId,
+					uint32_t scltoken,
+					OTF_KeyValueList* list );
+
+
+/**
+ * Write an end file operation record
+ *
+ * @param writer      Initialized OTF_Writer instance.
+ * @param time        End time of file operation. 
+ * @param process     Process identifier > 0.
+ * @param fileid      File identifier > 0.
+ * @param matchingId  Operation identifier, must match a previous start file
+ *                    operation event record.
+ * @param handleId    Unique file open identifier.
+ * @param operation   Type of file operation @see OTF_Handler_FileOperation()
+ * @param bytes       Depends on operation @see OTF_Handler_FileOperation()
+ * @param scltoken    Optional reference to source code.
+ *
+ * @return            1 on success, 0 if an error occurs.       
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeEndFileOperation( OTF_Writer* writer,
+				      uint64_t time,
+				      uint32_t process,
+				      uint32_t fileid,
+				      uint64_t matchingId,
+                      uint64_t handleId,
+				      uint32_t operation,
+				      uint64_t bytes,
+				      uint32_t scltoken );
+
+
+/**
+ * Write an end file operation record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeEndFileOperation()
+ * \ingroup writer
+ */
+int OTF_Writer_writeEndFileOperationKV( OTF_Writer* writer,
+				      uint64_t time,
+				      uint32_t process,
+				      uint32_t fileid,
+				      uint64_t matchingId,
+                      uint64_t handleId,
+				      uint32_t operation,
+				      uint64_t bytes,
+				      uint32_t scltoken,
+				      OTF_KeyValueList* list );
+
+
+/**
+ * Write a RMA put record - local end record.
+ * The end of this transfer is marked by the NEXT end record on this <process>
+ * with the same communicator/tag pair.
+ *
+ * @param writer      Initialized OTF_Writer instance.
+ * @param time        Time when process was referenced for the last time.
+ * @param process     Process initiating the transfer.
+ * @param origin      If >0, Process whose memory will be transferred, instead
+                      of this <process>.
+ * @param target      Process whose memory will be written.
+ * @param communicator Together with tag, it is used to identify the
+ *                    corresponding RMA end record.
+ * @param tag         Together with communicator, it is used to identify the
+ *                    corresponding RMA end record.
+ * @param bytes       How many bytes have been transfered by this call.
+ * @param source      Explicit source code location or 0.
+ *
+ * @return            1 on success, 0 if an error occurs.
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeRMAPut( OTF_Writer* writer,
+                            uint64_t time,
+                            uint32_t process,
+                            uint32_t origin,
+                            uint32_t target,
+                            uint32_t communicator,
+                            uint32_t tag,
+                            uint64_t bytes,
+                            uint32_t scltoken );
+
+
+/**
+ * Write a RMA put record - local end record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeRMAPut()
+ * \ingroup writer
+ */
+int OTF_Writer_writeRMAPutKV( OTF_Writer* writer,
+                            uint64_t time,
+                            uint32_t process,
+                            uint32_t origin,
+                            uint32_t target,
+                            uint32_t communicator,
+                            uint32_t tag,
+                            uint64_t bytes,
+                            uint32_t scltoken,
+			    OTF_KeyValueList* list );
+
+
+/**
+ * Write a RMA put record - remote end record.
+ * The end of this transfer is marked by the NEXT end record on process <target>
+ * with the same communicator/tag pair.
+ *
+ * @param writer      Initialized OTF_Writer instance.
+ * @param time        Time when process was referenced for the last time.
+ * @param process     Process initiating the transfer.
+ * @param origin      If >0, Process whose memory will be transferred, instead
+                      of this <process>.
+ * @param target      Process whose memory will be written and where the end
+ *                    record is located.
+ * @param communicator Together with tag, it is used to identify the
+ *                    corresponding RMA end record.
+ * @param tag         Together with communicator, it is used to identify the
+ *                    corresponding RMA end record.
+ * @param bytes       How many bytes have been transfered by this call.
+ * @param source      Explicit source code location or 0.
+ *
+ * @return            1 on success, 0 if an error occurs.
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeRMAPutRemoteEnd( OTF_Writer* writer,
+                                     uint64_t time,
+                                     uint32_t process,
+                                     uint32_t origin,
+                                     uint32_t target,
+                                     uint32_t communicator,
+                                     uint32_t tag,
+                                     uint64_t bytes,
+                                     uint32_t scltoken );
+
+
+/**
+ * Write a RMA put record - remote end record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeRMAPutRemoteEnd()
+ * \ingroup writer
+ */
+int OTF_Writer_writeRMAPutRemoteEndKV( OTF_Writer* writer,
+                                     uint64_t time,
+                                     uint32_t process,
+                                     uint32_t origin,
+                                     uint32_t target,
+                                     uint32_t communicator,
+                                     uint32_t tag,
+                                     uint64_t bytes,
+                                     uint32_t scltoken,
+				     OTF_KeyValueList* list );
+
+
+/**
+ * Write a RMA get record.
+ * The end of this transfer is marked by the NEXT end record on this <process>
+ * with the same communicator/tag pair.
+ *
+ * @param writer      Initialized OTF_Writer instance.
+ * @param time        Time when process was referenced for the last time.
+ * @param process     Process initiating the transfer.
+ * @param origin      If >0, Process where data will be transferred to (instead
+                      of this <process>).
+ * @param target      Process whose memory will be read.
+ * @param communicator Together with tag, it is used to identify the
+ *                    corresponding RMA end record.
+ * @param tag         Together with communicator, it is used to identify the
+ *                    corresponding RMA end record.
+ * @param bytes       How many bytes have been transfered by this call.
+ * @param source      Explicit source code location or 0.
+ *
+ * @return            1 on success, 0 if an error occurs.
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeRMAGet( OTF_Writer* writer,
+                            uint64_t time,
+                            uint32_t process,
+                            uint32_t origin,
+                            uint32_t target,
+                            uint32_t communicator,
+                            uint32_t tag,
+                            uint64_t bytes,
+                            uint32_t scltoken );
+
+
+/**
+ * Write a RMA get record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeRMAGet()
+ * \ingroup writer
+ */
+int OTF_Writer_writeRMAGetKV( OTF_Writer* writer,
+                            uint64_t time,
+                            uint32_t process,
+                            uint32_t origin,
+                            uint32_t target,
+                            uint32_t communicator,
+                            uint32_t tag,
+                            uint64_t bytes,
+                            uint32_t scltoken,
+			    OTF_KeyValueList* list );
+
+
+/**
+ * Write a RMA end record.
+ * The end record marks the finalization of all put and get operations with the
+ * same communicator/tag pair that occured so far for this <process>.
+ *
+ * @param writer      Initialized OTF_Writer instance.
+ * @param time        Time when process was referenced for the last time.
+ * @param process     Process identifier > 0.
+ * @param remote      If >0, ends RMA transfers on Process <remote>, instead of
+                      this <process>.
+                      [remote!=0 is really weird crap and would never be used by
+                       sane programmers ;-) -- nevertheless, the IBM Cell could
+                       be programmed like this.]
+ * @param communicator Together with tag, it is used to identify the
+ *                    related RMA put/get records.
+ * @param tag         Together with communicator, it is used to identify the
+ *                    related RMA put/get records.
+ * @param source      Explicit source code location or 0.
+ *
+ * @return            1 on success, 0 if an error occurs.
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeRMAEnd( OTF_Writer* writer,
+                            uint64_t time,
+                            uint32_t process,
+                            uint32_t remote,
+                            uint32_t communicator,
+                            uint32_t tag,
+                            uint32_t scltoken );
+
+
+/**
+ * Write a RMA end record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeRMAEnd()
+ * \ingroup writer
+ */
+int OTF_Writer_writeRMAEndKV( OTF_Writer* writer,
+                            uint64_t time,
+                            uint32_t process,
+                            uint32_t remote,
+                            uint32_t communicator,
+                            uint32_t tag,
+                            uint32_t scltoken,
+			    OTF_KeyValueList* list );
+
 
 /* *** public snapshot record write handlers *** */
 
@@ -935,6 +1958,21 @@ int OTF_Writer_writeSnapshotComment( OTF_Writer* writer,
                                   uint64_t time, 
                                   uint32_t process, 
                                   const char* comment );
+
+
+/**
+ * Write a snapshot comment record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeSnapshotComment()
+ * \ingroup writer
+ */
+int OTF_Writer_writeSnapshotCommentKV( OTF_Writer* writer, 
+                                  uint64_t time, 
+                                  uint32_t process, 
+                                  const char* comment,
+				  OTF_KeyValueList* list );
 
 
 /** 
@@ -962,6 +2000,24 @@ int OTF_Writer_writeEnterSnapshot( OTF_Writer* writer,
                            uint32_t process, 
                            uint32_t source );
 
+
+/** 
+ * Write an enter snapshot including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeEnterSnapshot()
+ * \ingroup writer
+ */
+int OTF_Writer_writeEnterSnapshotKV( OTF_Writer* writer, 
+                           uint64_t time, 
+                           uint64_t originaltime, 
+                           uint32_t function, 
+                           uint32_t process, 
+                           uint32_t source,
+			   OTF_KeyValueList* list );
+
+
 /**
  * Write a send snapshot which provides information about a past
  * message send operation that is still pending, i.e. not yet received
@@ -974,6 +2030,7 @@ int OTF_Writer_writeEnterSnapshot( OTF_Writer* writer,
  * @param procGroup     Optional process-group sender and receiver belong to,
  *                      '0' for no group.
  * @param tag           Optional message type information.
+ * @param length        Optional message length information.
  * @param source        Optional reference to source code.
  *
  * @return              1 on success, 0 if an error occurs.       
@@ -987,7 +2044,28 @@ int OTF_Writer_writeSendSnapshot( OTF_Writer* writer,
                                   uint32_t receiver,
                                   uint32_t procGroup,
                                   uint32_t tag,
+                                  uint32_t length,
                                   uint32_t source );
+
+
+/**
+ * Write a send snapshot including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeSendSnapshot()
+ * \ingroup writer
+ */
+int OTF_Writer_writeSendSnapshotKV( OTF_Writer* writer,
+                                  uint64_t time,
+                                  uint64_t originaltime,
+                                  uint32_t sender,
+                                  uint32_t receiver,
+                                  uint32_t procGroup,
+                                  uint32_t tag,
+                                  uint32_t length,
+                                  uint32_t source,
+				                  OTF_KeyValueList* list );
 
 
 /**
@@ -1014,7 +2092,167 @@ int OTF_Writer_writeOpenFileSnapshot( OTF_Writer* writer,
                                       uint32_t source );
 
 
+/**
+ * Write a snapshot record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeOpenFileSnapshot()
+ * \ingroup writer
+ */
+int OTF_Writer_writeOpenFileSnapshotKV( OTF_Writer* writer,
+                                      uint64_t time,
+                                      uint64_t originaltime,
+                                      uint32_t fileid,
+                                      uint32_t process,
+                                      uint64_t handleid,
+                                      uint32_t source,
+				                      OTF_KeyValueList* list );
+
+
+/**
+ * Write a snapshot record for an unfinished collective operation.
+ *
+ * @param writer        Initialized OTF_Writer instance.
+ * @param time          Time when the snapshot was written(current time).
+ * @param originaltime  Time when the collective operation began.
+ * @param process       Process identifier i.e. collective member. 
+ * @param collOp        Collective identifier to be defined with
+ *                      OTF_Writer_writeDefCollectiveOperation(). 
+ * @param matchingId    Identifier for finding the associated end collective event
+ *                      record. It must be unique within this procGroup.
+ * @param procGroup     Group of processes participating in this collective.
+ * @param rootProc      Root process if != 0.
+ * @param sent          Data volume sent by member or 0.
+ * @param received      Data volume received by member or 0.
+ * @param scltoken      Explicit source code location or 0.
+ *
+ * @return              1 on success, 0 if an error occurs.       
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeBeginCollopSnapshot( OTF_Writer* writer,
+					      uint64_t time,
+                          uint64_t originaltime,
+					      uint32_t process,
+					      uint32_t collOp,
+					      uint64_t matchingId,
+					      uint32_t procGroup,
+					      uint32_t rootProc,
+					      uint64_t sent,
+					      uint64_t received,
+					      uint32_t scltoken );
+
+
+/**
+ * Write a snapshot record for an unfinished collective operation including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeBeginCollopSnapshot()
+ * \ingroup writer
+ */
+int OTF_Writer_writeBeginCollopSnapshotKV( OTF_Writer* writer,
+					      uint64_t time,
+                          uint64_t originaltime,
+					      uint32_t process,
+					      uint32_t collOp,
+					      uint64_t matchingId,
+					      uint32_t procGroup,
+					      uint32_t rootProc,
+					      uint64_t sent,
+					      uint64_t received,
+					      uint32_t scltoken,
+					      OTF_KeyValueList* list );
+
+
+/**
+ * Write a snapshot for an unfinished file operation.
+ *
+ * @param writer        Initialized OTF_Writer instance.
+ * @param time          Time when the snapshot was written(current time).
+ * @param originaltime  Time when the operation began.
+ * @param process       Process identifier > 0.
+ * @param matchingId    Operation identifier, used for finding the associated end
+ *                      file operation event record.
+ * @param scltoken      Optional reference to source code.
+ *
+ * @return              1 on success, 0 if an error occurs.       
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeBeginFileOpSnapshot( OTF_Writer* writer,
+					uint64_t time,
+                    uint64_t originaltime,
+					uint32_t process,
+					uint64_t matchingId,
+					uint32_t scltoken );
+
+
+/**
+ * Write a snapshot for an unfinished file operation including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeBeginFileOperation()
+ * \ingroup writer
+ */
+int OTF_Writer_writeBeginFileOpSnapshotKV( OTF_Writer* writer,
+					uint64_t time,
+                    uint64_t originaltime,
+					uint32_t process,
+					uint64_t matchingId,
+					uint32_t scltoken,
+					OTF_KeyValueList* list );
                            
+/**
+ * Write a snapshot for the count of finished collective operations from this
+ * process on this communicator.
+ *
+ * @param writer        Initialized OTF_Writer instance.
+ * @param time          Time when the snapshot was written(current time).
+ * @param process       Process identifier > 0.
+ * @param communicator  The communicator for what the count is for.
+ * @param count         The count of completed collective operations from process @.
+ *
+ * @param list          Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @return              1 on success, 0 if an error occurs.
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeCollopCountSnapshot( OTF_Writer* writer,
+                                         uint64_t time,
+                                         uint32_t process,
+                                         uint32_t communicator,
+                                         uint64_t count,
+                                         OTF_KeyValueList *list );
+
+
+/**
+ * Write a snapshot for the last value of a counter into the snapshot.
+ *
+ * @param writer        Initialized OTF_Writer instance.
+ * @param time          Time when the snapshot was written(current time).
+ * @param originaltime  Sample time of the value.
+ * @param process       Process identifier > 0.
+ * @param counter       The counter.
+ * @param value         The value of the counter.
+ *
+ * @param list          Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @return              1 on success, 0 if an error occurs.
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeCounterSnapshot( OTF_Writer*       writer,
+                                     uint64_t          time,
+                                     uint64_t          originaltime,
+                                     uint32_t          process,
+                                     uint32_t          counter,
+                                     uint64_t          value,
+                                     OTF_KeyValueList *list );
+
 /* *** public statistics record write handlers *** */
 
 
@@ -1040,6 +2278,21 @@ int OTF_Writer_writeSummaryComment( OTF_Writer* writer,
 
 
 /**
+ * Write a summary comment record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeSummaryComment()
+ * \ingroup writer
+ */
+int OTF_Writer_writeSummaryCommentKV( OTF_Writer* writer, 
+                                  uint64_t time, 
+                                  uint32_t process, 
+                                  const char* comment,
+				  OTF_KeyValueList* list );
+
+
+/**
  * Write a function summary record.
  *
  * @param writer       Initialized OTF_Writer instance.
@@ -1060,6 +2313,21 @@ int OTF_Writer_writeSummaryComment( OTF_Writer* writer,
 int OTF_Writer_writeFunctionSummary( OTF_Writer* writer, 
         uint64_t time, uint32_t function, uint32_t process, 
         uint64_t count, uint64_t excltime, uint64_t incltime );
+
+
+/**
+ * Write a function summary record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeFunctionSummary()
+ * \ingroup writer
+ */
+int OTF_Writer_writeFunctionSummaryKV( OTF_Writer* writer, 
+        uint64_t time, uint32_t function, uint32_t process, 
+        uint64_t count, uint64_t excltime, uint64_t incltime,
+	OTF_KeyValueList* list );
+
 
 /**
  * Write a functiongroup summary record.
@@ -1082,6 +2350,21 @@ int OTF_Writer_writeFunctionSummary( OTF_Writer* writer,
 int OTF_Writer_writeFunctionGroupSummary( OTF_Writer* writer, 
         uint64_t time,  uint32_t functiongroup,  uint32_t process,  
         uint64_t count,  uint64_t excltime,  uint64_t incltime );
+
+
+/**
+ * Write a functiongroup summary record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeFunctionGroupSummary()
+ * \ingroup writer
+ */
+int OTF_Writer_writeFunctionGroupSummaryKV( OTF_Writer* writer, 
+        uint64_t time,  uint32_t functiongroup,  uint32_t process,  
+        uint64_t count,  uint64_t excltime,  uint64_t incltime,
+	OTF_KeyValueList* list );
+
 
 /**
  * Write a message summary record.
@@ -1111,6 +2394,58 @@ int OTF_Writer_writeMessageSummary( OTF_Writer* writer,
 
 
 /**
+ * Write a message summary record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeMessageSummary()
+ * \ingroup writer
+ */
+int OTF_Writer_writeMessageSummaryKV( OTF_Writer* writer, 
+        uint64_t time, uint32_t process, uint32_t peer,
+        uint32_t comm, uint32_t tag,  uint64_t number_sent,
+        uint64_t number_recved, uint64_t bytes_sent, uint64_t bytes_recved,
+	OTF_KeyValueList* list );
+
+
+/**
+ * Write a summary record of collective operations.
+ *
+ * @param writer         Initialized OTF_Writer instance.
+ * @param time           Time when summary was computed.
+ * @param process        Process identifier i.e. collective member.
+ * @param comm		 Communicator of collective operation summary.
+ * @param collective     Collective identifier to be defined with
+ *                       OTF_Writer_writeDefCollectiveOperation().
+ * @param number_sent    The number of messages sent by member or 0.
+ * @param number_recved  The number of messages received by member or 0.
+ * @param bytes_sent     The number of bytes sent by member or 0.
+ * @param bytes_recved   The number of bytes received by member or 0.
+ *
+ * @return               1 on success, 0 if an error occurs.
+ *
+ * \ingroup writer
+ */
+
+int OTF_Writer_writeCollopSummary( OTF_Writer* writer, 
+        uint64_t time, uint32_t process, uint32_t comm, uint32_t collective,
+	uint64_t number_sent, uint64_t number_recved, uint64_t bytes_sent, uint64_t bytes_recved );
+
+
+/**
+ * Write a summary record of collective operations including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeCollopSummary()
+ * \ingroup writer
+ */
+int OTF_Writer_writeCollopSummaryKV( OTF_Writer* writer, 
+        uint64_t time, uint32_t process, uint32_t comm, uint32_t collective,
+	uint64_t number_sent, uint64_t number_recved, uint64_t bytes_sent, uint64_t bytes_recved,
+	OTF_KeyValueList* list );
+
+/**
  * Writes a file operation summary record.
  *
  * @param writer         Initialized OTF_Writer instance.
@@ -1136,6 +2471,20 @@ int OTF_Writer_writeFileOperationSummary( OTF_Writer* writer, uint64_t time,
 
 
 /**
+ * Writes a file operation summary record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeFileOperationSummary()
+ * \ingroup writer
+ */
+int OTF_Writer_writeFileOperationSummaryKV( OTF_Writer* writer, uint64_t time,
+	uint32_t fileid, uint32_t process, uint64_t nopen, uint64_t nclose,
+	uint64_t nread, uint64_t nwrite, uint64_t nseek, uint64_t bytesread,
+	uint64_t byteswrite, OTF_KeyValueList* list );
+
+
+/**
  * Writes a file group operation summary record.
  *
  * @param writer         Initialized OTF_Writer instance.
@@ -1158,19 +2507,95 @@ int OTF_Writer_writeFileGroupOperationSummary( OTF_Writer* writer, uint64_t time
 	uint32_t groupid, uint32_t process, uint64_t nopen, uint64_t nclose,
 	uint64_t nread, uint64_t nwrite, uint64_t nseek, uint64_t bytesread,
 	uint64_t byteswrite );
+
+
+/**
+ * Writes a file group operation summary record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeFileGroupOperationSummary()
+ * \ingroup writer
+ */
+int OTF_Writer_writeFileGroupOperationSummaryKV( OTF_Writer* writer, uint64_t time,
+	uint32_t groupid, uint32_t process, uint64_t nopen, uint64_t nclose,
+	uint64_t nread, uint64_t nwrite, uint64_t nseek, uint64_t bytesread,
+	uint64_t byteswrite, OTF_KeyValueList* list );
 /* *** private member functions *** */
 
 
-/** For a process with id 'processId' return a stream id of the stream the
-    data is to be written to. If no mapping has been set so far it is defined
-    in a way such that it is added to the stream with the least processes.
-	\ingroup writer */
-uint32_t OTF_Writer_mapProcess( OTF_Writer* writer, uint32_t processId );
+/* *** marker record types *** */
 
 
-/** Return the stream with the given stream id. If there is no such stream yet
-    create one and append it to 'streams'. \ingroup writer */
-OTF_WStream* OTF_Writer_getStream( OTF_Writer* writer, uint32_t stream );
+/**
+ * Writes a def marker record.
+ *
+ * @param writer         Initialized OTF_Writer instance.
+ * qparam streamID       stream identifier that must be 0, any other value is ignored
+ * @param token          The newly defined marker token.
+ * @param name           Its name
+ * @param type           Marker type, one of OTF_MARKER_TYPE_xxx
+ * *
+ * @return               1 on success, 0 if an error occurs.       
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefMarker( OTF_Writer* writer, 
+                               uint32_t streamID,
+                               uint32_t token, 
+                               const char* name, 
+                               uint32_t type );
+
+
+/**
+ * Writes a def marker record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeDefMarker()
+ * \ingroup writer
+ */
+int OTF_Writer_writeDefMarkerKV( OTF_Writer* writer, 
+                               uint32_t streamID,
+                               uint32_t token, 
+                               const char* name, 
+                               uint32_t type,
+				OTF_KeyValueList* list );
+
+/**
+ * Writes a marker record.
+ *
+ * @param writer         Initialized OTF_Writer instance.
+ * @param time           Time stamp of the marker record. Note that marker records are 
+ *                       not sorted according to time stamps!
+ * @param process        The process or process group of the marker.
+ * @param token          A marker token defined by 'DefMarker' before.
+ * @param text           Descriptive text. *
+ * @return               1 on success, 0 if an error occurs.       
+ *
+ * \ingroup writer
+ */
+int OTF_Writer_writeMarker( OTF_Writer* writer, 
+                            uint64_t time, 
+                            uint32_t process, 
+                            uint32_t token, 
+                            const char* text );
+
+
+/**
+ * Writes a marker record including an OTF_KeyValueList.
+ *
+ * @param list      Initialized OTF_KeyValueList() instance or NULL.
+ *
+ * @see OTF_Writer_writeMarker()
+ * \ingroup writer
+ */
+int OTF_Writer_writeMarkerKV( OTF_Writer* writer, 
+                            uint64_t time, 
+                            uint32_t process, 
+                            uint32_t token, 
+                            const char* text,
+			    OTF_KeyValueList* list );
 
 #ifdef __cplusplus
 }

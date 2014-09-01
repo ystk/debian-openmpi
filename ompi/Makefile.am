@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
+# Copyright (c) 2004-2009 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
 # Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -72,6 +72,8 @@ SUBDIRS = \
 	debuggers \
 	etc \
 	mpi/c \
+	$(EXT_ompi_FRAMEWORKS_SUBDIRS) \
+	$(EXT_ompi_FRAMEWORK_COMPONENT_STATIC_SUBDIRS) \
 	$(MCA_ompi_FRAMEWORKS_SUBDIRS) \
 	$(MCA_ompi_FRAMEWORK_COMPONENT_STATIC_SUBDIRS) \
 	. \
@@ -90,6 +92,8 @@ DIST_SUBDIRS = \
 	mpi/cxx \
 	mpi/f77 \
 	mpi/f90 \
+	$(EXT_ompi_FRAMEWORKS_SUBDIRS) \
+	$(EXT_ompi_FRAMEWORK_COMPONENT_ALL_SUBDIRS) \
 	$(MCA_ompi_FRAMEWORKS_SUBDIRS) \
 	$(MCA_ompi_FRAMEWORK_COMPONENT_ALL_SUBDIRS) \
 	$(OMPI_CONTRIB_DIST_SUBDIRS)
@@ -106,8 +110,9 @@ libmpi_la_LIBADD = \
 	$(c_pmpi_lib) \
 	$(f77_base_lib) \
 	$(MCA_ompi_FRAMEWORK_LIBS) \
+	$(EXT_ompi_FRAMEWORK_LIBS) \
 	$(OMPI_LIBMPI_EXTRA_LIBS) \
-	$(top_ompi_builddir)/orte/libopen-rte.la
+	$(top_ompi_builddir)/orte/libopen-rte-lt.la
 libmpi_la_DEPENDENCIES = \
 	datatype/libdatatype.la \
 	debuggers/libdebuggers.la \
@@ -116,7 +121,8 @@ libmpi_la_DEPENDENCIES = \
 	$(c_pmpi_lib) \
 	$(f77_base_lib) \
 	$(MCA_ompi_FRAMEWORK_LIBS) \
-	$(top_ompi_builddir)/orte/libopen-rte.la
+	$(EXT_ompi_FRAMEWORK_LIBS) \
+	$(top_ompi_builddir)/orte/libopen-rte-lt.la
 libmpi_la_LDFLAGS = \
         -version-info $(libmpi_so_version) \
 	$(OMPI_LIBMPI_EXTRA_LDFLAGS)
@@ -168,7 +174,7 @@ dir_stamp = $(top_builddir)/$(subdir)/mpi/man/man3/.dir-stamp
 $(nodist_man_MANS): $(dir_stamp) $(top_builddir)/opal/include/opal_config.h
 
 $(dir_stamp):
-	$(mkdir_p) `dirname $@`
+	$(MKDIR_P) `dirname $@`
 	touch "$@"
 
 # Remove the generated man pages

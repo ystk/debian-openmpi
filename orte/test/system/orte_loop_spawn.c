@@ -2,15 +2,14 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include "orte/constants.h"
+
 #include "opal/util/argv.h"
 
-#include "orte/util/proc_info.h"
 #include "orte/mca/plm/plm.h"
-#include "orte/mca/rml/rml.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/runtime/runtime.h"
 #include "orte/runtime/orte_globals.h"
-#include "orte/util/name_fns.h"
 
 int main(int argc, char* argv[])
 {
@@ -20,7 +19,7 @@ int main(int argc, char* argv[])
     char cwd[1024];
     int iter;
     
-    if (0 > (rc = orte_init(ORTE_NON_TOOL))) {
+    if (0 > (rc = orte_init(&argc, &argv, ORTE_PROC_NON_MPI))) {
         fprintf(stderr, "couldn't init orte - error code %d\n", rc);
         return rc;
     }

@@ -25,6 +25,7 @@
  */
 
 #include "ompi_config.h"
+#include "opal/util/output.h"
 #include "coll_tuned.h"
 
 #include "mpi.h"
@@ -108,7 +109,7 @@ static int tuned_open(void)
 {
     int rc;
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     {
         int param;
 
@@ -121,7 +122,7 @@ static int tuned_open(void)
             }
         }
     }
-#endif  /* OMPI_ENABLE_DEBUG */
+#endif  /* OPAL_ENABLE_DEBUG */
 
     /* Use a low priority, but allow other components to be lower */    
     mca_base_param_reg_int(&mca_coll_tuned_component.super.collm_version,
@@ -237,7 +238,7 @@ mca_coll_tuned_module_destruct(mca_coll_tuned_module_t *module)
 
     data = module->tuned_data;
     if (NULL != data) {
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
         /* Reset the reqs to NULL/0 -- they'll be freed as part of freeing
            the generel c_coll_selected_data */
         data->mcct_reqs = NULL;

@@ -21,9 +21,7 @@
 /*
  * Global functions for MCA overall installdirs open and close
  */
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 OPAL_DECLSPEC int opal_installdirs_base_open(void);
 OPAL_DECLSPEC int opal_installdirs_base_close(void);
@@ -40,8 +38,6 @@ char * opal_install_dirs_expand_setup(const char* input);
  */
 OPAL_DECLSPEC extern opal_list_t opal_installdirs_components;
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OPAL_BASE_INSTALLDIRS_H */

@@ -24,20 +24,16 @@
 #include <string.h>
 
 #include "opal/class/opal_object.h"
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 #include "opal/util/output.h"
 #endif
 #include "opal/constants.h"
 
+BEGIN_C_DECLS
+
 /*
  *  @file  Array of elements maintained by value.
- *
- * See ompi_bitmap.h for an explanation of why there is a split
- * between OMPI and ORTE for this generic class.
  */
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
 
 struct opal_value_array_t
 {
@@ -243,7 +239,7 @@ static inline int opal_value_array_append_item(opal_value_array_t *array, const 
 
 static inline int opal_value_array_remove_item(opal_value_array_t *array, size_t item_index)
 {
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if (item_index >= array->array_size) {
         opal_output(0, "opal_value_array_remove_item: invalid index %lu\n", (unsigned long)item_index);
         return OPAL_ERR_BAD_PARAM;
@@ -275,9 +271,7 @@ static inline int opal_value_array_remove_item(opal_value_array_t *array, size_t
 #define OPAL_VALUE_ARRAY_GET_BASE(array, item_type) \
   ((item_type*) ((array)->array_items))
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
-#endif  
+END_C_DECLS
 
+#endif
 

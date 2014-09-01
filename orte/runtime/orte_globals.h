@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2008 The University of Tennessee and The University
@@ -9,9 +9,10 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2009 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2011 Oracle and/or its affiliates.  All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2009      IBM Corporation.  All rights reserved.
+ * Copyright (c)      2011 Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -35,12 +36,12 @@
 #include <sys/time.h>
 #endif
 
-#include "opal/threads/mutex.h"
-#include "opal/threads/condition.h"
 #include "opal/class/opal_pointer_array.h"
+#include "opal/class/opal_value_array.h"
 
 #include "orte/mca/plm/plm_types.h"
 #include "orte/util/proc_info.h"
+#include "orte/util/name_fns.h"
 #include "orte/runtime/runtime.h"
 #include "orte/runtime/orte_wait.h"
 
@@ -68,10 +69,14 @@ ORTE_DECLSPEC extern orte_process_name_t orte_name_invalid;  /** instantiated in
 /* define the name of my daemon */
 #define ORTE_PROC_MY_DAEMON     (&orte_process_info.my_daemon)
 
-/* See comment in orte/tools/orterun/debuggers.c about this MCA
+/* See comment in orte/tools/orterun.c about this MCA
    param */
 ORTE_DECLSPEC extern bool orte_in_parallel_debugger;
 
+/* error manager callback function */
+typedef void (*orte_err_cb_fn_t)(orte_process_name_t *proc, orte_proc_state_t state, void *cbdata);
+
+typedef uint16_t orte_mapping_policy_t;
 
 #if ORTE_DISABLE_FULL_SUPPORT
 
@@ -81,7 +86,6 @@ ORTE_DECLSPEC extern bool orte_in_parallel_debugger;
    simple (and throw an error if someone does try to use them) */
 struct orte_job_t;
 typedef struct orte_job_t orte_job_t;
-typedef uint16_t orte_mapping_policy_t;
 
 #else
 
@@ -120,7 +124,34 @@ typedef uint16_t orte_mapping_policy_t;
         }                                                                   \
     } while(0);
 
+/* sometimes we need to reset the exit status - for example, when we
+ * are restarting a failed process
+ */
+#define ORTE_RESET_EXIT_STATUS()                                \
+    do {                                                        \
+        OPAL_OUTPUT_VERBOSE((1, orte_debug_output,              \
+                            "%s:%s(%d) reseting exit status",   \
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), \
+                            __FILE__, __LINE__));               \
+        orte_exit_status = 0;                                   \
+    } while(0);
 
+
+/* define a macro for computing time differences - used for timing tests
+ * across the code base
+ */
+#define ORTE_COMPUTE_TIME_DIFF(r, ur, s1, us1, s2, us2)     \
+    do {                                                    \
+        (r) = (s2) - (s1);                                  \
+        if ((us2) >= (us1)) {                               \
+            (ur) = (us2) - (us1);                           \
+        } else {                                            \
+            (r)--;                                          \
+            (ur) = 1000000 - (us1) + (us2);                 \
+        }                                                   \
+    } while(0);
+
+        
 /* global type definitions used by RTE - instanced in orte_globals.c */
 
 /************
@@ -155,17 +186,24 @@ typedef struct {
     char *hostfile;
     /* Hostfile for adding hosts to an existing allocation */
     char *add_hostfile;
+    /* Hosts to be added to an existing allocation - analagous to -host */
+    char **add_host;
     /** argv of hosts passed in to -host */
     char ** dash_host;
     /** Prefix directory for this app (or NULL if no override necessary) */
     char *prefix_dir;
-    /** Preload the binary on the remote machine (in PLS via FileM) */
+    /** Preload the binary on the remote machine (in PLM via FileM) */
     bool preload_binary;
+    /** Preload the libraries on the remote machine (in PLM via FileM) */
+    bool preload_libs;
     /** Preload the comma separated list of files to the remote machines cwd */
     char * preload_files;
     /** Destination directory for the preloaded files 
         * If NULL then the absolute and relative paths are obeyed */
-    char * preload_files_dest_dir;
+    char *preload_files_dest_dir;
+    /** Source directory for the preloaded files 
+     * If NULL then the absolute and relative paths are obeyed */
+    char *preload_files_src_dir;
     /* is being used on the local node */
     bool used_on_node;
 } orte_app_context_t;
@@ -196,11 +234,6 @@ typedef struct {
     orte_node_rank_t next_node_rank;
     /* whether or not we are oversubscribed */
     bool oversubscribed;
-    /** The node architecture, as reported by the remote node. This
-        * value is a bit-map that identifies whether or not the node
-        * is big/little endian, etc.
-        */
-    int32_t arch;
     /** State of this node */
     orte_node_state_t state;
     /** A "soft" limit on the number of slots available on the node.
@@ -233,11 +266,10 @@ typedef struct {
     uint8_t sockets_per_board;
     /* number of cores per socket - defaults to 1 */
     uint8_t cores_per_socket;
-    /* cpus on this node that are assigned for our use */
-    char *cpu_set;
     /** Username on this node, if specified */
     char *username;
-    char *slot_list;
+    /* list of known system resources for this node */
+    opal_list_t resources;
 } orte_node_t;
 ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_node_t);
 
@@ -245,14 +277,14 @@ ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_node_t);
 typedef uint8_t orte_job_controls_t;
 #define ORTE_JOB_CONTROL    OPAL_UINT8
 
-#define ORTE_JOB_CONTROL_LOCAL_SPAWN        0x01
+#define ORTE_JOB_CONTROL_LOCAL_SLAVE        0x01
 #define ORTE_JOB_CONTROL_NON_ORTE_JOB       0x02
 #define ORTE_JOB_CONTROL_DEBUGGER_DAEMON    0x04
 #define ORTE_JOB_CONTROL_FORWARD_OUTPUT     0x08
 #define ORTE_JOB_CONTROL_DO_NOT_MONITOR     0x10
 #define ORTE_JOB_CONTROL_FORWARD_COMM       0x20
+#define ORTE_JOB_CONTROL_CONTINUOUS_OP      0x40
 
-typedef uint16_t orte_mapping_policy_t;
 #define ORTE_MAPPING_POLICY OPAL_UINT16
 /* put the rank assignment method in the upper 8 bits */
 #define ORTE_MAPPING_NOPOL          0x0100
@@ -347,7 +379,15 @@ typedef struct {
     bool abort;
     /* proc that caused that to happen */
     struct orte_proc_t *aborted_proc;
-#if OPAL_ENABLE_FT == 1
+    /* errmgr callback function for this job, if any */
+    orte_err_cb_fn_t err_cbfunc;
+    /* states that will trigger callback */
+    orte_proc_state_t err_cbstates;
+    /* errmgr callback data */
+    void *err_cbdata;
+    /* max number of times a process can be restarted */
+    int32_t max_restarts;
+#if OPAL_ENABLE_FT_CR == 1
     /* ckpt state */
     size_t ckpt_state;
     /* snapshot reference */
@@ -397,7 +437,9 @@ struct orte_proc_t {
     char *rml_uri;
     /* seconds when last heartbeat was detected */
     int beat;
-#if OPAL_ENABLE_FT == 1
+    /* number of times this process has been restarted */
+    int32_t restarts;
+#if OPAL_ENABLE_FT_CR == 1
     /* ckpt state */
     size_t ckpt_state;
     /* snapshot reference */
@@ -409,20 +451,33 @@ struct orte_proc_t {
 typedef struct orte_proc_t orte_proc_t;
 ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_proc_t);
 
+typedef struct {
+    opal_list_item_t super;
+    char *name;
+    int32_t size;
+    uint8_t *bytes;
+} orte_attr_t;
+ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_attr_t);
 
 typedef struct {
     /* base object */
     opal_object_t super;
+    /* index in the array */
+    int index;
     /* nodename */
     char *name;
     /* vpid of this job family's daemon on this node */
     orte_vpid_t daemon;
-    /* arch of node */
-    uint32_t arch;
+    /* whether or not this node is oversubscribed */
+    bool oversubscribed;
+    /* list of attributes */
+    opal_list_t attrs;
 } orte_nid_t;
 ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_nid_t);
 
 typedef struct {
+    /* base object */
+    opal_object_t super;
     /* index to node */
     int32_t node;
     /* local rank */
@@ -430,16 +485,32 @@ typedef struct {
     /* node rank */
     orte_node_rank_t node_rank;
 } orte_pmap_t;
+ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_pmap_t);
 
 typedef struct {
     /* base object */
     opal_object_t super;
     /* jobid */
     orte_jobid_t job;
+    /* number of procs in this job */
+    orte_vpid_t num_procs;
     /* array of data for procs */
-    opal_value_array_t pmap;
+    opal_pointer_array_t pmap;
 } orte_jmap_t;
 ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_jmap_t);
+
+typedef struct {
+    /* list object */
+    opal_list_item_t super;
+    char *prefix;
+    opal_value_array_t suffix;
+    opal_value_array_t nodes;
+    opal_value_array_t cnt;
+    opal_value_array_t starting_vpid;
+    opal_value_array_t ppn;
+    opal_value_array_t nrank;
+} orte_regex_node_t;
+ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_regex_node_t);
 
 /**
 * Get a job data object
@@ -452,35 +523,55 @@ ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_jmap_t);
 ORTE_DECLSPEC   orte_job_t* orte_get_job_data_object(orte_jobid_t job);
 
 /* global variables used by RTE - instanced in orte_globals.c */
-ORTE_DECLSPEC extern bool orte_reuse_daemons, orte_timing;
-ORTE_DECLSPEC extern bool orte_debug_daemons_flag, orte_debug_daemons_file_flag;
+ORTE_DECLSPEC extern bool orte_timing;
+ORTE_DECLSPEC extern FILE *orte_timing_output;
+ORTE_DECLSPEC extern bool orte_timing_details;
+ORTE_DECLSPEC extern bool orte_debug_daemons_flag;
+ORTE_DECLSPEC extern bool orte_debug_daemons_file_flag;
 ORTE_DECLSPEC extern bool orte_leave_session_attached;
 ORTE_DECLSPEC extern bool orte_do_not_launch;
 ORTE_DECLSPEC extern bool orted_spin_flag;
+ORTE_DECLSPEC extern bool orte_daemon_bootstrap;
+ORTE_DECLSPEC extern char *orte_local_cpu_type;
+ORTE_DECLSPEC extern char *orte_local_cpu_model;
+
+/* ORTE OOB port flags */
 ORTE_DECLSPEC extern bool orte_static_ports;
-ORTE_DECLSPEC extern int32_t orte_contiguous_nodes;
+ORTE_DECLSPEC extern char *orte_oob_static_ports;
+ORTE_DECLSPEC extern bool orte_standalone_operation;
+
 ORTE_DECLSPEC extern bool orte_keep_fqdn_hostnames;
 ORTE_DECLSPEC extern bool orte_show_resolved_nodenames;
 ORTE_DECLSPEC extern int orted_debug_failure;
 ORTE_DECLSPEC extern int orted_debug_failure_delay;
 ORTE_DECLSPEC extern bool orte_homogeneous_nodes;
 ORTE_DECLSPEC extern bool orte_hetero_apps;
+ORTE_DECLSPEC extern bool orte_never_launched;
 ORTE_DECLSPEC extern bool orte_devel_level_output;
 
 ORTE_DECLSPEC extern char **orte_launch_environ;
-ORTE_DECLSPEC extern opal_pointer_array_t orte_daemonmap;
 
 ORTE_DECLSPEC extern bool orte_hnp_is_allocated;
 ORTE_DECLSPEC extern bool orte_allocation_required;
+ORTE_DECLSPEC extern bool orte_managed_allocation;
 
 ORTE_DECLSPEC extern char *orte_launch_agent;
 ORTE_DECLSPEC extern char **orted_cmd_line;
 
+/* debugger job */
+ORTE_DECLSPEC extern orte_job_t *orte_debugger_daemon;
+ORTE_DECLSPEC extern bool orte_debugger_dump_proctable;
+ORTE_DECLSPEC extern char *orte_debugger_test_daemon;
+ORTE_DECLSPEC extern bool orte_debugger_test_attach;
+ORTE_DECLSPEC extern bool orte_debugger_enable_fifo_attach;
+ORTE_DECLSPEC extern int orte_debugger_check_rate;
+
 /* exit triggers and flags */
-ORTE_DECLSPEC extern orte_trigger_event_t orte_exit, orteds_exit;
+ORTE_DECLSPEC extern orte_trigger_event_t orte_exit;
+ORTE_DECLSPEC extern orte_trigger_event_t orteds_exit;
 ORTE_DECLSPEC extern int orte_exit_status;
 ORTE_DECLSPEC extern bool orte_abnormal_term_ordered;
-ORTE_DECLSPEC extern bool orte_shutdown_in_progress;
+ORTE_DECLSPEC extern bool orte_routing_is_enabled;
 ORTE_DECLSPEC extern bool orte_job_term_ordered;
 
 ORTE_DECLSPEC extern int orte_heartbeat_rate;
@@ -498,8 +589,14 @@ ORTE_DECLSPEC extern opal_pointer_array_t *orte_node_pool;
 /* a clean output channel without prefix */
 ORTE_DECLSPEC extern int orte_clean_output;
 
-/* whether or not to forward SIGTSTP and SIGCONT signals */
-ORTE_DECLSPEC extern bool orte_forward_job_control;
+/* RHC: FLAG TO SELECT WHETHER OR NOT TO SEND PROFILE FILE IN NIDMAP */
+ORTE_DECLSPEC extern bool orte_send_profile;
+
+/* Nidmap and job maps */
+ORTE_DECLSPEC extern opal_pointer_array_t orte_nidmap;
+ORTE_DECLSPEC extern opal_pointer_array_t orte_jobmap;
+ORTE_DECLSPEC extern bool orte_use_regexp;
+ORTE_DECLSPEC extern char *orted_launch_cmd;
 
 /* list of local children on a daemon */
 ORTE_DECLSPEC extern opal_list_t orte_local_children;
@@ -515,6 +612,13 @@ ORTE_DECLSPEC extern char *orte_output_filename;
 /* generate new xterm windows to display output from specified ranks */
 ORTE_DECLSPEC extern char *orte_xterm;
 
+/* rsh support */
+ORTE_DECLSPEC extern char *orte_rsh_agent;
+ORTE_DECLSPEC extern bool orte_assume_same_shell;
+
+/* whether or not to barrier the orteds upon exit */
+ORTE_DECLSPEC extern bool orte_orted_exit_with_barrier;
+
 /* whether or not to report launch progress */
 ORTE_DECLSPEC extern bool orte_report_launch_progress;
 
@@ -524,7 +628,6 @@ ORTE_DECLSPEC extern uint8_t orte_default_num_sockets_per_board;
 ORTE_DECLSPEC extern uint8_t orte_default_num_cores_per_socket;
 
 /* allocation specification */
-ORTE_DECLSPEC extern char *orte_default_cpu_set;
 ORTE_DECLSPEC extern char *orte_default_hostfile;
 ORTE_DECLSPEC extern char *orte_rankfile;
 #ifdef __WINDOWS__
@@ -534,8 +637,15 @@ ORTE_DECLSPEC extern char *orte_ccp_headnode;
 /* default rank assigment and binding policy */
 ORTE_DECLSPEC extern orte_mapping_policy_t orte_default_mapping_policy;
 
-/* basename of the orte/mpirun cmd */
-ORTE_DECLSPEC extern char *orte_cmd_basename;
+/* tool communication controls */
+ORTE_DECLSPEC extern bool orte_report_events;
+ORTE_DECLSPEC extern char *orte_report_events_uri;
+
+/* report bindings */
+ORTE_DECLSPEC extern bool orte_report_bindings;
+
+/* barrier control */
+ORTE_DECLSPEC extern bool orte_do_not_barrier;
 
 #endif /* ORTE_DISABLE_FULL_SUPPORT */
 

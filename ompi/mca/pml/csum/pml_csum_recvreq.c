@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -11,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2008      UT-Battelle, LLC. All rights reserved.
  * Copyright (c) 2009      IBM Corporation.  All rights reserved.
- * Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2009-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * $COPYRIGHT$
  * 
@@ -55,7 +56,7 @@ static void dump_csum_error_data(mca_btl_base_segment_t* segments, size_t num_se
     
     printf("CHECKSUM ERROR DATA\n");
     for (i = 0; i < num_segments; ++i) {
-        printf("Segment %lu", i);
+        printf("Segment %lu", (unsigned long)i);
         data = (uint8_t*)segments[i].seg_addr.pval;
         for (j=0; j < segments[i].seg_len; j++) {
             if (0 == (j % 40)) {
@@ -300,11 +301,11 @@ static int mca_pml_csum_recv_request_ack(
          * registered. 
          */
 
-        if(ompi_convertor_need_buffers(&recvreq->req_recv.req_base.req_convertor) == 0 &&
+        if(opal_convertor_need_buffers(&recvreq->req_recv.req_base.req_convertor) == 0 &&
            hdr->hdr_match.hdr_common.hdr_flags & MCA_PML_CSUM_HDR_FLAGS_CONTIG &&
            rdma_num != 0) {
             unsigned char *base;
-            ompi_convertor_get_current_pointer( &recvreq->req_recv.req_base.req_convertor, (void**)&(base) );
+            opal_convertor_get_current_pointer( &recvreq->req_recv.req_base.req_convertor, (void**)&(base) );
            
             if(hdr->hdr_match.hdr_common.hdr_flags & MCA_PML_CSUM_HDR_FLAGS_PIN)
                 recvreq->req_rdma_cnt = mca_pml_csum_rdma_btls(bml_endpoint,
@@ -327,7 +328,7 @@ static int mca_pml_csum_recv_request_ack(
 
                 /* use converter to figure out the rdma offset for this
                  * request */
-                ompi_convertor_set_position(&recvreq->req_recv.req_base.req_convertor,
+                opal_convertor_set_position(&recvreq->req_recv.req_base.req_convertor,
                         &recvreq->req_send_offset);
 
                 recvreq->req_rdma_cnt =
@@ -404,11 +405,24 @@ int mca_pml_csum_recv_request_get_frag( mca_pml_csum_rdma_frag_t* frag )
                               MCA_BTL_DES_FLAGS_BTL_OWNERSHIP | MCA_BTL_DES_SEND_ALWAYS_CALLBACK,
                               &descriptor );
     if( OPAL_UNLIKELY(NULL == descriptor) ) {
-        frag->rdma_length = save_size;
-        OPAL_THREAD_LOCK(&mca_pml_csum.lock);
-        opal_list_append(&mca_pml_csum.rdma_pending, (opal_list_item_t*)frag);
-        OPAL_THREAD_UNLOCK(&mca_pml_csum.lock);
-        return OMPI_ERR_OUT_OF_RESOURCE;
+        if (frag->retries < mca_pml_csum.rdma_put_retries_limit) {
+            frag->rdma_length = save_size;
+            OPAL_THREAD_LOCK(&mca_pml_csum.lock);
+            opal_list_append(&mca_pml_csum.rdma_pending, (opal_list_item_t*)frag);
+            OPAL_THREAD_UNLOCK(&mca_pml_csum.lock);
+            return OMPI_ERR_OUT_OF_RESOURCE;
+        } else {
+            /* tell peer to release the rdma descriptor */
+            mca_pml_csum_send_fin (recvreq->req_recv.req_base.req_proc, bml_btl,
+                                   frag->rdma_hdr.hdr_rget.hdr_des.pval, MCA_BTL_NO_ORDER, 1);
+
+            /* tell peer to fall back on send */
+            rc = mca_pml_csum_recv_request_ack_send_btl (recvreq->req_recv.req_base.req_proc, bml_btl,
+                                                         frag->rdma_hdr.hdr_rget.hdr_rndv.hdr_src_req.lval,
+                                                         recvreq, 0, true);
+            MCA_PML_CSUM_RDMA_FRAG_RETURN(frag);
+            return rc;
+        }
     }
 
     descriptor->des_src = frag->rdma_segs;
@@ -496,7 +510,7 @@ void mca_pml_csum_recv_request_progress_frag( mca_pml_csum_recv_request_t* recvr
         if(csum != hdr->hdr_frag.hdr_csum) {
             opal_output(0, "%s:%s:%d: Invalid \'frag data\' - received csum:0x%x  != computed csum:0x%x\n",
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, hdr->hdr_frag.hdr_csum, csum);
-            orte_notifier.log(ORTE_NOTIFIER_INFRA,
+            orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
                               "Checksum data violation: job %s file %s line %d",
                               (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
                               __FILE__, __LINE__);
@@ -540,7 +554,7 @@ void mca_pml_csum_recv_request_progress_rget( mca_pml_csum_recv_request_t* recvr
      * fall back to copy in/out protocol. It is a pity because buffer on the
      * sender side is already registered. We need to be smarter here, perhaps
      * do couple of RDMA reads */
-    if(ompi_convertor_need_buffers(&recvreq->req_recv.req_base.req_convertor) == true) {
+    if(opal_convertor_need_buffers(&recvreq->req_recv.req_base.req_convertor) == true) {
         mca_pml_csum_recv_request_ack(recvreq, &hdr->hdr_rndv, 0);
         return;
     }
@@ -558,7 +572,7 @@ void mca_pml_csum_recv_request_progress_rget( mca_pml_csum_recv_request_t* recvr
     /* allocate/initialize a fragment */
     for(i = 0; i < hdr->hdr_seg_cnt; i++) {
         frag->rdma_segs[i] = hdr->hdr_segs[i];
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
         if ((recvreq->req_recv.req_base.req_proc->proc_arch & OPAL_ARCH_ISBIGENDIAN) !=
             (ompi_proc_local()->proc_arch & OPAL_ARCH_ISBIGENDIAN)) {
             size += opal_swap_bytes4(hdr->hdr_segs[i].seg_len);
@@ -642,7 +656,7 @@ void mca_pml_csum_recv_request_progress_rndv( mca_pml_csum_recv_request_t* recvr
         if (csum != hdr->hdr_match.hdr_csum) {
             opal_output(0, "%s:%s:%d: Invalid \'rndv data\' - received csum:0x%x  != computed csum:0x%x\n",
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, hdr->hdr_match.hdr_csum, csum);
-            orte_notifier.log(ORTE_NOTIFIER_INFRA,
+            orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
                               "Checksum data violation: job %s file %s line %d",
                               (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
                               __FILE__, __LINE__);
@@ -704,7 +718,7 @@ void mca_pml_csum_recv_request_progress_match( mca_pml_csum_recv_request_t* recv
         if (csum != hdr->hdr_match.hdr_csum) {
             opal_output(0, "%s:%s:%d: Invalid \'match data\' - received csum:0x%x  != computed csum:0x%x\n",
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, hdr->hdr_match.hdr_csum, csum);
-            orte_notifier.log(ORTE_NOTIFIER_INFRA,
+            orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
                               "Checksum data violation: job %s file %s line %d",
                               (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
                               __FILE__, __LINE__);
@@ -841,7 +855,7 @@ int mca_pml_csum_recv_request_schedule_once( mca_pml_csum_recv_request_t* recvre
         /* take lock to protect converter against concurrent access
          * from unpack */
         OPAL_THREAD_LOCK(&recvreq->lock);
-        ompi_convertor_set_position( &recvreq->req_recv.req_base.req_convertor,
+        opal_convertor_set_position( &recvreq->req_recv.req_base.req_convertor,
                                      &recvreq->req_rdma_offset );
 
         /* prepare a descriptor for RDMA */
@@ -883,6 +897,7 @@ int mca_pml_csum_recv_request_schedule_once( mca_pml_csum_recv_request_t* recvre
         hdr->hdr_des.pval = dst;
         hdr->hdr_rdma_offset = recvreq->req_rdma_offset;
         hdr->hdr_seg_cnt = dst->des_dst_cnt;
+        hdr->hdr_recv_req.pval = recvreq;
 
         for( i = 0; i < dst->des_dst_cnt; i++ ) {
             hdr->hdr_segs[i].seg_addr.lval = ompi_ptr_ptol(dst->des_dst[i].seg_addr.pval);

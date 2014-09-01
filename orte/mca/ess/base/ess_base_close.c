@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,9 +23,9 @@
 #include <stdio.h>
 
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_component_repository.h"
-#include "orte/util/show_help.h"
 
 #include "orte/mca/ess/base/base.h"
 
@@ -49,6 +50,7 @@ orte_ess_base_close(void)
     }
     
     OBJ_DESTRUCT(&orte_ess_base_components_available);
+    opal_output_close(orte_ess_base_output);
     return ORTE_SUCCESS;
 }
 

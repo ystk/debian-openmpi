@@ -23,12 +23,11 @@
 #ifndef MCA_RML_FTRM_H
 #define MCA_RML_FTRM_H
 
+#include "orte_config.h"
 #include "orte/mca/rml/rml.h"
 #include "orte/mca/rml/rml_types.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
     extern int rml_ftrm_output_handle;
 
@@ -164,8 +163,6 @@ extern "C" {
      */
     int orte_rml_ftrm_ft_event(int state);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif

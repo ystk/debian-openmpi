@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -42,12 +43,13 @@ int orte_iof_base_close(void)
     /* shutdown any remaining opened components */
     if (0 != opal_list_get_size(&orte_iof_base.iof_components_opened)) {
         mca_base_components_close(orte_iof_base.iof_output, 
-                              &orte_iof_base.iof_components_opened, NULL);
+                                  &orte_iof_base.iof_components_opened, 
+                                  NULL, true);
     }
     OBJ_DESTRUCT(&orte_iof_base.iof_components_opened);
 
     OPAL_THREAD_LOCK(&orte_iof_base.iof_write_output_lock);
-    if (!orte_process_info.daemon) {
+    if (!ORTE_PROC_IS_DAEMON) {
         /* check if anything is still trying to be written out */
         wev = orte_iof_base.iof_write_stdout->wev;
         if (!opal_list_is_empty(&wev->outputs)) {

@@ -11,6 +11,8 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,18 +25,15 @@
 #ifndef MCA_MPOOL_SM_H
 #define MCA_MPOOL_SM_H
 
-#include "opal/class/opal_list.h"
-#include "ompi/class/ompi_free_list.h"
+#include "ompi_config.h"
 
 #include "opal/event/event.h"
 
-#include "ompi/mca/common/sm/common_sm_mmap.h"
+#include "ompi/mca/common/sm/common_sm.h"
 #include "ompi/mca/mpool/mpool.h"
 #include "ompi/mca/allocator/allocator.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 struct mca_mpool_sm_component_t {
   mca_mpool_base_component_t super;
@@ -57,7 +56,7 @@ typedef struct mca_mpool_sm_module_t {
     long sm_size;
     mca_allocator_base_module_t * sm_allocator;
     struct mca_mpool_sm_mmap_t *sm_mmap;
-    mca_common_sm_mmap_t *sm_common_mmap;
+    mca_common_sm_module_t *sm_common_module;
     int32_t mem_node;
 } mca_mpool_sm_module_t;
 
@@ -106,8 +105,6 @@ void mca_mpool_sm_free(
  */
 int mca_mpool_sm_ft_event(int state);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif

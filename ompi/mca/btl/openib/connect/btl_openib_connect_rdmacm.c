@@ -3,6 +3,7 @@
  * Copyright (c) 2007-2008 Chelsio, Inc. All rights reserved.
  * Copyright (c) 2008      Mellanox Technologies. All rights reserved.
  * Copyright (c) 2009      Sandia National Laboratories. All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -27,10 +28,9 @@
 #include <string.h>
 #include <ctype.h>
 #include <dirent.h>
-#include <malloc.h>
 #include <stddef.h>
 
-#include "opal/util/argv.h"
+#include "opal/util/output.h"
 #include "opal/util/error.h"
 #include "orte/util/show_help.h"
 
@@ -38,7 +38,7 @@
 #include "btl_openib_proc.h"
 #include "btl_openib_endpoint.h"
 #include "connect/connect.h"
-#include "btl_openib_iwarp.h"
+#include "btl_openib_ip.h"
 #include "btl_openib_ini.h"
 
 /* JMS to be removed: see #1264 */
@@ -307,13 +307,13 @@ static mca_btl_openib_endpoint_t *rdmacm_find_endpoint(rdmacm_contents_t *conten
     opal_pointer_array_t *endpoints = contents->openib_btl->device->endpoints;
     struct sockaddr *peeraddr = rdma_get_peer_addr(id);
     uint32_t peeripaddr = ((struct sockaddr_in *)peeraddr)->sin_addr.s_addr;
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     char *a;
 #endif
 
     OPAL_OUTPUT((-1, "remote peer requesting connection: %s port %d",
                  a = stringify(peeripaddr), rem_port));
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     free(a);
 #endif
     for (i = 0; i < opal_pointer_array_get_size(endpoints); i++) {
@@ -328,7 +328,7 @@ static mca_btl_openib_endpoint_t *rdmacm_find_endpoint(rdmacm_contents_t *conten
         message = endpoint->endpoint_remote_cpc_data->cbm_modex_message;
         OPAL_OUTPUT((-1, "message ipaddr = %s port %d",
                      a = stringify(message->ipaddr), message->tcp_port));
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
         free(a);
 #endif
         if (message->ipaddr == peeripaddr && message->tcp_port == rem_port) {
@@ -429,7 +429,7 @@ static int rdmacm_setup_qp(rdmacm_contents_t *contents,
         id->verbs = contents->openib_btl->device->ib_pd->context;
         if (0 != rdma_create_qp(id, contents->openib_btl->device->ib_pd,
                                 &attr)) {
-            BTL_ERROR(("Failed to create qp with %d", qp));
+            BTL_ERROR(("Failed to create qp with %d", qpnum));
             goto out;
         }
         qp = id->qp;
@@ -471,7 +471,7 @@ out:
 static bool i_initiate(uint32_t local_ipaddr, uint16_t local_port,
                        uint32_t remote_ipaddr, uint16_t remote_port)
 {
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     char *a = stringify(local_ipaddr);
     char *b = stringify(remote_ipaddr);
 #endif
@@ -480,7 +480,7 @@ static bool i_initiate(uint32_t local_ipaddr, uint16_t local_port,
         (local_ipaddr == remote_ipaddr && local_port < remote_port)) {
         OPAL_OUTPUT((-1, "i_initiate (I WIN): local ipaddr %s, remote ipaddr %s",
                      a, b));
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
         free(a);
         free(b);
 #endif
@@ -488,7 +488,7 @@ static bool i_initiate(uint32_t local_ipaddr, uint16_t local_port,
     } else {
         OPAL_OUTPUT((-1, "i_initiate (I lose): local ipaddr %s, remote ipaddr %s",
                      a, b));
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
         free(a);
         free(b);
 #endif
@@ -506,7 +506,7 @@ static int rdmacm_client_connect_one(rdmacm_contents_t *contents,
     struct sockaddr_in src_in, dest_in;
     id_context_t *context;
     int rc;
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     char *a, *b;
 #endif
 
@@ -554,7 +554,7 @@ static int rdmacm_client_connect_one(rdmacm_contents_t *contents,
                  contents->tcp_port,
                  b = stringify(message->ipaddr), 
                  message->tcp_port));
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     free(a);
     free(b);
 #endif
@@ -628,7 +628,7 @@ static int rdmacm_module_start_connect(ompi_btl_openib_connect_base_module_t *cp
     modex_message_t *message, *local_message;
     int rc, qp;
     opal_list_item_t *item;
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     char *a, *b;
 #endif
 
@@ -644,7 +644,7 @@ static int rdmacm_module_start_connect(ompi_btl_openib_connect_base_module_t *cp
     OPAL_OUTPUT((-1, "Connecting from IP %s:%d to remote IP %s:%d  ep state = %d",
                  a = stringify(local_message->ipaddr), local_message->tcp_port,
                  b = stringify(message->ipaddr), message->tcp_port, endpoint->endpoint_state));
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     free(a);
     free(b);
 #endif
@@ -665,6 +665,7 @@ static int rdmacm_module_start_connect(ompi_btl_openib_connect_base_module_t *cp
     contents = OBJ_NEW(rdmacm_contents_t);
     if (NULL == contents) {
         BTL_ERROR(("malloc of contents failed"));
+        rc = OMPI_ERR_OUT_OF_RESOURCE;
         goto out;
     }
 
@@ -696,7 +697,7 @@ static int rdmacm_module_start_connect(ompi_btl_openib_connect_base_module_t *cp
         /* Initiator needs a CTS frag (non-initiator will have a CTS
            frag allocated later) */
         if (OMPI_SUCCESS != 
-            ompi_btl_openib_connect_base_alloc_cts(contents->endpoint)) {
+            (rc = ompi_btl_openib_connect_base_alloc_cts(contents->endpoint))) {
             BTL_ERROR(("Failed to alloc CTS frag"));
             goto out;
         }
@@ -1220,7 +1221,7 @@ static int resolve_route(id_context_t *context)
         goto out;
     }
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     {
         char *a, *b;
         OPAL_OUTPUT((-1, "Resolved route ID %p (local addr %s, remote addr %s)",
@@ -1263,7 +1264,6 @@ static int create_dummy_qp(rdmacm_contents_t *contents,
                            struct rdma_cm_id *id, int qpnum)
 {
     struct ibv_qp_init_attr attr;
-    struct ibv_qp *qp;
 
     memset(&attr, 0, sizeof(attr));
     attr.qp_type = IBV_QPT_RC;
@@ -1288,12 +1288,12 @@ static int create_dummy_qp(rdmacm_contents_t *contents,
         id->verbs = contents->openib_btl->device->ib_pd->context;
         if (0 != rdma_create_qp(id, contents->openib_btl->device->ib_pd,
                                 &attr)) {
-            BTL_ERROR(("Failed to create qp with %d", qp));
+            BTL_ERROR(("Failed to create qp with %d", qpnum));
             goto out;
         }
         id->verbs = temp;
     }
-    BTL_VERBOSE(("dummy qp created %p", qp));
+    BTL_VERBOSE(("dummy qp created %d", qpnum));
 
     return OMPI_SUCCESS;
 
@@ -1398,7 +1398,7 @@ static int finish_connect(id_context_t *context)
     msg.rem_index = contents->endpoint->index;
     msg.rem_port = contents->tcp_port;
     if (contents->endpoint->endpoint_initiator) {
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
         char *a;
 #endif
         OPAL_OUTPUT((-1, "Finish connect (I am initiator): sending from %s:%d, TCP port %d, qp index %d (num %d) to IP %s:%d",
@@ -1408,7 +1408,7 @@ static int finish_connect(id_context_t *context)
                      context->qpnum,
                      contents->endpoint->qps[context->qpnum].qp->lcl_qp->qp_num,
                      a = stringify(remoteipaddr), remoteport));
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
         free(a);
 #endif
     }
@@ -1697,7 +1697,7 @@ static int ipaddrcheck(id_context_t *context,
      * up).  Unfortunately, the subnet and IP address look up needs to match or
      * there could be a mismatch if IP Aliases are being used.  For more
      * information on this, please read comment above
-     * mca_btl_openib_get_iwarp_subnet_id in btl_openib_iwarp.c 
+     * mca_btl_openib_get_ip_subnet_id in btl_openib_ip.c 
      */
     ipaddr = 
         mca_btl_openib_rdma_get_ipv4addr(openib_btl->device->ib_dev_context, 
@@ -1751,7 +1751,7 @@ static int create_message(rdmacm_contents_t *server,
                           ompi_btl_openib_connect_base_module_data_t *data)
 {
     modex_message_t *message;
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     char *a;
 #endif
 
@@ -1770,7 +1770,7 @@ static int create_message(rdmacm_contents_t *server,
 
     OPAL_OUTPUT((-1, "Message IP address is %s, port %d", 
                  a = stringify(message->ipaddr), message->tcp_port));
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     free(a);
 #endif
     data->cbm_modex_message = message;

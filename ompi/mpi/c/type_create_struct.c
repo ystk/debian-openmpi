@@ -19,10 +19,13 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Type_create_struct = PMPI_Type_create_struct
 #endif
 
@@ -75,10 +78,10 @@ int MPI_Type_create_struct(int count,
 
     OPAL_CR_ENTER_LIBRARY();
 
-    rc = ompi_ddt_create_struct( count, array_of_blocklengths, array_of_displacements,
+    rc = ompi_datatype_create_struct( count, array_of_blocklengths, array_of_displacements,
                                  array_of_types, newtype );
     if( rc != MPI_SUCCESS ) {
-        ompi_ddt_destroy( newtype );
+        ompi_datatype_destroy( newtype );
         OMPI_ERRHANDLER_RETURN( rc, MPI_COMM_WORLD,
                                 rc, FUNC_NAME );
     }
@@ -88,7 +91,7 @@ int MPI_Type_create_struct(int count,
 
         a_i[0] = &count;
         a_i[1] = array_of_blocklengths;
-        ompi_ddt_set_args( *newtype, count + 1, a_i, count, array_of_displacements,
+        ompi_datatype_set_args( *newtype, count + 1, a_i, count, array_of_displacements,
                            count, array_of_types, MPI_COMBINER_STRUCT );
     }
 

@@ -10,8 +10,9 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2006 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2007-2008 Mellanox Technologies. All rights reserved.
+# Copyright (c) 2006-2011 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2007-2009 Mellanox Technologies. All rights reserved.
+# Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -224,11 +225,11 @@ You may need to consult with your system administrator to get this
 problem fixed.
 #
 [no active ports found]
-WARNING: There is at least one OpenFabrics device found but there are
-no active ports detected (or Open MPI was unable to use them).  This
-is most certainly not what you wanted.  Check your cables, subnet
-manager configuration, etc.  The openib BTL will be ignored for this
-job.
+WARNING: There is at least non-excluded one OpenFabrics device found,
+but there are no active ports detected (or Open MPI was unable to use
+them).  This is most certainly not what you wanted.  Check your
+cables, subnet manager configuration, etc.  The openib BTL will be
+ignored for this job.
 
   Local host: %s
 #
@@ -385,21 +386,26 @@ WARNING: An invalid shared receive queue specification was detected as
 part of the btl_openib_receive_queues MCA parameter.  The OpenFabrics
 (openib) BTL will therefore be deactivated for this run.
 
-Shared receive queues can take between 2 and 4 parameters:
+Shared receive queues can take between 2 and 6 parameters:
 
   1. Buffer size in bytes (mandatory)
   2. Number of buffers (mandatory)
   3. Low buffer count watermark (optional; defaults to (num_buffers / 2))
   4. Maximum number of outstanding sends a sender can have (optional;
      defaults to (low_watermark / 4)
+  5. Start value of number of receive buffers that will be pre-posted (optional; defaults to (num_buffers / 4))
+  6. Event limit buffer count watermark (optional; defaults to (3/16 of start value of buffers number))
 
-  Example: S,1024,256,128,32
+  Example: S,1024,256,128,32,32,8
   - 1024 byte buffers
   - 256 buffers to receive incoming MPI messages
   - When the number of available buffers reaches 128, re-post 128 more
     buffers to reach a total of 256
   - A sender will not send to a peer unless it has less than 32
     outstanding sends to that peer.
+  - 32 receive buffers will be preposted.
+  - When the number of unused shared receive buffers reaches 8, more
+    buffers (32 in this case) will be posted.
 
   Local host: %s
   Bad queue specification: %s
@@ -408,6 +414,24 @@ Shared receive queues can take between 2 and 4 parameters:
 WARNING: The number of buffers for a queue pair specified via the
 btl_openib_receive_queues MCA parameter must be greater than the low
 buffer count watermark.  The OpenFabrics (openib) BTL will therefore
+be deactivated for this run.
+
+  Local host: %s
+  Bad queue specification: %s
+#
+[rd_num must be >= rd_init]
+WARNING: The number of buffers for a queue pair specified via the
+btl_openib_receive_queues MCA parameter (parameter #2) must be
+greater or equal to the initial SRQ size (parameter #5).
+The OpenFabrics (openib) BTL will therefore be deactivated for this run.
+
+  Local host: %s
+  Bad queue specification: %s
+#
+[srq_limit must be > rd_num]
+WARNING: The number of buffers for a queue pair specified via the
+btl_openib_receive_queues MCA parameter (parameter #2) must be greater than the limit
+buffer count (parameter #6).  The OpenFabrics (openib) BTL will therefore
 be deactivated for this run.
 
   Local host: %s
@@ -599,12 +623,23 @@ MPI to support iWARP devices.
 (This message is being displayed because you told Open MPI to use
 iWARP devices via the btl_openib_device_type MCA parameter)
 #
+[invalid ipaddr_inexclude]
+WARNING: An invalid value was given for btl_openib_ipaddr_%s.  This
+value will be ignored.
+
+  Local host: %s
+  Value:      %s
+  Message:    %s
+#
 [unsupported queues configuration]
-The Open MPI receive queue configuration for the OpenFabrics devices on two nodes are incompatible, 
-meaning that MPI processes on two specific nodes were unable to communicate with each other.  
-This generally happens when you are using OpenFabrics devices from different vendors on the same network.  
-You should be able to use the mca_btl_openib_receive_queues MCA parameter to set a uniform receive queue configuration 
-for all the devices in the MPI job, and therefore be able to run successfully.
+The Open MPI receive queue configuration for the OpenFabrics devices
+on two nodes are incompatible, meaning that MPI processes on two
+specific nodes were unable to communicate with each other.  This
+generally happens when you are using OpenFabrics devices from
+different vendors on the same network.  You should be able to use the
+mca_btl_openib_receive_queues MCA parameter to set a uniform receive
+queue configuration for all the devices in the MPI job, and therefore
+be able to run successfully.
 
   Local host:       %s
   Local adapter:    %s (vendor 0x%x, part ID %d)
@@ -625,3 +660,53 @@ Such mixed network trasport configuration is not supported by Open MPI.
   Remote host:           %s
   Remote Adapter:        (vendor 0x%x, part ID %d)
   Remote transport type: %s
+#
+[mem-reg-fail]
+The OpenFabrics (openib) BTL failed to register memory in the driver.
+Please check /var/log/messages or dmesg for driver specific failure
+reason.
+The failure occured here:
+
+  Local host:    %s
+  Device:        %s
+  Function:      %s()
+  Errno says:    %s (errno=%d)
+
+You may need to consult with your system administrator to get this
+problem fixed.
+#
+[gid index too large]
+Open MPI tried to use a GID index that was too large for an
+OpenFabrics device (i.e., the GID index does not exist on this
+device).
+
+  Local host:              %s
+  Local adapter:           %s
+  Local port:              %d
+
+  Requested GID index:     %d (specified by the btl_openib_gid_index MCA param)
+  Max allowable GID index: %d
+
+Use "ibv_devinfo -v" on the local host to see the GID table of this
+device.
+[reg mem limit low]
+WARNING: It appears that your OpenFabrics subsystem is configured to only
+allow registering part of your physical memory.  This can cause MPI jobs to
+run with erratic performance, hang, and/or crash.
+
+This may be caused by your OpenFabrics vendor limiting the amount of
+physical memory that can be registered.  You should investigate the
+relevant Linux kernel module parameters that control how much physical
+memory can be registered, and increase them to allow registering all
+physical memory on your machine.
+
+See this Open MPI FAQ item for more information on these Linux kernel module
+parameters:
+
+    http://www.open-mpi.org/faq/?category=openfabrics#ib-locked-pages
+
+  Local host:              %s
+  Registerable memory:     %lu MiB
+  Total memory:            %lu MiB
+
+%s

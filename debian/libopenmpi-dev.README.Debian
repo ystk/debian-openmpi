@@ -1,15 +1,15 @@
-OpenMPI for Debian - Developer Notes
-------------------------------------
+Open MPI for Debian - Developer Notes
+-------------------------------------
 
 MPI Alternatives
 ----------------
 
-The current OpenMPI version of Debian uses the Debian Alternatives system.
-Although OpenMPI might replace most of the existing MPI implementations in the
+The current Open MPI version of Debian uses the Debian Alternatives system.
+Although Open MPI might replace most of the existing MPI implementations in the
 future (see http://www.open-mpi.org/faq/?category=general#why), we decided to
 not affect any other MPI implementation already installed on your system.
 
-You can setup OpenMPI as default MPI implementation by selecting openmpi as
+You can setup Open MPI as default MPI implementation by selecting openmpi as
 the "mpi" alternative:
 
   update-alternatives --config mpi
@@ -23,4 +23,4 @@ implementations, we recommend to point your build system to the locations
 under /usr/lib instead of relying on update-alternatives. This may also allow
 parallel builds.
 
- -- Debian OpenMPI Team <pkg-openmpi-maintainers@lists.alioth.debian.org>, Mon, 21 Jul 2008 16:34:30 +0200
+ -- Debian Open MPI Team <pkg-openmpi-maintainers@lists.alioth.debian.org>, Mon, 21 Jul 2008 16:34:30 +0200

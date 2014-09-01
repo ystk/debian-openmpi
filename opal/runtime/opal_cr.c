@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,6 +27,9 @@
 
 #include "opal_config.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
 #include <errno.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -45,7 +49,7 @@
 
 #include "opal/class/opal_object.h"
 #include "opal/util/opal_environ.h"
-#include "opal/util/trace.h"
+#include "opal/util/show_help.h"
 #include "opal/util/output.h"
 #include "opal/util/malloc.h"
 #include "opal/util/if.h"
@@ -68,7 +72,6 @@
 #include "opal/threads/mutex.h"
 #include "opal/threads/threads.h"
 #include "opal/mca/crs/base/base.h"
-#include "opal/threads/condition.h"
 
 /******************
  * Global Var Decls
@@ -94,6 +97,8 @@ static void opal_cr_sigpipe_debug_signal_handler (int signo);
 
 static opal_cr_coord_callback_fn_t  cur_coord_callback = NULL;
 static opal_cr_notify_callback_fn_t cur_notify_callback = NULL;
+
+static int core_prev_pid = 0;
 
 /******************
  * Interface Functions & Vars
@@ -159,7 +164,7 @@ static const uint32_t ProcInc    = 0x2;
           break;                                                                   \
       }                                                                            \
       sched_yield();                                                               \
-      usleep(opal_cr_thread_sleep_wait);                                           \
+      usleep(opal_cr_thread_sleep_check);                                          \
     }                                                                              \
  }
 #define OPAL_CR_THREAD_UNLOCK()                                     \
@@ -262,9 +267,9 @@ int opal_cr_init(void )
     opal_cr_thread_sleep_check = val;
 
     mca_base_param_reg_int_name("opal_cr", "thread_sleep_wait",
-                                "Time to sleep waiting for process to exit MPI library (Default: 0)",
+                                "Time to sleep waiting for process to exit MPI library (Default: 1000)",
                                 false, false,
-                                0, &val);
+                                1000, &val);
     opal_cr_thread_sleep_wait = val;
 
     opal_output_verbose(10, opal_cr_output,
@@ -349,20 +354,22 @@ int opal_cr_init(void )
      * the tools that this is not a checkpointable job.
      * We don't need the CRS framework to be initalized.
      */
-#if OPAL_ENABLE_FT    == 1
+#if OPAL_ENABLE_FT_CR    == 1
     /*
      * Open the checkpoint / restart service components
      */
     if (OPAL_SUCCESS != (ret = opal_crs_base_open())) {
-        opal_output(opal_cr_output,
-                    "opal_cr: init: opal_crs_base_open Failed to open. (%d)\n", ret);
+        opal_show_help( "help-opal-runtime.txt",
+                        "opal_cr_init:no-crs", true,
+                        "opal_crs_base_open", ret );
         exit_status = ret;
         goto cleanup;
     }
     
     if (OPAL_SUCCESS != (ret = opal_crs_base_select())) {
-        opal_output(opal_cr_output,
-                    "opal_cr: init: opal_crs_base_select Failed. (%d)\n", ret);
+        opal_show_help( "help-opal-runtime.txt",
+                        "opal_cr_init:no-crs", true,
+                        "opal_crs_base_select", ret );
         exit_status = ret;
         goto cleanup;
     }
@@ -433,7 +440,12 @@ int opal_cr_finalize(void)
         opal_cr_checkpoint_request  = OPAL_CR_STATUS_TERM;
     }
 
-#if OPAL_ENABLE_FT    == 1
+    if (NULL != opal_cr_pipe_dir) {
+        free(opal_cr_pipe_dir);
+        opal_cr_pipe_dir = NULL;
+    }
+
+#if OPAL_ENABLE_FT_CR    == 1
     /*
      * Close the checkpoint / restart service components
      */
@@ -511,12 +523,9 @@ void opal_cr_test_if_checkpoint_ready(void)
 /*******************************
  * Notification Routines
  *******************************/
-int opal_cr_inc_core(pid_t pid, opal_crs_base_snapshot_t *snapshot, bool term, int *state)
+int opal_cr_inc_core_prep(void)
 {
-    int ret, exit_status = OPAL_SUCCESS;
-    int prev_pid = 0;
-
-    prev_pid = getpid();
+    int ret;
 
     /*
      * Use the registered coordination routine
@@ -527,25 +536,35 @@ int opal_cr_inc_core(pid_t pid, opal_crs_base_snapshot_t *snapshot, bool term, i
                         "opal_cr: inc_core: Error: cur_coord_callback(%d) failed! %d\n",
                         OPAL_CRS_CHECKPOINT, ret);
         }
-        exit_status = ret;
-        goto cleanup;
+        return ret;
     }
-    
-    /*
-     * Take the checkpoint
-     */
+
+    core_prev_pid = getpid();
+
+    return OPAL_SUCCESS;
+}
+
+int opal_cr_inc_core_ckpt(pid_t pid,
+                          opal_crs_base_snapshot_t *snapshot,
+                          opal_crs_base_ckpt_options_t *options,
+                          int *state)
+{
+    int ret, exit_status = OPAL_SUCCESS;
+
     OPAL_CR_SET_TIMER(OPAL_CR_TIMER_CORE0);
-    if(OPAL_SUCCESS != (ret = opal_crs.crs_checkpoint(pid, snapshot, (opal_crs_state_type_t *)state))) {
+    if(OPAL_SUCCESS != (ret = opal_crs.crs_checkpoint(pid,
+                                                      snapshot,
+                                                      options,
+                                                      (opal_crs_state_type_t *)state))) {
         opal_output(opal_cr_output,
                     "opal_cr: inc_core: Error: The checkpoint failed. %d\n", ret);
         exit_status = ret;
-        /* Don't return here since we want to restart the OPAL level stuff */
     }
 
     if(*state == OPAL_CRS_CONTINUE) {
         OPAL_CR_SET_TIMER(OPAL_CR_TIMER_CORE1);
 
-        if(term) {
+        if(options->term) {
             *state = OPAL_CRS_TERM;
             opal_cr_checkpointing_state  = OPAL_CR_STATUS_TERM;
         } else {
@@ -553,34 +572,88 @@ int opal_cr_inc_core(pid_t pid, opal_crs_base_snapshot_t *snapshot, bool term, i
         }
     }
     else {
-        term = false;
+        options->term = false;
     }
 
     /*
      * If restarting read environment stuff that opal-restart left us.
      */
     if(*state == OPAL_CRS_RESTART) {
-        extract_env_vars(prev_pid);
+        extract_env_vars(core_prev_pid);
         opal_cr_checkpointing_state  = OPAL_CR_STATUS_RESTART_PRE;
+    }
+
+    return exit_status;
+}
+
+int opal_cr_inc_core_recover(int state)
+{
+    int ret;
+
+    if( opal_cr_checkpointing_state != OPAL_CR_STATUS_TERM && 
+        opal_cr_checkpointing_state != OPAL_CR_STATUS_CONTINUE && 
+        opal_cr_checkpointing_state != OPAL_CR_STATUS_RESTART_PRE && 
+        opal_cr_checkpointing_state != OPAL_CR_STATUS_RESTART_POST ) {
+
+        if(state == OPAL_CRS_CONTINUE) {
+            OPAL_CR_SET_TIMER(OPAL_CR_TIMER_CORE1);
+            opal_cr_checkpointing_state  = OPAL_CR_STATUS_CONTINUE;
+        }
+        /*
+         * If restarting read environment stuff that opal-restart left us.
+         */
+        else if(state == OPAL_CRS_RESTART) {
+            extract_env_vars(core_prev_pid);
+            opal_cr_checkpointing_state  = OPAL_CR_STATUS_RESTART_PRE;
+        }
     }
 
     /*
      * Use the registered coordination routine
      */
-    if(OPAL_SUCCESS != (ret = cur_coord_callback(*state)) ) {
+    if(OPAL_SUCCESS != (ret = cur_coord_callback(state)) ) {
         if ( OPAL_EXISTS != ret ) {
             opal_output(opal_cr_output,
                         "opal_cr: inc_core: Error: cur_coord_callback(%d) failed! %d\n",
-                        *state, ret);
+                        state, ret);
         }
-        exit_status = ret;
-        goto cleanup;
+        return ret;
     }
-    
- cleanup:
-    return exit_status;
+
+    return OPAL_SUCCESS;
 }
 
+int opal_cr_inc_core(pid_t pid,
+                     opal_crs_base_snapshot_t *snapshot,
+                     opal_crs_base_ckpt_options_t *options,
+                     int *state)
+{
+    int ret, exit_status = OPAL_SUCCESS;
+
+    /*
+     * INC: Prepare stack using the registered coordination routine
+     */
+    if(OPAL_SUCCESS != (ret = opal_cr_inc_core_prep() ) ) {
+        return ret;
+    }
+     
+    /*
+     * INC: Take the checkpoint
+     */
+    if(OPAL_SUCCESS != (ret = opal_cr_inc_core_ckpt(pid, snapshot, options, state) ) ) {
+        exit_status = ret;
+        /* Don't return here since we want to restart the OPAL level stuff */
+    }
+
+    /*
+     * INC: Recover stack using the registered coordination routine
+     */
+    if(OPAL_SUCCESS != (ret = opal_cr_inc_core_recover(*state) ) ) {
+        return ret;
+    }
+
+    return exit_status;
+}
 
 /*******************************
  * Coordination Routines
@@ -607,6 +680,7 @@ int opal_cr_coord(int state)
          * functions will call it when needed. Just make sure we
          * finalized this code so we don't get old socket addrs.
          */
+        opal_output_reopen_all();
     }
     else if (OPAL_CRS_TERM == state ) {
         /* Do Continue Phase work in prep to terminate the application */
@@ -677,10 +751,10 @@ static int extract_env_vars(int prev_pid)
     int exit_status = OPAL_SUCCESS;
     char *file_name = NULL;
     FILE *env_data = NULL;
-    int len = OMPI_PATH_MAX;
+    int len = OPAL_PATH_MAX;
     char * tmp_str = NULL;
 
-    if( 0 > prev_pid ) {
+    if( 0 >= prev_pid ) {
         opal_output(opal_cr_output,
                     "opal_cr: extract_env_vars: Invalid PID (%d)\n",
                     prev_pid);
@@ -702,9 +776,13 @@ static int extract_env_vars(int prev_pid)
     /* Extract an env var */
     while(!feof(env_data) ) {
         char **t_set = NULL;
-        len = OMPI_PATH_MAX;
+        len = OPAL_PATH_MAX;
 
         tmp_str = (char *) malloc(sizeof(char) * len);
+        if( NULL == tmp_str) {
+            exit_status = OPAL_ERR_OUT_OF_RESOURCE;
+            goto cleanup;
+        }
         if( NULL == fgets(tmp_str, len, env_data) ) {
             exit_status = OPAL_ERROR;
             goto cleanup;
@@ -716,6 +794,8 @@ static int extract_env_vars(int prev_pid)
             opal_output(opal_cr_output,
                         "opal_cr: extract_env_vars: Error: Parameter too long (%s)\n",
                         tmp_str);
+            free(tmp_str);
+            tmp_str = NULL;
             continue;
         }
 
@@ -833,7 +913,6 @@ static void* opal_cr_thread_fn(opal_object_t *obj)
         OPAL_CR_THREAD_UNLOCK();
 
         while ( opal_cr_thread_in_library && opal_cr_thread_is_active ) {
-            sched_yield();
             usleep(opal_cr_thread_sleep_wait);
         }
     }

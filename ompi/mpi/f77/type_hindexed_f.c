@@ -22,7 +22,7 @@
 #include "ompi/errhandler/errhandler.h"
 #include "ompi/communicator/communicator.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_TYPE_HINDEXED = mpi_type_hindexed_f
 #pragma weak pmpi_type_hindexed = mpi_type_hindexed_f
 #pragma weak pmpi_type_hindexed_ = mpi_type_hindexed_f
@@ -37,14 +37,14 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_TYPE_HINDEXED,
                            (count, array_of_blocklengths, array_of_displacements, oldtype, newtype, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_TYPE_HINDEXED = mpi_type_hindexed_f
 #pragma weak mpi_type_hindexed = mpi_type_hindexed_f
 #pragma weak mpi_type_hindexed_ = mpi_type_hindexed_f
 #pragma weak mpi_type_hindexed__ = mpi_type_hindexed_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_TYPE_HINDEXED,
                            mpi_type_hindexed,
                            mpi_type_hindexed_,
@@ -55,7 +55,7 @@ OMPI_GENERATE_F77_BINDINGS (MPI_TYPE_HINDEXED,
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
@@ -72,7 +72,7 @@ void mpi_type_hindexed_f(MPI_Fint *count, MPI_Fint *array_of_blocklengths,
     int i;
     OMPI_ARRAY_NAME_DECL(array_of_blocklengths);
 
-    c_disp_array = malloc(*count * sizeof(MPI_Aint));
+    c_disp_array = (MPI_Aint *) malloc(*count * sizeof(MPI_Aint));
     if (NULL == c_disp_array) {
         *ierr = OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_NO_MEM,
                                        FUNC_NAME);

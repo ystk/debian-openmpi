@@ -2,13 +2,14 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -18,13 +19,16 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
-#include "ompi/datatype/datatype.h"
-#include "ompi/datatype/convertor.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
+#include "ompi/datatype/ompi_datatype.h"
+#include "opal/datatype/opal_convertor.h"
 #include "ompi/mca/pml/pml.h"
 #include "ompi/proc/proc.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Sendrecv_replace = PMPI_Sendrecv_replace
 #endif
 
@@ -77,7 +81,7 @@ int MPI_Sendrecv_replace(void * buf, int count, MPI_Datatype datatype,
         return rc;
     } else {
 
-        ompi_convertor_t convertor;
+        opal_convertor_t convertor;
         struct iovec iov;
         unsigned char recv_data[2048];
         size_t packed_size, max_data;
@@ -90,12 +94,12 @@ int MPI_Sendrecv_replace(void * buf, int count, MPI_Datatype datatype,
         }
 
         /* initialize convertor to unpack recv buffer */
-        OBJ_CONSTRUCT(&convertor, ompi_convertor_t);
-        ompi_convertor_copy_and_prepare_for_recv( proc->proc_convertor, datatype,
+        OBJ_CONSTRUCT(&convertor, opal_convertor_t);
+        opal_convertor_copy_and_prepare_for_recv( proc->proc_convertor, &(datatype->super),
                                                   count, buf, 0, &convertor );
 
         /* setup a buffer for recv */
-        ompi_convertor_get_packed_size( &convertor, &packed_size );
+        opal_convertor_get_packed_size( &convertor, &packed_size );
         if( packed_size > sizeof(recv_data) ) {
             rc = MPI_Alloc_mem(packed_size, MPI_INFO_NULL, &iov.iov_base);
             if(OMPI_SUCCESS != rc) {
@@ -116,14 +120,14 @@ int MPI_Sendrecv_replace(void * buf, int count, MPI_Datatype datatype,
         }
 
         /* unpack into users buffer */
-        iov.iov_len = recv_status._count;
+        iov.iov_len = recv_status._ucount;
         iov_count = 1;
-        max_data = recv_status._count;
-        ompi_convertor_unpack(&convertor, &iov, &iov_count, &max_data );
+        max_data = recv_status._ucount;
+        opal_convertor_unpack(&convertor, &iov, &iov_count, &max_data );
 
         /* return status to user */
         if(status != MPI_STATUS_IGNORE) {
-            *status = recv_status;
+            OMPI_STATUS_SET(status, &recv_status);
         }
 
         /* release resources */

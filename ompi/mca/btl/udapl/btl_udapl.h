@@ -3,7 +3,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -25,27 +25,24 @@
 #ifndef MCA_BTL_UDAPL_H
 #define MCA_BTL_UDAPL_H
 
-/* Standard system includes */
+#include "ompi_config.h"
 #include <sys/types.h>
 #include <string.h>
 #include <dat/udat.h>
 
 /* Open MPI includes */
 #include "opal/class/opal_pointer_array.h"
-#include "ompi/class/ompi_free_list.h"
-#include "ompi/class/ompi_bitmap.h"
 #include "opal/event/event.h"
-#include "ompi/mca/pml/pml.h"
+#include "ompi/class/ompi_free_list.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
+#include "ompi/mca/btl/base/btl_base_error.h"
 #include "orte/util/show_help.h"
 #include "ompi/mca/mpool/mpool.h" 
 #include "ompi/mca/btl/btl.h"
 #include "btl_udapl_endpoint.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 
 /**
@@ -228,12 +225,7 @@ typedef struct mca_btl_udapl_reg_t mca_btl_udapl_reg_t;
 #define BTL_UDAPL_VERBOSE_OUTPUT(verbose_level, args)               \
 do {                                                                \
     if (verbose_level <= mca_btl_udapl_component.udapl_verbosity) { \
-        mca_btl_base_out("[%s]%s[%s:%d:%s] ",                       \
-            orte_process_info.nodename,                              \
-            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),                     \
-            __FILE__, __LINE__, __func__);                          \
-        mca_btl_base_out args;                                      \
-        mca_btl_base_out("\n");                                     \
+        BTL_OUTPUT(args);                                           \
     }                                                               \
 } while(0);
 
@@ -249,7 +241,7 @@ do {                                                                \
  * Report a uDAPL error - for debugging
  */
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 extern void mca_btl_udapl_error(DAT_RETURN ret, char* str);
 
 #define MCA_BTL_UDAPL_ERROR(ret, str) \
@@ -334,7 +326,7 @@ extern int mca_btl_udapl_add_procs(
     size_t nprocs,
     struct ompi_proc_t **procs,
     struct mca_btl_base_endpoint_t** peers,
-    ompi_bitmap_t* reachable
+    opal_bitmap_t* reachable
 );
 
 /**
@@ -449,7 +441,7 @@ mca_btl_base_descriptor_t* mca_btl_udapl_prepare_src(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* peer,
     struct mca_mpool_base_registration_t*,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -460,7 +452,7 @@ extern mca_btl_base_descriptor_t* mca_btl_udapl_prepare_dst(
     struct mca_btl_base_module_t* btl, 
     struct mca_btl_base_endpoint_t* peer,
     struct mca_mpool_base_registration_t*,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -473,7 +465,5 @@ extern mca_btl_base_descriptor_t* mca_btl_udapl_prepare_dst(
      */
 int mca_btl_udapl_ft_event(int state);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University.
+ * Copyright (c) 2004-2009 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -18,14 +18,13 @@
 
 #include "orte/constants.h"
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/base.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/base/mca_base_param.h"
 
 #include "orte/mca/filem/filem.h"
 #include "orte/mca/filem/base/base.h"
-#include "orte/util/show_help.h"
 
 #include "orte/mca/filem/base/static-components.h"
 
@@ -55,6 +54,7 @@ ORTE_DECLSPEC orte_filem_base_module_t orte_filem = {
 };
 opal_list_t orte_filem_base_components_available;
 orte_filem_base_component_t orte_filem_base_selected_component;
+bool orte_filem_base_is_active = false;
 
 /**
  * Function for finding and opening either all MCA components,
@@ -65,6 +65,8 @@ int orte_filem_base_open(void)
     char *str_value = NULL;
 
     orte_filem_base_output = opal_output_open(NULL);
+
+    orte_filem_base_is_active = false;
 
     /* 
      * Which FileM component to open
@@ -78,6 +80,7 @@ int orte_filem_base_open(void)
                                    NULL, &str_value);
     if( NULL != str_value ) {
         free(str_value);
+        str_value = NULL;
     }
 
     /* Open up all available components */

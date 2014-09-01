@@ -1,3 +1,49 @@
+27. Fixed processing preprocessor directives
+    containing character string constants with C/C++ comment
+    indicators (/**/, //)
+
+26. Fixed processing C/C++ line-continuation
+    within character string constants
+    
+25. Fixed C/C++ parsing
+    character string constants containing successive quotes (e.g. "\"\"")
+
+24. Fixed Fortran parsing
+    for detecting unbounded DO loop beginnings
+
+23. Fixed parsing
+    source files containing Carriage Returns
+
+22. Fixed Fortran parsing
+    for detecting end of block DO loops
+
+21. Fixed processing of Fortran line-continuation
+    appearing after a complete OpenMP directive
+
+    For example
+
+      !$omp parallel
+      !$omp do private(a,b,c, &
+      !$omp            d,e,f)
+
+    will not cause an "unbalanced pragma/directive nesting" error anymore.
+    
+20. Fixed Fortran parsing
+    for detecting DO loop beginnings
+
+19. Revised 18.
+    to get back support for comma-separated OpenMP clauses.
+
+18. Fixed processing of Fortran line-continuation where
+    commas at end of line (e.g. within OpenMP clauses) was removed
+
+17. Improved C/C++ instrumentation of OpenMP nested parallel regions
+    where the parent thread identifier will be passed to opening nested
+    parallel regions.
+
+16. Improved Fortran parsing
+    added support for comma-separated OpenMP clauses.
+
 15. Improved C/C++ parsing
     added support for bonded line-continuation in OpenMP directives.
     For example

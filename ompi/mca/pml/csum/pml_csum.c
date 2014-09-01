@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2009 The University of Tennessee and The University
@@ -15,6 +15,7 @@
  * Copyright (c) 2009      IBM Corporation.  All rights reserved.
  * Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,15 +28,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "opal/class/opal_bitmap.h"
 #include "opal/util/crc.h"
 #include "opal/util/output.h"
+#include "opal/mca/paffinity/paffinity.h"
 
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/grpcomm/grpcomm.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
+#include "orte/util/show_help.h"
 
-#include "ompi/class/ompi_bitmap.h"
 #include "ompi/mca/pml/pml.h"
 #include "ompi/mca/pml/base/base.h"
 #include "ompi/mca/btl/btl.h"
@@ -43,8 +46,6 @@
 #include "ompi/mca/btl/base/base.h"
 #include "ompi/mca/bml/base/base.h"
 #include "ompi/runtime/ompi_cr.h"
-#include "ompi/runtime/ompi_module_exchange.h"
-#include "ompi/proc/proc.h"
 
 #include "pml_csum.h"
 #include "pml_csum_component.h"
@@ -81,7 +82,8 @@ mca_pml_csum_t mca_pml_csum = {
 
 
 void mca_pml_csum_error_handler( struct mca_btl_base_module_t* btl,
-                                int32_t flags );
+                                int32_t flags, ompi_proc_t* errproc,
+                                char* btlinfo );
 
 int mca_pml_csum_enable(bool enable)
 {
@@ -95,9 +97,9 @@ int mca_pml_csum_enable(bool enable)
     OBJ_CONSTRUCT(&mca_pml_csum.rdma_frags, ompi_free_list_t);
     ompi_free_list_init_new( &mca_pml_csum.rdma_frags,
                          sizeof(mca_pml_csum_rdma_frag_t),
-                         CACHE_LINE_SIZE,
+                         opal_cache_line_size,
                          OBJ_CLASS(mca_pml_csum_rdma_frag_t),
-                         0,CACHE_LINE_SIZE,
+                         0,opal_cache_line_size,
                          mca_pml_csum.free_list_num,
                          mca_pml_csum.free_list_max,
                          mca_pml_csum.free_list_inc,
@@ -107,9 +109,9 @@ int mca_pml_csum_enable(bool enable)
 
     ompi_free_list_init_new( &mca_pml_csum.recv_frags,
                          sizeof(mca_pml_csum_recv_frag_t) + mca_pml_csum.unexpected_limit,
-                         CACHE_LINE_SIZE,
+                         opal_cache_line_size,
                          OBJ_CLASS(mca_pml_csum_recv_frag_t),
-                         0,CACHE_LINE_SIZE,
+                         0,opal_cache_line_size,
                          mca_pml_csum.free_list_num,
                          mca_pml_csum.free_list_max,
                          mca_pml_csum.free_list_inc,
@@ -118,9 +120,9 @@ int mca_pml_csum_enable(bool enable)
     OBJ_CONSTRUCT(&mca_pml_csum.pending_pckts, ompi_free_list_t);
     ompi_free_list_init_new( &mca_pml_csum.pending_pckts,
                          sizeof(mca_pml_csum_pckt_pending_t),
-                         CACHE_LINE_SIZE,
+                         opal_cache_line_size,
                          OBJ_CLASS(mca_pml_csum_pckt_pending_t),
-                         0,CACHE_LINE_SIZE,
+                         0,opal_cache_line_size,
                          mca_pml_csum.free_list_num,
                          mca_pml_csum.free_list_max,
                          mca_pml_csum.free_list_inc,
@@ -132,9 +134,9 @@ int mca_pml_csum_enable(bool enable)
     ompi_free_list_init_new( &mca_pml_csum.send_ranges,
                          sizeof(mca_pml_csum_send_range_t) +
                          (mca_pml_csum.max_send_per_range - 1) * sizeof(mca_pml_csum_com_btl_t),
-                         CACHE_LINE_SIZE,
+                         opal_cache_line_size,
                          OBJ_CLASS(mca_pml_csum_send_range_t),
-                         0,CACHE_LINE_SIZE,
+                         0,opal_cache_line_size,
                          mca_pml_csum.free_list_num,
                          mca_pml_csum.free_list_max,
                          mca_pml_csum.free_list_inc,
@@ -157,9 +159,9 @@ int mca_pml_csum_enable(bool enable)
                          sizeof(mca_pml_csum_send_request_t) +
                          (mca_pml_csum.max_rdma_per_request - 1) *
                          sizeof(mca_pml_csum_com_btl_t),
-                         CACHE_LINE_SIZE,
+                         opal_cache_line_size,
                          OBJ_CLASS(mca_pml_csum_send_request_t),
-                         0,CACHE_LINE_SIZE,
+                         0,opal_cache_line_size,
                          mca_pml_csum.free_list_num,
                          mca_pml_csum.free_list_max,
                          mca_pml_csum.free_list_inc,
@@ -169,9 +171,9 @@ int mca_pml_csum_enable(bool enable)
                          sizeof(mca_pml_csum_recv_request_t) +
                          (mca_pml_csum.max_rdma_per_request - 1) *
                          sizeof(mca_pml_csum_com_btl_t),
-                         CACHE_LINE_SIZE,
+                         opal_cache_line_size,
                          OBJ_CLASS(mca_pml_csum_recv_request_t),
-                         0,CACHE_LINE_SIZE,
+                         0,opal_cache_line_size,
                          mca_pml_csum.free_list_num,
                          mca_pml_csum.free_list_max,
                          mca_pml_csum.free_list_inc,
@@ -196,7 +198,7 @@ int mca_pml_csum_add_comm(ompi_communicator_t* comm)
     }
 
     /* should never happen, but it was, so check */
-    if (comm->c_contextid > (uint32_t) mca_pml_csum.super.pml_max_contextid) {
+    if (comm->c_contextid > mca_pml_csum.super.pml_max_contextid) {
         OBJ_RELEASE(pml_comm);
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
@@ -297,16 +299,17 @@ int mca_pml_csum_del_comm(ompi_communicator_t* comm)
 
 int mca_pml_csum_add_procs(ompi_proc_t** procs, size_t nprocs)
 {
-    ompi_bitmap_t reachable;
+    opal_bitmap_t reachable;
     int rc;
     size_t i;
-    ompi_convertor_t *local_convertor;
+    opal_list_item_t *item;
+    opal_convertor_t *local_convertor;
 
     if(nprocs == 0)
         return OMPI_SUCCESS;
-    /* Create a convertor for processes on the same node &
+    /* Create a convertor for processes on the same node & 
        disable checksum computation for local communication */
-    local_convertor = ompi_convertor_create(ompi_proc_local()->proc_arch, 0);
+    local_convertor = opal_convertor_create(ompi_proc_local()->proc_arch, 0);
     local_convertor->flags &= ~CONVERTOR_WITH_CHECKSUM;
 
     for (i = 0 ; i < nprocs ; ++i) {
@@ -316,7 +319,7 @@ int mca_pml_csum_add_procs(ompi_proc_t** procs, size_t nprocs)
         /* if the proc isn't local, tell the convertor to
          * checksum the data
          */
-        if (!(OMPI_PROC_FLAG_LOCAL & procs[i]->proc_flags)) {
+        if (!OPAL_PROC_ON_LOCAL_NODE(procs[i]->proc_flags)) {
             procs[i]->proc_convertor->flags |= CONVERTOR_WITH_CHECKSUM;
         } else {
             OBJ_RELEASE(procs[i]->proc_convertor);
@@ -327,8 +330,8 @@ int mca_pml_csum_add_procs(ompi_proc_t** procs, size_t nprocs)
     /* Decrement reference count by one, as we increment it twice for ourselves */
     OBJ_RELEASE(local_convertor);
 
-    OBJ_CONSTRUCT(&reachable, ompi_bitmap_t);
-    rc = ompi_bitmap_init(&reachable, (int)nprocs);
+    OBJ_CONSTRUCT(&reachable, opal_bitmap_t);
+    rc = opal_bitmap_init(&reachable, (int)nprocs);
     if(OMPI_SUCCESS != rc)
         return rc;
 
@@ -338,7 +341,7 @@ int mca_pml_csum_add_procs(ompi_proc_t** procs, size_t nprocs)
      * return failure as all processes will return the wrapper PML
      * component in use instead of the wrapped PML component underneath.
      */
-#if OPAL_ENABLE_FT == 0
+#if OPAL_ENABLE_FT_CR == 0
     /* make sure remote procs are using the same PML as us */
     if (OMPI_SUCCESS != (rc = mca_pml_base_pml_check_selected("csum",
                                                               procs,
@@ -352,6 +355,37 @@ int mca_pml_csum_add_procs(ompi_proc_t** procs, size_t nprocs)
                                 &reachable );
     if(OMPI_SUCCESS != rc)
         goto cleanup_and_return;
+
+    /* Check that values supplied by all initialized btls will work
+       for us.  Note that this is the list of all initialized BTLs,
+       not the ones used for the just added procs.  This is a little
+       overkill and inaccurate, as we may end up not using the BTL in
+       question and all add_procs calls after the first one are
+       duplicating an already completed check.  But the final
+       initialization of the PML occurs before the final
+       initialization of the BTLs, and iterating through the in-use
+       BTLs requires iterating over the procs, as the BML does not
+       expose all currently in use btls. */
+
+    for (item = opal_list_get_first(&mca_btl_base_modules_initialized) ;
+         item != opal_list_get_end(&mca_btl_base_modules_initialized) ;
+         item = opal_list_get_next(item)) {
+        mca_btl_base_selected_module_t *sm = 
+            (mca_btl_base_selected_module_t*) item;
+        if (sm->btl_module->btl_eager_limit < sizeof(mca_pml_csum_hdr_t)) {
+	    orte_show_help("help-mpi-pml-csum.txt", "eager_limit_too_small",
+			   true, 
+			   sm->btl_component->btl_version.mca_component_name,
+			   orte_process_info.nodename,
+			   sm->btl_component->btl_version.mca_component_name,
+			   sm->btl_module->btl_eager_limit,
+			   sm->btl_component->btl_version.mca_component_name,
+			   sizeof(mca_pml_csum_hdr_t),
+			   sm->btl_component->btl_version.mca_component_name);
+            rc = OMPI_ERR_BAD_PARAM;
+            goto cleanup_and_return;
+        }
+    }
 
     rc = mca_bml.bml_register( MCA_PML_CSUM_HDR_TYPE_MATCH,
                                mca_pml_csum_recv_frag_callback_match,
@@ -599,12 +633,12 @@ void mca_pml_csum_process_pending_rdma(void)
 
 
 void mca_pml_csum_error_handler(
-        struct mca_btl_base_module_t* btl,
-        int32_t flags) { 
+        struct mca_btl_base_module_t* btl, int32_t flags,
+        ompi_proc_t* errproc, char* btlinfo ) { 
     orte_errmgr.abort(-1, NULL);
 }
 
-#if OPAL_ENABLE_FT    == 0
+#if OPAL_ENABLE_FT_CR    == 0
 int mca_pml_csum_ft_event( int state ) {
     return OMPI_SUCCESS;
 }
@@ -825,7 +859,7 @@ int mca_pml_csum_ft_event( int state )
 
     return OMPI_SUCCESS;
 }
-#endif /* OPAL_ENABLE_FT */
+#endif /* OPAL_ENABLE_FT_CR */
 
 int mca_pml_csum_com_btl_comp(const void *v1, const void *v2)
 {

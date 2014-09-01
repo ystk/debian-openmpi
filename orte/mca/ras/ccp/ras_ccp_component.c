@@ -18,8 +18,6 @@
 
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "orte/util/show_help.h"
-#include "opal/util/basename.h"
 #include "orte/constants.h"
 #include "orte/util/proc_info.h"
 #include "ras_ccp.h"
@@ -85,7 +83,6 @@ static int ras_ccp_open(void)
 
 static int orte_ras_ccp_component_query(mca_base_module_t **module, int *priority)
 {
-    int rc;
     ICluster* pCluster = NULL;
     HRESULT hr = S_OK;
 
@@ -105,7 +102,7 @@ static int orte_ras_ccp_component_query(mca_base_module_t **module, int *priorit
     }
 
     /* if we are NOT an HNP, then don't select us */
-    if (!orte_process_info.hnp) {
+    if (!ORTE_PROC_IS_HNP) {
         pCluster->Release();
         *module = NULL;
         return ORTE_ERROR;

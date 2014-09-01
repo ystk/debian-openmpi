@@ -24,19 +24,13 @@
 
 #include "mpi.h"
 #include "ompi/communicator/communicator.h"
-#include "ompi/group/group.h"
-#include "ompi/proc/proc.h"
 #include "ompi/op/op.h"
 
-#include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/base.h"
 #include "ompi/mca/coll/base/coll_tags.h"
 
-#include "ompi/class/ompi_bitmap.h"
-#include "ompi/mca/bml/bml.h"
 #include "ompi/mca/bml/base/base.h"
 #include "ompi/mca/pml/pml.h"
-#include "ompi/mca/btl/btl.h"
 
 
 int mca_coll_hierarch_allreduce_tmp(void *sbuf, void *rbuf, int count,
@@ -128,13 +122,13 @@ int mca_coll_hierarch_reduce_tmp(void *sbuf, void *rbuf, int count,
 
     size = ompi_comm_size(comm);
 
-    ompi_ddt_get_extent(dtype, &lb, &extent);
+    ompi_datatype_get_extent(dtype, &lb, &extent);
     pml_buffer = (char*)malloc(count * extent);
     if (NULL == pml_buffer) {
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
 
-    err = ompi_ddt_copy_content_same_ddt(dtype, count, (char*)rbuf, (char*)sbuf);
+    err = ompi_datatype_copy_content_same_ddt(dtype, count, (char*)rbuf, (char*)sbuf);
     if (MPI_SUCCESS != err) {
         goto exit;
     }
@@ -190,12 +184,12 @@ int mca_coll_hierarch_gather_tmp(void *sbuf, int scount,
     }
 
     /* I am the root, loop receiving the data. */
-    ompi_ddt_get_extent(rdtype, &lb, &extent);
+    ompi_datatype_get_extent(rdtype, &lb, &extent);
     incr = extent * rcount;
     for (i = 0, ptmp = (char *) rbuf; i < size; ++i, ptmp += incr) {
         if (i == rank) {
             if (MPI_IN_PLACE != sbuf) {
-                err = ompi_ddt_sndrcv(sbuf, scount, sdtype,
+                err = ompi_datatype_sndrcv(sbuf, scount, sdtype,
                                       ptmp, rcount, rdtype);
             } else {
                 err = MPI_SUCCESS;

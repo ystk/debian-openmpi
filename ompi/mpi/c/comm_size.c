@@ -16,13 +16,18 @@
  * 
  * $HEADER$
  */
+
 #include "ompi_config.h"
+
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Comm_size = PMPI_Comm_size
 #endif
 
@@ -33,7 +38,8 @@
 static const char FUNC_NAME[] = "MPI_comm_size";
 
 
-int MPI_Comm_size(MPI_Comm comm, int *size) {
+int MPI_Comm_size(MPI_Comm comm, int *size) 
+{
     MEMCHECKER(
         memchecker_comm(comm);
     );

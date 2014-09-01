@@ -1,0 +1,8 @@
+debian/tmp/usr/share/man/man1/ompi-checkpoint.1
+debian/tmp/usr/share/man/man1/ompi-restart.1
+debian/tmp/usr/share/man/man1/opal-checkpoint.1
+debian/tmp/usr/share/man/man1/opal-restart.1
+debian/tmp/usr/share/man/man1/orte-checkpoint.1
+debian/tmp/usr/share/man/man1/orte-restart.1
+debian/tmp/usr/share/man/man7/ompi_crcp.7
+debian/tmp/usr/share/man/man7/opal_crs.7

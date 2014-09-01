@@ -21,7 +21,7 @@
 #include "ompi/mpi/f77/bindings.h"
 #include "ompi/mpi/f77/constants.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_REQUEST_GET_STATUS = mpi_request_get_status_f
 #pragma weak pmpi_request_get_status = mpi_request_get_status_f
 #pragma weak pmpi_request_get_status_ = mpi_request_get_status_f
@@ -32,33 +32,33 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_REQUEST_GET_STATUS,
                            pmpi_request_get_status_,
                            pmpi_request_get_status__,
                            pmpi_request_get_status_f,
-                           (MPI_Fint *request, MPI_Flogical *flag, MPI_Fint *status, MPI_Fint *ierr),
+                           (MPI_Fint *request, ompi_fortran_logical_t *flag, MPI_Fint *status, MPI_Fint *ierr),
                            (request, flag, status, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_REQUEST_GET_STATUS = mpi_request_get_status_f
 #pragma weak mpi_request_get_status = mpi_request_get_status_f
 #pragma weak mpi_request_get_status_ = mpi_request_get_status_f
 #pragma weak mpi_request_get_status__ = mpi_request_get_status_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_REQUEST_GET_STATUS,
                            mpi_request_get_status,
                            mpi_request_get_status_,
                            mpi_request_get_status__,
                            mpi_request_get_status_f,
-                           (MPI_Fint *request, MPI_Flogical *flag, MPI_Fint *status, MPI_Fint *ierr),
+                           (MPI_Fint *request, ompi_fortran_logical_t *flag, MPI_Fint *status, MPI_Fint *ierr),
                            (request, flag, status, ierr) )
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
-void mpi_request_get_status_f(MPI_Fint *request, MPI_Flogical *flag,
+void mpi_request_get_status_f(MPI_Fint *request, ompi_fortran_logical_t *flag,
                               MPI_Fint *status, MPI_Fint *ierr)
 {
     MPI_Status c_status;

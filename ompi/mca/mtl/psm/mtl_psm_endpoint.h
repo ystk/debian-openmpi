@@ -22,16 +22,12 @@
 
 #include "opal/class/opal_list.h"
 #include "opal/event/event.h"
-#include "ompi/proc/proc.h"
-#include "ompi/mca/pml/pml.h"
 #include "ompi/mca/mtl/mtl.h"
 #include "mtl_psm.h"
 
 #include "psm.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 OBJ_CLASS_DECLARATION(mca_mtl_psm_endpoint_t);
 
@@ -59,7 +55,5 @@ typedef struct mca_mtl_base_endpoint_t mca_mtl_base_endpoint_t;
 typedef mca_mtl_base_endpoint_t  mca_mtl_psm_endpoint_t;
 OBJ_CLASS_DECLARATION(mca_mtl_psm_endpoint);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif

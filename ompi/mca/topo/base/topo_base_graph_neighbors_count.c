@@ -19,7 +19,6 @@
 #include "ompi_config.h"
 #include "ompi/mca/topo/base/base.h"
 #include "ompi/communicator/communicator.h"
-#include "ompi/mca/topo/topo.h"
 
 /*
  * function - returns the number of neighbors of a node
@@ -32,7 +31,7 @@
  * @retval MPI_SUCCESS
  */                             
 
-int mca_topo_base_graph_neighbors_count (MPI_Comm comm,
+int mca_topo_base_graph_neighbors_count (ompi_communicator_t* comm,
                                      int rank,
                                      int *nneighbors){
 

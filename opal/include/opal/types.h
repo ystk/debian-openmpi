@@ -21,6 +21,9 @@
 
 #include "opal_config.h"
 
+#ifdef HAVE_STDINT_H
+#include <stdint.h>
+#endif
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
@@ -30,11 +33,14 @@
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
 #endif
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif
 #ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
 #endif
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 #include "opal/util/output.h"
 #endif
 
@@ -134,7 +140,7 @@ static inline uint64_t ompi_ptr_ptol( void* ptr )
 static inline void* ompi_ptr_ltop( uint64_t value ) __opal_attribute_const__;
 static inline void* ompi_ptr_ltop( uint64_t value )
 {
-#if SIZEOF_VOID_P == 4 && OMPI_ENABLE_DEBUG
+#if SIZEOF_VOID_P == 4 && OPAL_ENABLE_DEBUG
     if (value > ((1ULL << 32) - 1ULL)) {
         opal_output(0, "Warning: truncating value in ompi_ptr_ltop");
     }

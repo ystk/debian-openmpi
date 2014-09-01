@@ -1,4 +1,4 @@
-# Copyright (c) 2008      High Performance Computing Center Stuttgart, 
+# Copyright (c) 2008-2010 High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 #
 # $COPYRIGHT$
@@ -10,7 +10,7 @@
 
 
 MACRO(OMPI_F77_FIND_EXT_SYMBOL_CONVENTION)
-  IF(OMPI_WANT_F77_BINDINGS)
+  IF(NOT SYMBOL_CONVENTION_CHECK_DONE)
     SET(OMPI_F77_DOUBLE_UNDERSCORE 0
       CACHE INTERNAL "external symbol convention - double underscore")
     SET(OMPI_F77_SINGLE_UNDERSCORE 0
@@ -20,21 +20,16 @@ MACRO(OMPI_F77_FIND_EXT_SYMBOL_CONVENTION)
     SET(OMPI_F77_PLAIN 0
       CACHE INTERNAL "external symbol convention - plain")
 
-    # first check if we have already detected dumpbin.exe
-    IF(NOT DUMPBIN_EXE)
-      MESSAGE(FATAL_ERROR "could not find dumpbin, cannot continue...")
-    ENDIF(NOT DUMPBIN_EXE)
-
     # make sure we know our linking convention...
-    MESSAGE(STATUS "Check ${CMAKE_Fortran_COMPILER} external symbol convention...")
+    MESSAGE(STATUS "Check ${F77} external symbol convention...")
     FILE(WRITE ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/conftest.f
       "\t subroutine FOO_bar(a) \n"
       "\t integer a \n"
       "\t a = 1 \n"
       "\t return \n"
       "\t end \n")
-    
-    EXECUTE_PROCESS(COMMAND ${F77} -c conftest.f -o conftest.lib
+
+    EXECUTE_PROCESS(COMMAND ${F77} ${F77_OPTION_COMPILE} conftest.f ${F77_OUTPUT_OBJ}conftest.lib
       WORKING_DIRECTORY  ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp
       OUTPUT_VARIABLE    OUTPUT
       RESULT_VARIABLE    RESULT
@@ -43,23 +38,17 @@ MACRO(OMPI_F77_FIND_EXT_SYMBOL_CONVENTION)
     SET(OUTPUT_OBJ_FILE "conftest.lib")
 
     # now run dumpbin to generate an output file
-    EXECUTE_PROCESS(COMMAND ${DUMPBIN_EXE} ${OUTPUT_OBJ_FILE} /symbols /out:conftest_out
+    EXECUTE_PROCESS(COMMAND ${DUMP_UTIL} ${OUTPUT_OBJ_FILE} ${DUMP_UTIL_OPT}
       WORKING_DIRECTORY  ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp
-      OUTPUT_VARIABLE    OUTPUT
+      OUTPUT_VARIABLE    DUMP_OUTPUT
       RESULT_VARIABLE    RESULT
       ERROR_VARIABLE     ERROR)
 
-    # find out the external symbol convention
-    FILE(STRINGS ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/conftest_out 
-      DOUBLE_UNDERSCORE REGEX "foo_bar__$")
-    FILE(STRINGS ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/conftest_out 
-      SINGLE_UNDERSCORE REGEX "foo_bar_$")
-    FILE(STRINGS ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/conftest_out 
-      MIXED_CASE REGEX "FOO_bar$")
-    FILE(STRINGS ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/conftest_out 
-      NO_UNDERSCORE REGEX "foo_bar$")
-    FILE(STRINGS ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/conftest_out 
-      UPPER_CASE REGEX "FOO_BAR$")
+    STRING(REGEX MATCH foo_bar__\n DOUBLE_UNDERSCORE ${DUMP_OUTPUT})
+    STRING(REGEX MATCH foo_bar_\n SINGLE_UNDERSCORE ${DUMP_OUTPUT})
+    STRING(REGEX MATCH FOO_bar\n MIXED_CASE ${DUMP_OUTPUT})
+    STRING(REGEX MATCH foo_bar\n NO_UNDERSCORE ${DUMP_OUTPUT})
+    STRING(REGEX MATCH FOO_BAR\n UPPER_CASE ${DUMP_OUTPUT})
 
     # set up the corresponding values
     IF(NOT DOUBLE_UNDERSCORE STREQUAL "")
@@ -97,14 +86,19 @@ MACRO(OMPI_F77_FIND_EXT_SYMBOL_CONVENTION)
       SET(ompi_cv_f77_external_symbol "unknow")
     ENDIF(NOT DOUBLE_UNDERSCORE STREQUAL "")
 
-    MESSAGE(STATUS "Check ${CMAKE_Fortran_COMPILER} external symbol convention...${ompi_cv_f77_external_symbol}")
+    MESSAGE(STATUS "Check ${F77} external symbol convention...${ompi_cv_f77_external_symbol}")
 
     # now test if we can link the library with c program
     FILE(WRITE ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/conftest_c.c 
       "int main(){${FUNC_NAME}();return(0);}")
 
     FILE(WRITE ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/CMakeLists.txt
-      "PROJECT(conftest_c C)\n" 
+      "CMAKE_MINIMUM_REQUIRED(VERSION 2.4.6 FATAL_ERROR)\n"
+      "PROJECT(conftest_c C)\n"
+      "IF(NOT \"${F77_LIB_PATH}\" STREQUAL \"\")\n"
+      "  LINK_DIRECTORIES(\"${F77_LIB_PATH}\")\n"
+      "ENDIF(NOT \"${F77_LIB_PATH}\" STREQUAL \"\")\n"
+      "LINK_DIRECTORIES(${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/)\n"
       "ADD_EXECUTABLE(conftest_c conftest_c.c)\n"
       "TARGET_LINK_LIBRARIES(conftest_c ${OUTPUT_OBJ_FILE})\n")
 
@@ -117,19 +111,16 @@ MACRO(OMPI_F77_FIND_EXT_SYMBOL_CONVENTION)
 
     #MESSAGE("MY_OUTPUT:${MY_OUTPUT}")
 
-    IF(NOT TEST_OK)
-      MESSAGE(FATAL_ERROR "C and Fortran 77 compilers are not link compatible.  Can not continue.")
-    ENDIF(NOT TEST_OK)
-  ELSE(OMPI_WANT_F77_BINDINGS)
-    SET(OMPI_F77_DOUBLE_UNDERSCORE 0
-      CACHE INTERNAL "external symbol convention - double underscore")
-    SET(OMPI_F77_SINGLE_UNDERSCORE 0
-      CACHE INTERNAL "external symbol convention - single underscore")
-    SET(OMPI_F77_CAPS 0
-      CACHE INTERNAL "external symbol convention - captital")
-    SET(OMPI_F77_PLAIN 0
-      CACHE INTERNAL "external symbol convention - plain")
-  ENDIF(OMPI_WANT_F77_BINDINGS)
+    IF(TEST_OK)
+      SET(SYMBOL_CONVENTION_CHECK_DONE TRUE CACHE INTERNAL "Symbol convention check done.")
+    ELSE(TEST_OK)
+      UNSET(SYMBOL_CONVENTION_CHECK_DONE CACHE)
+      MESSAGE(STATUS "${MY_OUTPUT}")
+      MESSAGE(STATUS "*** Probably you have to setup the library path of the Fortran compiler.")
+      MESSAGE(FATAL_ERROR "C and Fortran 77 compilers are not link compatible.  Cannot continue.")
+    ENDIF(TEST_OK)
+
+  ENDIF(NOT SYMBOL_CONVENTION_CHECK_DONE)
 
 ENDMACRO(OMPI_F77_FIND_EXT_SYMBOL_CONVENTION)
 
@@ -152,7 +143,7 @@ MACRO(OMPI_F77_MAKE_C_FUNCTION OUTPUT_VARIABLE FUNCTION_NAME)
     ENDIF("${RESULT}" STREQUAL "")
   ELSEIF("${ompi_cv_f77_external_symbol}" STREQUAL "single underscore")
     STRING(TOLOWER ${FUNCTION_NAME} ${OUTPUT_VARIABLE})
-    SET(${OUTPUT_VARIABLE} "${OUTPUT_VARIABLE}_")
+    SET(${OUTPUT_VARIABLE} "${${OUTPUT_VARIABLE}}_")
   ELSEIF("${ompi_cv_f77_external_symbol}" STREQUAL "mixed case")
     SET(${OUTPUT_VARIABLE} ${FUNCTION_NAME})
   ELSEIF("${ompi_cv_f77_external_symbol}" STREQUAL "no underscore")

@@ -1,11 +1,12 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
+ * Copyright (c) 2004-2009 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -27,27 +28,465 @@
 #endif  /* HAVE_SYS_TIME_H */
 
 #include "opal/threads/condition.h"
-#include "orte/util/show_help.h"
-#include "opal/util/bit_ops.h"
-
+#include "opal/util/output.h"
 #include "opal/class/opal_hash_table.h"
-#include "orte/util/proc_info.h"
 #include "opal/dss/dss.h"
+
+#include "orte/util/proc_info.h"
 #include "orte/mca/errmgr/errmgr.h"
-#include "orte/mca/odls/odls_types.h"
-#include "orte/mca/rml/rml.h"
+#include "orte/mca/ess/ess.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/util/name_fns.h"
+#include "orte/util/nidmap.h"
 #include "orte/orted/orted.h"
 #include "orte/runtime/orte_wait.h"
 
 #include "orte/mca/grpcomm/base/base.h"
-
+#include "orte/mca/grpcomm/grpcomm.h"
 
 /***************  MODEX SECTION **************/
+int orte_grpcomm_base_full_modex(opal_list_t *procs, bool modex_db)
+{
+    opal_buffer_t buf, rbuf;
+    int32_t i, n, num_procs;
+    orte_std_cntr_t cnt, j, num_recvd_entries;
+    orte_process_name_t proc_name;
+    int rc=ORTE_SUCCESS;
+    bool modex_reqd;
+    orte_nid_t *nid;
+    orte_local_rank_t local_rank;
+    orte_node_rank_t node_rank;
+    orte_jmap_t *jmap;
+    orte_pmap_t *pmap;
+    orte_vpid_t daemon;
+    char *hostname;
+    
+    OPAL_OUTPUT_VERBOSE((1, orte_grpcomm_base_output,
+                         "%s grpcomm:base:full:modex: performing modex",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
+    
+    /* setup the buffer that will actually be sent */
+    OBJ_CONSTRUCT(&buf, opal_buffer_t);
+    OBJ_CONSTRUCT(&rbuf, opal_buffer_t);
+    
+    /* put our process name in the buffer so it can be unpacked later */
+    if (ORTE_SUCCESS != (rc = opal_dss.pack(&buf, ORTE_PROC_MY_NAME, 1, ORTE_NAME))) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+    /* pack our hostname */
+    if (ORTE_SUCCESS != (rc = opal_dss.pack(&buf, &orte_process_info.nodename, 1, OPAL_STRING))) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+    /* pack our daemon's vpid */
+    if (ORTE_SUCCESS != (rc = opal_dss.pack(&buf, &ORTE_PROC_MY_DAEMON->vpid, 1, ORTE_VPID))) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+    /* pack our node rank */
+    node_rank = orte_ess.get_node_rank(ORTE_PROC_MY_NAME);
+    if (ORTE_SUCCESS != (rc = opal_dss.pack(&buf, &node_rank, 1, ORTE_NODE_RANK))) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+    /* pack our local rank */
+    local_rank = orte_ess.get_local_rank(ORTE_PROC_MY_NAME);
+    if (ORTE_SUCCESS != (rc = opal_dss.pack(&buf, &local_rank, 1, ORTE_LOCAL_RANK))) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+    /* pack the entries we have received */
+    if (ORTE_SUCCESS != (rc = orte_grpcomm_base_pack_modex_entries(&buf, &modex_reqd))) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+    OPAL_OUTPUT_VERBOSE((2, orte_grpcomm_base_output,
+                         "%s grpcomm:base:full:modex: executing allgather",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
+    
+    /* exchange the buffer with the list of peers */
+    if (ORTE_SUCCESS != (rc = orte_grpcomm.allgather_list(procs, &buf, &rbuf))) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+    OPAL_OUTPUT_VERBOSE((2, orte_grpcomm_base_output,
+                         "%s grpcomm:base:full:modex: processing modex info",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
+    
+
+
+    /* extract the number of procs that put data in the buffer */
+    cnt=1;
+    if (ORTE_SUCCESS != (rc = opal_dss.unpack(&rbuf, &num_procs, &cnt, OPAL_INT32))) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+    OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                         "%s grpcomm:base:full:modex: received %ld data bytes from %d procs",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         (long)(rbuf.pack_ptr - rbuf.unpack_ptr), num_procs));
+    
+    /* if the buffer doesn't have any more data, ignore it */
+    if (0 >= (rbuf.pack_ptr - rbuf.unpack_ptr)) {
+        goto cleanup;
+    }
+    
+    /* otherwise, process it */
+    for (i=0; i < num_procs; i++) {
+        /* unpack the process name */
+        cnt=1;
+        if (ORTE_SUCCESS != (rc = opal_dss.unpack(&rbuf, &proc_name, &cnt, ORTE_NAME))) {
+            ORTE_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        
+        /* unpack the hostname */
+        cnt = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss.unpack(&rbuf, &hostname, &cnt, OPAL_STRING))) {
+            ORTE_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        
+        /* unpack the daemon vpid */
+        cnt = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss.unpack(&rbuf, &daemon, &cnt, ORTE_VPID))) {
+            ORTE_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        
+        /* unpack the node rank */
+        cnt = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss.unpack(&rbuf, &node_rank, &cnt, ORTE_NODE_RANK))) {
+            ORTE_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        
+        /* unpack the local rank */
+        cnt = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss.unpack(&rbuf, &local_rank, &cnt, ORTE_LOCAL_RANK))) {
+            ORTE_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        
+        /* UPDATE THE NIDMAP/PIDMAP TO SUPPORT DYNAMIC OPERATIONS */
+        
+        /* find this proc's node in the nidmap */
+        nid = NULL;
+        for (n=0; NULL != (nid = (orte_nid_t *) opal_pointer_array_get_item(&orte_nidmap, n)); n++) {
+            if (0 == strcmp(hostname, nid->name)) {
+                break;
+            }
+        }
+        if (NULL == nid) {
+            /* node wasn't found - let's add it */
+            OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                                 "%s grpcomm:base:full:modex no nidmap entry for node %s",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), hostname));
+            nid = OBJ_NEW(orte_nid_t);
+            nid->name = strdup(hostname);
+            nid->daemon = daemon;
+            nid->index = opal_pointer_array_add(&orte_nidmap, nid);
+        }
+        
+        /* see if we have this job in a jobmap */
+        if (NULL == (jmap = orte_util_lookup_jmap(proc_name.jobid))) {
+            /* proc wasn't found - let's add it */
+            OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                                 "%s grpcomm:base:full:modex no jobmap entry for job %s",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                 ORTE_JOBID_PRINT(proc_name.jobid)));
+            jmap = OBJ_NEW(orte_jmap_t);
+            jmap->job = proc_name.jobid;
+            /* unfortunately, job objects cannot be stored
+             * by index number as the jobid is a constructed
+             * value. So we have to just add it to the end
+             * of the array
+             */
+            opal_pointer_array_add(&orte_jobmap, jmap);
+            jmap->num_procs = 1;
+            /* have to add the pidmap entry too, but this
+             * can be done at the specific site corresponding
+             * to the proc's vpid
+             */
+            pmap = OBJ_NEW(orte_pmap_t);
+            pmap->node = nid->index;
+            pmap->local_rank = local_rank;
+            pmap->node_rank = node_rank;
+            opal_pointer_array_set_item(&jmap->pmap, proc_name.vpid, pmap);
+        } else {
+            /* see if we have this proc in a pidmap */
+            if (NULL == orte_util_lookup_pmap(&proc_name)) {
+                /* proc wasn't found - let's add it */
+                OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                                     "%s grpcomm:base:full:modex no pidmap entry for proc %s",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                     ORTE_NAME_PRINT(&proc_name)));
+                pmap = OBJ_NEW(orte_pmap_t);
+                pmap->node = nid->index;
+                pmap->local_rank = local_rank;
+                pmap->node_rank = node_rank;
+                /* this can be done at the specific site corresponding
+                 * to the proc's vpid
+                 */
+                opal_pointer_array_set_item(&jmap->pmap, proc_name.vpid, pmap);
+                /* account for the proc entry in the jmap */
+                jmap->num_procs++;
+            }
+        }
+        
+        OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                             "%s grpcomm:base:full:modex: adding modex entry for proc %s",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ORTE_NAME_PRINT(&proc_name)));
+        
+        /* UPDATE THE MODEX INFO FOR THIS PROC */
+        
+        if (modex_db) {
+            /* update the modex database */
+            if (ORTE_SUCCESS != (rc = orte_grpcomm_base_update_modex_entries(&proc_name, &rbuf))) {
+                ORTE_ERROR_LOG(rc);
+                goto cleanup;
+            }            
+        } else {
+            /* unpack the number of entries for this proc */
+            cnt=1;
+            if (ORTE_SUCCESS != (rc = opal_dss.unpack(&rbuf, &num_recvd_entries, &cnt, ORTE_STD_CNTR))) {
+                ORTE_ERROR_LOG(rc);
+                goto cleanup;
+            }
+            
+            OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                                 "%s grpcomm:base:full:modex adding %d entries for proc %s",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), num_recvd_entries,
+                                 ORTE_NAME_PRINT(&proc_name)));
+            
+            /*
+             * Extract the attribute names and values
+             */
+            for (j = 0; j < num_recvd_entries; j++) {
+                size_t num_bytes;
+                orte_attr_t *attr;
+                
+                attr = OBJ_NEW(orte_attr_t);
+                cnt = 1;
+                if (ORTE_SUCCESS != (rc = opal_dss.unpack(&rbuf, &(attr->name), &cnt, OPAL_STRING))) {
+                    ORTE_ERROR_LOG(rc);
+                    goto cleanup;
+                }
+                
+                cnt = 1;
+                if (ORTE_SUCCESS != (rc = opal_dss.unpack(&rbuf, &num_bytes, &cnt, OPAL_SIZE))) {
+                    ORTE_ERROR_LOG(rc);
+                    goto cleanup;
+                }
+                attr->size = num_bytes;
+                
+                if (num_bytes != 0) {
+                    if (NULL == (attr->bytes = (uint8_t *) malloc(num_bytes))) {
+                        ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
+                        rc = ORTE_ERR_OUT_OF_RESOURCE;
+                        goto cleanup;
+                    }
+                    cnt = (orte_std_cntr_t) num_bytes;
+                    if (ORTE_SUCCESS != (rc = opal_dss.unpack(&rbuf, attr->bytes, &cnt, OPAL_BYTE))) {
+                        ORTE_ERROR_LOG(rc);
+                        goto cleanup;
+                    }
+                }
+                
+                /* add this to the node's attribute list */
+                opal_list_append(&nid->attrs, &attr->super);
+            }
+        }
+    }
+    
+cleanup:
+    OBJ_DESTRUCT(&buf);
+    OBJ_DESTRUCT(&rbuf);
+    return rc;
+}
+
+int orte_grpcomm_base_modex_unpack( opal_buffer_t* rbuf, bool modex_db)
+{
+    int32_t i, num_procs;
+    orte_std_cntr_t cnt, j, num_recvd_entries;
+    orte_process_name_t proc_name;
+    int rc=ORTE_SUCCESS;
+    orte_nid_t *nid;
+
+    /* process the results */
+    /* extract the number of procs that put data in the buffer */
+    cnt = 1;
+    if (ORTE_SUCCESS != (rc = opal_dss.unpack(rbuf, &num_procs, &cnt, OPAL_INT32))) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+    OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                         "%s grpcomm:base:modex:unpack: received %ld data bytes from %d procs",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         (long)(rbuf->pack_ptr - rbuf->unpack_ptr), num_procs));
+    
+    /* if the buffer doesn't have any more data, ignore it */
+    if (0 >= (rbuf->pack_ptr - rbuf->unpack_ptr)) {
+        goto cleanup;
+    }
+    
+    /* otherwise, process it */
+    for (i = 0; i < num_procs; i++) {
+        /* unpack the process name */
+        cnt=1;
+        if (ORTE_SUCCESS != (rc = opal_dss.unpack(rbuf, &proc_name, &cnt, ORTE_NAME))) {
+            ORTE_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        
+        /* SINCE THIS IS AMONGST PEERS, THERE IS NO NEED TO UPDATE THE NIDMAP/PIDMAP */
+        
+        OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                             "%s grpcomm:base:modex:unpack: adding modex entry for proc %s",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ORTE_NAME_PRINT(&proc_name)));
+        
+        if (modex_db) {
+            /* if we are using the modex db, pass the rest of the buffer
+             * to that system to update the modex database
+             */
+            if (ORTE_SUCCESS != (rc = orte_grpcomm_base_update_modex_entries(&proc_name, rbuf))) {
+                ORTE_ERROR_LOG(rc);
+                goto cleanup;
+            }
+        } else {  /* process it locally and store data on nidmap */
+            /* unpack the number of entries for this proc */
+            cnt=1;
+            if (ORTE_SUCCESS != (rc = opal_dss.unpack(rbuf, &num_recvd_entries, &cnt, ORTE_STD_CNTR))) {
+                ORTE_ERROR_LOG(rc);
+                goto cleanup;
+            }
+            
+            OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                                 "%s grpcomm:base:modex:unpack: adding %d entries for proc %s",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), num_recvd_entries,
+                                 ORTE_NAME_PRINT(&proc_name)));
+            
+            /* find this proc's node in the nidmap */
+            if (NULL == (nid = orte_util_lookup_nid(&proc_name))) {
+                /* proc wasn't found - return error */
+                OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                                     "%s grpcomm:base:modex:unpack: no nidmap entry for proc %s",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                     ORTE_NAME_PRINT(&proc_name)));
+                ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
+                rc = ORTE_ERR_NOT_FOUND;
+                goto cleanup;
+            }
+            
+            /*
+             * Extract the attribute names and values
+             */
+            for (j = 0; j < num_recvd_entries; j++) {
+                size_t num_bytes;
+                orte_attr_t *attr;
+                
+                attr = OBJ_NEW(orte_attr_t);
+                cnt = 1;
+                if (ORTE_SUCCESS != (rc = opal_dss.unpack(rbuf, &(attr->name), &cnt, OPAL_STRING))) {
+                    ORTE_ERROR_LOG(rc);
+                    goto cleanup;
+                }
+                
+                cnt = 1;
+                if (ORTE_SUCCESS != (rc = opal_dss.unpack(rbuf, &num_bytes, &cnt, OPAL_SIZE))) {
+                    ORTE_ERROR_LOG(rc);
+                    goto cleanup;
+                }
+                attr->size = num_bytes;
+                
+                if (num_bytes != 0) {
+                    if (NULL == (attr->bytes = (uint8_t *) malloc(num_bytes))) {
+                        ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
+                        rc = ORTE_ERR_OUT_OF_RESOURCE;
+                        goto cleanup;
+                    }
+                    cnt = (orte_std_cntr_t) num_bytes;
+                    if (ORTE_SUCCESS != (rc = opal_dss.unpack(rbuf, attr->bytes, &cnt, OPAL_BYTE))) {
+                        ORTE_ERROR_LOG(rc);
+                        goto cleanup;
+                    }
+                }
+                
+                /* add this to the node's attribute list */
+                opal_list_append(&nid->attrs, &attr->super);
+            }
+        }
+    }
+
+ cleanup:
+    return rc;
+}
+
+int orte_grpcomm_base_peer_modex(bool modex_db)
+{
+    opal_buffer_t buf, rbuf;
+    int rc = ORTE_SUCCESS;
+    bool modex_reqd;
+    
+    OPAL_OUTPUT_VERBOSE((1, orte_grpcomm_base_output,
+                         "%s grpcomm:base:peer:modex: performing modex",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
+    
+    /* setup the buffer that will actually be sent */
+    OBJ_CONSTRUCT(&buf, opal_buffer_t);
+    OBJ_CONSTRUCT(&rbuf, opal_buffer_t);
+    
+    /* put our process name in the buffer so it can be unpacked later */
+    if (ORTE_SUCCESS != (rc = opal_dss.pack(&buf, ORTE_PROC_MY_NAME, 1, ORTE_NAME))) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+    /* pack the entries we have received */
+    if (ORTE_SUCCESS != (rc = orte_grpcomm_base_pack_modex_entries(&buf, &modex_reqd))) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+    OPAL_OUTPUT_VERBOSE((2, orte_grpcomm_base_output,
+                         "%s grpcomm:base:peer:modex: executing allgather",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
+    
+    /* exchange the buffer with my peers */
+    if (ORTE_SUCCESS != (rc = orte_grpcomm.allgather(&buf, &rbuf))) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+    OPAL_OUTPUT_VERBOSE((2, orte_grpcomm_base_output,
+                         "%s grpcomm:base:peer:modex: processing modex info",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
+    
+    if (ORTE_SUCCESS != (rc = orte_grpcomm_base_modex_unpack(&rbuf, modex_db)) ) {
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    
+cleanup:
+    OBJ_DESTRUCT(&buf);
+    OBJ_DESTRUCT(&rbuf);
+    return rc;
+}
 
 /**
- * MODEX DESIGN
+ * MODEX DATABASE DESIGN
  *
  * Modex data is always associated with a given orte process name, in
  * an opal hash table. The hash table is necessary because modex data is
@@ -330,6 +769,11 @@ int orte_grpcomm_base_get_proc_attr(const orte_process_name_t proc,
     modex_proc_data_t *proc_data;
     modex_attr_data_t *attr_data;
     
+    OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                         "%s grpcomm:get_proc_attr: searching for attr %s on proc %s",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), attribute_name,
+                         ORTE_NAME_PRINT(&proc)));
+
     proc_data = modex_lookup_orte_proc(&proc);
     if (NULL == proc_data) {
         OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
@@ -363,6 +807,11 @@ int orte_grpcomm_base_get_proc_attr(const orte_process_name_t proc,
         memcpy(copy, attr_data->attr_data, attr_data->attr_data_size);
         *val = copy;
         *size = attr_data->attr_data_size;
+        OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                             "%s grpcomm:get_proc_attr: found %d bytes for attr %s on proc %s",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), (int)attr_data->attr_data_size,
+                             attribute_name, ORTE_NAME_PRINT(&proc)));
+        
     }
     OPAL_THREAD_UNLOCK(&proc_data->modex_lock);
     
@@ -430,7 +879,6 @@ int orte_grpcomm_base_update_modex_entries(orte_process_name_t *proc_name,
     int rc = ORTE_SUCCESS;
     orte_std_cntr_t num_recvd_entries;
     orte_std_cntr_t cnt;
-    void *bytes = NULL;
     orte_std_cntr_t j;
 
     /* look up the modex data structure */
@@ -451,11 +899,17 @@ int orte_grpcomm_base_update_modex_entries(orte_process_name_t *proc_name,
         goto cleanup;
     }
     
+    OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                         "%s grpcomm:base:update_modex_entries: adding %d entries for proc %s",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), num_recvd_entries,
+                         ORTE_NAME_PRINT(proc_name)));
+    
     /*
      * Extract the attribute names and values
      */
     for (j = 0; j < num_recvd_entries; j++) {
         size_t num_bytes;
+        void *bytes = NULL;
         char *attr_name;
         
         cnt = 1;
@@ -481,8 +935,6 @@ int orte_grpcomm_base_update_modex_entries(orte_process_name_t *proc_name,
                 goto cleanup;
             }
             num_bytes = cnt;
-        } else {
-            bytes = NULL;
         }
         
         /*
@@ -502,6 +954,57 @@ int orte_grpcomm_base_update_modex_entries(orte_process_name_t *proc_name,
         attr_data->attr_data_size = num_bytes;
         proc_data->modex_received_data = true;            
     }
+    
+cleanup:
+    OPAL_THREAD_UNLOCK(&proc_data->modex_lock);
+    return rc;
+}
+
+int orte_grpcomm_base_load_modex_data(orte_process_name_t *proc_name, char *attr_name,
+                                      void *data, int num_bytes)
+{
+    modex_proc_data_t *proc_data;
+    modex_attr_data_t *attr_data;
+    int rc = ORTE_SUCCESS;
+    void *bytes;
+    
+    OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base_output,
+                         "%s grpcomm:base:load_modex_data: loading %ld bytes for attr %s on proc %s",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         (long)num_bytes, attr_name, ORTE_NAME_PRINT(proc_name)));
+
+    /* look up the modex data structure */
+    proc_data = modex_lookup_orte_proc(proc_name);
+    if (proc_data == NULL) {
+        /* report the error */
+        opal_output(0, "grpcomm:base:update_modex: received modex info for unknown proc %s\n",
+                    ORTE_NAME_PRINT(proc_name));
+        return ORTE_ERR_NOT_FOUND;
+    }
+    
+    OPAL_THREAD_LOCK(&proc_data->modex_lock);
+    
+    /*
+     * Lookup the corresponding modex structure
+     */
+    if (NULL == (attr_data = modex_lookup_attr_data(proc_data, 
+                                                    attr_name, true))) {
+        opal_output(0, "grpcomm:base:update_modex: modex_lookup_attr_data failed\n");
+        rc = ORTE_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+    if (NULL != attr_data->attr_data) {
+        /* some pre-existing value must be here - release it */
+        free(attr_data->attr_data);
+    }
+    /* create space for the data - this is necessary since the data being
+     * passed to us may be static or released on the other end
+     */
+    bytes = (void*)malloc(num_bytes);
+    memcpy(bytes, data, num_bytes);
+    attr_data->attr_data = bytes;
+    attr_data->attr_data_size = num_bytes;
+    proc_data->modex_received_data = true;            
     
 cleanup:
     OPAL_THREAD_UNLOCK(&proc_data->modex_lock);

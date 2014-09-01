@@ -1,0 +1,14 @@
+Description: Attempt ppc64el build.
+Author: Dimitri John Ledkov <xnox@ubuntu.com>
+
+--- openmpi-1.6.5.orig/opal/config/opal_config_asm.m4
++++ openmpi-1.6.5/opal/config/opal_config_asm.m4
+@@ -949,7 +949,7 @@ AC_DEFUN([OMPI_CONFIG_ASM],[
+             OMPI_GCC_INLINE_ASSIGN='"or %0,[$]0,[$]0" : "=&r"(ret)'
+             ;;
+ 
+-        powerpc-*|powerpc64-*)
++        powerpc-*|powerpc64-*|powerpc64le-*)
+             OMPI_CHECK_POWERPC_REG
+             if test "$ac_cv_sizeof_long" = "4" ; then
+                 ompi_cv_asm_arch="POWERPC32"

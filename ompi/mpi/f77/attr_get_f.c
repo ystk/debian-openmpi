@@ -22,7 +22,7 @@
 #include "ompi/attribute/attribute.h"
 #include "ompi/communicator/communicator.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_ATTR_GET = mpi_attr_get_f
 #pragma weak pmpi_attr_get = mpi_attr_get_f
 #pragma weak pmpi_attr_get_ = mpi_attr_get_f
@@ -33,34 +33,34 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_ATTR_GET,
                            pmpi_attr_get_,
                            pmpi_attr_get__,
                            pmpi_attr_get_f,
-                           (MPI_Fint *comm, MPI_Fint *keyval, MPI_Fint *attribute_val, MPI_Flogical *flag, MPI_Fint *ierr),
+                           (MPI_Fint *comm, MPI_Fint *keyval, MPI_Fint *attribute_val, ompi_fortran_logical_t *flag, MPI_Fint *ierr),
                            (comm, keyval, attribute_val, flag, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_ATTR_GET = mpi_attr_get_f
 #pragma weak mpi_attr_get = mpi_attr_get_f
 #pragma weak mpi_attr_get_ = mpi_attr_get_f
 #pragma weak mpi_attr_get__ = mpi_attr_get_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_ATTR_GET,
                            mpi_attr_get,
                            mpi_attr_get_,
                            mpi_attr_get__,
                            mpi_attr_get_f,
-                           (MPI_Fint *comm, MPI_Fint *keyval, MPI_Fint *attribute_val, MPI_Flogical *flag, MPI_Fint *ierr),
+                           (MPI_Fint *comm, MPI_Fint *keyval, MPI_Fint *attribute_val, ompi_fortran_logical_t *flag, MPI_Fint *ierr),
                            (comm, keyval, attribute_val, flag, ierr) )
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
 void mpi_attr_get_f(MPI_Fint *comm, MPI_Fint *keyval,
-                    MPI_Fint *attribute_val, MPI_Flogical *flag, MPI_Fint *ierr)
+                    MPI_Fint *attribute_val, ompi_fortran_logical_t *flag, MPI_Fint *ierr)
 {
     MPI_Comm c_comm = MPI_Comm_f2c(*comm);
     OMPI_LOGICAL_NAME_DECL(flag);

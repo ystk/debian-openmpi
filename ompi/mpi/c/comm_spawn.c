@@ -20,13 +20,15 @@
 #include "ompi_config.h"
 #include <stdio.h>
 
-#include "orte/util/show_help.h"
 #include "ompi/info/info.h"
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/mca/dpm/dpm.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Comm_spawn = PMPI_Comm_spawn
 #endif
 
@@ -108,9 +110,9 @@ int MPI_Comm_spawn(char *command, char **argv, int maxprocs, MPI_Info info,
                 goto error;
             }
         } else if (1 < ompi_comm_size(comm)) {
-             /* we do not support non_mpi spawns on comms this size */
-             rc = OMPI_ERR_NOT_SUPPORTED;
-             goto error;
+            /* we do not support non_mpi spawns on comms this size */
+            rc = OMPI_ERR_NOT_SUPPORTED;
+            goto error;
         }
         if (OMPI_SUCCESS != (rc = ompi_dpm.spawn (1, &command, &argv, &maxprocs, 
                                                   &info, port_name))) {

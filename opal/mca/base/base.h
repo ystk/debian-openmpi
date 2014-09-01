@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2009-2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,12 +23,14 @@
 #include "opal_config.h"
 
 #include "opal/class/opal_object.h"
+#include "opal/class/opal_list.h"
 
 /*
  * These units are large enough to warrant their own .h files
  */
 #include "opal/mca/mca.h"
 #include "opal/mca/base/mca_base_param.h"
+#include "opal/util/cmd_line.h"
 
 BEGIN_C_DECLS
 
@@ -57,6 +60,8 @@ OPAL_DECLSPEC OBJ_CLASS_DECLARATION(mca_base_component_priority_list_item_t);
  * Public variables
  */
 OPAL_DECLSPEC extern int mca_base_param_component_path;
+OPAL_DECLSPEC extern char *mca_base_system_default_path;
+OPAL_DECLSPEC extern char *mca_base_user_default_path;
 
 /*
  * Public functions
@@ -102,6 +107,19 @@ OPAL_DECLSPEC int mca_base_select(const char *type_name, int output_id,
                                   mca_base_module_t **best_module,
                                   mca_base_component_t **best_component);
 
+/**
+ * A function for component query functions to discover if they have
+ * been explicitly required to or requested to be selected.
+ *
+ * exclusive: If the specified component is the only component that is
+ *            available for selection.
+ *
+ */
+OPAL_DECLSPEC int mca_base_is_component_required(opal_list_t *components_available,
+                                                 mca_base_component_t *component,
+                                                 bool exclusive,
+                                                 bool *is_required);
+
 /* mca_base_cmd_line.c */
 
 OPAL_DECLSPEC int mca_base_cmd_line_setup(opal_cmd_line_t *cmd);
@@ -128,6 +146,11 @@ OPAL_DECLSPEC int mca_base_component_find(const char *directory, const char *typ
                                           opal_list_t *found_components,
                                           bool open_dso_components);
 
+/* Safely release some memory allocated by mca_base_component_find()
+   (i.e., is safe to call even if you never called
+   mca_base_component_find()). */
+OPAL_DECLSPEC int mca_base_component_find_finalize(void);
+
 /* mca_base_components_open.c */
 
 OPAL_DECLSPEC int mca_base_components_open(const char *type_name, int output_id,
@@ -138,7 +161,8 @@ OPAL_DECLSPEC int mca_base_components_open(const char *type_name, int output_id,
 /* mca_base_components_close.c */
 
 OPAL_DECLSPEC int mca_base_components_close(int output_id, opal_list_t *components_available, 
-                                            const mca_base_component_t *skip);
+                                            const mca_base_component_t *skip,
+                                            bool close_stream);
 
 #if 0
 /* JMS Not implemented yet */

@@ -21,15 +21,13 @@
   */
 #ifndef MCA_ALLOCATOR_H
 #define MCA_ALLOCATOR_H
+
+#include "ompi_config.h"
 #include "opal/mca/mca.h"
 #include "ompi/mca/mpool/mpool.h" 
 
-struct mca_mpool_base_resources_t;
+BEGIN_C_DECLS
 
-
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
 /* Here so that we can use mca_allocator_base_module_t in the function typedefs */
 struct mca_allocator_base_module_t;
 
@@ -110,7 +108,7 @@ typedef void* (*mca_allocator_base_component_segment_alloc_fn_t)(
 /**
   * A function to free memory from the control of the allocator framework 
   * back to the system. This function is to be provided by the module to the
-  * allocator frmaework.
+  * allocator framework.
   */
 typedef void (*mca_allocator_base_component_segment_free_fn_t)(
     struct mca_mpool_base_module_t* module,
@@ -158,8 +156,7 @@ typedef struct mca_allocator_base_component_2_0_0_t mca_allocator_base_component
  */
 OMPI_DECLSPEC extern int mca_allocator_base_output;
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
+
 #endif /* MCA_ALLOCATOR_H */
 

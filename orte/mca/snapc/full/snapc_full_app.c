@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University.
+ * Copyright (c) 2004-2009 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -33,9 +33,15 @@
 #ifdef HAVE_SIGNAL_H
 #include <signal.h>
 #endif
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
 
 #include "orte/runtime/orte_cr.h"
-#include "opal/util/argv.h"
+#include "orte/runtime/orte_globals.h"
+#include "opal/runtime/opal_cr.h"
+#include "opal/util/output.h"
+#include "opal/event/event.h"
 #include "opal/util/opal_environ.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
@@ -43,11 +49,12 @@
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
 
-#include "orte/util/show_help.h"
 #include "orte/util/name_fns.h"
-#include "orte/mca/rml/rml.h"
 #include "orte/mca/snapc/snapc.h"
 #include "orte/mca/snapc/base/base.h"
+#include "orte/mca/errmgr/errmgr.h"
+#include "orte/mca/rml/rml.h"
+#include "orte/mca/rml/rml_types.h"
 
 #include "snapc_full.h"
 
@@ -56,9 +63,16 @@
  ************************************/
 static void snapc_full_app_signal_handler (int signo);
 static int snapc_full_app_notify_response(opal_cr_ckpt_cmd_state_t resp);
+static int app_notify_resp_stage_1(opal_cr_ckpt_cmd_state_t resp,
+                                   opal_crs_base_ckpt_options_t *options);
+static int app_notify_resp_stage_2(int cr_state );
+static int app_notify_resp_stage_3(int cr_state);
 static int snapc_full_app_notify_reopen_files(void);
-static int snapc_full_app_ckpt_handshake_start(int *app_term, opal_cr_ckpt_cmd_state_t resp);
+static int snapc_full_app_ckpt_handshake_start(opal_crs_base_ckpt_options_t *options,
+                                               opal_cr_ckpt_cmd_state_t resp);
 static int snapc_full_app_ckpt_handshake_end(int cr_state);
+
+static int snapc_full_app_ft_event_update_process_info(orte_process_name_t proc, pid_t pid);
 
 static char *app_comm_pipe_r = NULL;
 static char *app_comm_pipe_w = NULL;
@@ -66,6 +80,13 @@ static int   app_comm_pipe_r_fd = -1;
 static int   app_comm_pipe_w_fd = -1;
 
 static opal_crs_base_snapshot_t *local_snapshot = NULL;
+
+static int app_cur_epoch  = -1;
+static int app_last_epoch = -1;
+static bool app_split_ckpt = false;
+static bool app_notif_processed = false;
+
+static char * app_cur_global_ref = NULL;
 
 /************************
  * Function Definitions
@@ -99,6 +120,7 @@ int app_coord_init() {
         opal_output(mca_snapc_full_component.super.output_handle,
                     "App) init: Error: Failed to register signal %d\n",
                     opal_cr_entry_point_signal);
+        ORTE_ERROR_LOG(OPAL_ERROR);
         exit_status = OPAL_ERROR;
         goto cleanup;
     }
@@ -117,11 +139,6 @@ int app_coord_init() {
 }
 
 int app_coord_finalize() {
-
-    /*
-     * Cleanup GPR callbacks
-     */
-
     /*
      * Cleanup named pipes
      */
@@ -164,14 +181,155 @@ static void snapc_full_app_signal_handler (int signo)
  */
 int snapc_full_app_notify_response(opal_cr_ckpt_cmd_state_t resp)
 {
-    static int app_term = 0;
+    static opal_crs_base_ckpt_options_t *options = NULL;
     static int cr_state;
     int app_pid;
     int ret, exit_status = ORTE_SUCCESS;
 
+    if( NULL == options ) {
+        options = OBJ_NEW(opal_crs_base_ckpt_options_t);
+    }
+
     if( opal_cr_currently_stalled ) {
         goto STAGE_1;
     }
+
+    OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
+                         "App) notify_response: Stage 1..."));
+    if( ORTE_SUCCESS != (ret = app_notify_resp_stage_1(resp, options) ) ) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto ckpt_cleanup;
+    }
+
+    /*
+     * If this is a split checkpoint operation then we only need to do stage_1,
+     * but we need to keep the name pipe open for the end();
+     */
+    if( app_split_ckpt ) {
+        app_notif_processed = true;
+        return ORTE_SUCCESS;
+    }
+
+    OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
+                         "App) notify_response: Start checkpoint..."));
+ STAGE_1:
+    opal_cr_currently_stalled = false;
+
+    app_pid = getpid();
+    if( orte_snapc_full_skip_app ) {
+        OPAL_OUTPUT_VERBOSE((2, mca_snapc_full_component.super.output_handle,
+                             "App) notify_response: Skipping App. (%d)\n",
+                             getpid()));
+        ret = ORTE_SUCCESS;
+        cr_state = OPAL_CRS_CONTINUE;
+    }
+    else {
+        /*
+         * INC: Prepare stack using the registered coordination routine
+         */
+        if(OPAL_SUCCESS != (ret = opal_cr_inc_core_prep() ) ) {
+            if( OPAL_EXISTS == ret ) {
+                OPAL_OUTPUT_VERBOSE((5, mca_snapc_full_component.super.output_handle,
+                                     "App) notify_response: Stalling the checkpoint progress until state is stable again (PID = %d)\n",
+                                     getpid()));
+                opal_cr_currently_stalled = true;
+                return exit_status;
+            }
+            else {
+                opal_output(mca_snapc_full_component.super.output_handle,
+                            "App) notify_response: Error: checkpoint notification failed. %d\n", ret);
+                ORTE_ERROR_LOG(ret);
+                exit_status = ret;
+                goto ckpt_cleanup;
+            }
+        }
+
+        /*
+         * INC: Take the checkpoint
+         */
+        ret = opal_cr_inc_core_ckpt(app_pid, local_snapshot, options, &cr_state);
+
+        /*
+         * Tell Local Coordinator that we are done with local checkpoint
+         * (only if not restarting, on restart we are not attached to the Local
+         *  Coordinator. )
+         */
+        if( OPAL_CRS_RESTART != cr_state ) {
+            OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
+                                 "App) notify_response: Stage 2..."));
+            if( ORTE_SUCCESS != (ret = app_notify_resp_stage_2(cr_state) ) ) {
+                ORTE_ERROR_LOG(ret);
+                exit_status = ret;
+                goto ckpt_cleanup;
+            }
+        }
+
+        /*
+         * INC: Recover stack using the registered coordination routine
+         */
+        if( OPAL_SUCCESS != (ret = opal_cr_inc_core_recover(cr_state)) ) {
+            ORTE_ERROR_LOG(ret);
+            exit_status = ret;
+            goto ckpt_cleanup;
+        }
+    }
+
+    /* Don't stall any longer */
+    opal_cr_stall_check = false;
+
+    if(OPAL_CRS_RESTART == cr_state) {
+        OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
+                             "App) notify_response: Restarting...(%d)\n",
+                             getpid()));
+        
+        options->term = false;
+        /* Do not respond to the non-existent command line tool */
+        goto ckpt_cleanup;
+    }
+    else if(cr_state == OPAL_CRS_CONTINUE) {
+        OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
+                             "App) notify_response: Continuing...(%d)\n",
+                             getpid()));
+        ; /* Don't need to do anything here */
+    }
+    else if(cr_state == OPAL_CRS_TERM ) {
+        ; /* Don't need to do anything here */
+    }
+    else {
+        OPAL_OUTPUT_VERBOSE((5, mca_snapc_full_component.super.output_handle,
+                             "App) notify_response: Unknown cr_state(%d) [%d]",
+                             cr_state, getpid()));
+    }
+
+ ckpt_cleanup:
+
+    OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
+                         "App) notify_response: Stage 3..."));
+    if( ORTE_SUCCESS != (ret = app_notify_resp_stage_3(cr_state) )) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto ckpt_cleanup;
+    }
+    
+    if( options->term ) {
+        OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
+                             "App) notify_response: User has asked to terminate the application"));
+        exit(ORTE_SUCCESS);
+    }
+
+    if( NULL != options ) {
+        OBJ_RELEASE(options);
+        options = NULL;
+    }
+
+    return exit_status;
+}
+
+static int app_notify_resp_stage_1(opal_cr_ckpt_cmd_state_t resp,
+                                   opal_crs_base_ckpt_options_t *options)
+{
+    int ret;
 
     OPAL_CR_CLEAR_TIMERS();
     opal_cr_timing_my_rank = ORTE_PROC_MY_NAME->vpid;
@@ -181,10 +339,10 @@ int snapc_full_app_notify_response(opal_cr_ckpt_cmd_state_t resp)
      * Open communication channels
      */
     OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
-                        "App) notify_response: Open Communication Channels."));
+                         "App) notify_response: Open Communication Channels."));
     if (ORTE_SUCCESS != (ret = snapc_full_app_notify_reopen_files())) {
-        exit_status = ret;
-        goto ckpt_cleanup;
+        ORTE_ERROR_LOG(ret);
+        return ret;
     }
 
     /*
@@ -192,9 +350,9 @@ int snapc_full_app_notify_response(opal_cr_ckpt_cmd_state_t resp)
      */
     OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
                          "App) notify_response: Initial Handshake."));
-    if( ORTE_SUCCESS != (ret = snapc_full_app_ckpt_handshake_start(&app_term, resp) ) ) {
-        exit_status = ret;
-        goto ckpt_cleanup;
+    if( ORTE_SUCCESS != (ret = snapc_full_app_ckpt_handshake_start(options, resp) ) ) {
+        ORTE_ERROR_LOG(ret);
+        return ret;
     }
 
     OPAL_CR_SET_TIMER(OPAL_CR_TIMER_ENTRY1);
@@ -207,59 +365,22 @@ int snapc_full_app_notify_response(opal_cr_ckpt_cmd_state_t resp)
                          "App) notify_response: Init checkpoint directory..."));
     if( OPAL_SUCCESS != (ret = opal_crs_base_init_snapshot_directory(local_snapshot) ) ) {
         opal_output(0, "App) Error: Unable to initalize the snapshot directory!\n");
-        exit_status = ret;
-        goto ckpt_cleanup;
+        ORTE_ERROR_LOG(ret);
+        return ret;
     }
 
     OPAL_CR_SET_TIMER(OPAL_CR_TIMER_ENTRY2);
 
     OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
                          "App) notify_response: Start checkpoint..."));
- STAGE_1:
-    opal_cr_currently_stalled = false;
 
-    app_pid = getpid();
-    ret = opal_cr_inc_core(app_pid, local_snapshot, app_term, &cr_state);
-    if( OPAL_EXISTS == ret ) {
-        OPAL_OUTPUT_VERBOSE((5, mca_snapc_full_component.super.output_handle,
-                             "App) notify_response: Stalling the checkpoint progress until state is stable again (PID = %d)\n",
-                             getpid()));
-        opal_cr_currently_stalled = true;
-        return exit_status;
-    }
-    else if(ORTE_SUCCESS != ret) {
-        opal_output(mca_snapc_full_component.super.output_handle,
-                    "App) notify_response: Error: checkpoint notification failed. %d\n", ret);
-        goto ckpt_cleanup;
-    }
-    
-    /* Don't stall any longer */
-    opal_cr_stall_check = false;
+    return ORTE_SUCCESS;
+}
 
-    if(OPAL_CRS_RESTART == cr_state) {
-        OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
-                             "App) notify_response: Restarting...(%d)\n",
-                             getpid()));
-        
-        app_term = false;
-        /* Do not respond to the non-existent command line tool */
-        goto ckpt_cleanup;
-    }
-    else if(cr_state == OPAL_CRS_CONTINUE) {
-        OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
-                             "App) notify_response: Continuing...(%d)\n",
-                             getpid()));
-        ;  /* Don't need to do anything here */
-    }
-    else if(cr_state == OPAL_CRS_TERM ) {
-        ; /* Don't need to do anything here */
-    }
-    else {
-        OPAL_OUTPUT_VERBOSE((5, mca_snapc_full_component.super.output_handle,
-                             "App) notify_response: Unknown cr_state(%d) [%d]",
-                             cr_state, getpid()));
-    }
-    
+static int app_notify_resp_stage_2(int cr_state )
+{
+    int ret;
+
     /*
      * Final Handshake
      */
@@ -267,26 +388,33 @@ int snapc_full_app_notify_response(opal_cr_ckpt_cmd_state_t resp)
     OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
                          "App) notify_response: Waiting for final handshake."));
     if( ORTE_SUCCESS != (ret = snapc_full_app_ckpt_handshake_end(cr_state ) ) ) {
-        exit_status = ret;
-        goto ckpt_cleanup;
+        ORTE_ERROR_LOG(ret);
+        return ret;
     }
+
     OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
                          "App) notify_response: Final Handshake complete."));
 
- ckpt_cleanup:
-    close(app_comm_pipe_w_fd);
-    close(app_comm_pipe_r_fd);
+    return ORTE_SUCCESS;
+}
+
+static int app_notify_resp_stage_3(int cr_state)
+{
+    if( 0 <= app_comm_pipe_r_fd ) {
+        close(app_comm_pipe_r_fd);
+        app_comm_pipe_r_fd = -1;
+    }
+    if( 0 <= app_comm_pipe_w_fd ) {
+        close(app_comm_pipe_w_fd);
+        app_comm_pipe_w_fd = -1;
+    }
+
     remove(app_comm_pipe_r);
     remove(app_comm_pipe_w);
+
     app_comm_pipe_r_fd = -1;
     app_comm_pipe_w_fd = -1;
-    
-    if(app_term) {
-        OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
-                             "App) notify_response: User has asked to terminate the application"));
-        exit(ORTE_SUCCESS);
-    }
-        
+
     /* Prepare to wait for another checkpoint action */
     opal_cr_checkpointing_state = OPAL_CR_STATUS_NONE;
     opal_cr_currently_stalled   = false;
@@ -296,7 +424,7 @@ int snapc_full_app_notify_response(opal_cr_ckpt_cmd_state_t resp)
         OPAL_CR_DISPLAY_ALL_TIMERS();
     }
 
-    return exit_status;
+    return ORTE_SUCCESS;
 }
 
 static int snapc_full_app_notify_reopen_files(void)
@@ -364,28 +492,43 @@ static int snapc_full_app_notify_reopen_files(void)
 #endif  /* HAVE_MKFIFO */
 }
 
-static int snapc_full_app_ckpt_handshake_start(int *app_term, opal_cr_ckpt_cmd_state_t resp)
+static int snapc_full_app_ckpt_handshake_start(opal_crs_base_ckpt_options_t *options,
+                                               opal_cr_ckpt_cmd_state_t resp)
 {
     int ret, exit_status = ORTE_SUCCESS;
-    int len = 0, tmp_resp;
+    int len = 0, tmp_resp, opt_rep;
     char *tmp_str = NULL;
     ssize_t tmp_size = 0;
 
     /*
-     * Get the initial handshake command: Term argument
+     * Get the initial handshake command:
+     * - Term argument
+     * - Stop argument
      */
-    if( sizeof(int) != (ret = read(app_comm_pipe_r_fd, app_term, sizeof(int))) ) {
+    if( sizeof(int) != (ret = read(app_comm_pipe_r_fd, &opt_rep, sizeof(int))) ) {
         opal_output(mca_snapc_full_component.super.output_handle,
-                    "App) notify_response: Error: Unable to read the term from named pipe (%s). %d\n",
+                    "App) notify_response: Error: Unable to read the 'term' from named pipe (%s). %d\n",
                     app_comm_pipe_r, ret);
+        ORTE_ERROR_LOG(ret);
         goto cleanup;
     }
+    options->term = OPAL_INT_TO_BOOL(opt_rep);
+
+    if( sizeof(int) != (ret = read(app_comm_pipe_r_fd, &opt_rep, sizeof(int))) ) {
+        opal_output(mca_snapc_full_component.super.output_handle,
+                    "App) notify_response: Error: Unable to read the 'stop' from named pipe (%s). %d\n",
+                    app_comm_pipe_r, ret);
+        ORTE_ERROR_LOG(ret);
+        goto cleanup;
+    }
+    options->stop = OPAL_INT_TO_BOOL(opt_rep);
 
     tmp_resp = (int)resp;
     if( sizeof(int) != (ret = write(app_comm_pipe_w_fd, &tmp_resp, sizeof(int)) ) ) {
         opal_output(mca_snapc_full_component.super.output_handle,
                     "App) notify_response: %d: Error: Unable to write to pipe (%s) ret = %d [Line %d]\n",
                     tmp_resp, app_comm_pipe_w, ret, __LINE__);
+        ORTE_ERROR_LOG(ret);
         goto cleanup;
     }
     
@@ -396,6 +539,7 @@ static int snapc_full_app_ckpt_handshake_start(int *app_term, opal_cr_ckpt_cmd_s
         OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
                              "App) notify_response: Checkpoint in progress, cannot start (%d)",
                              getpid()));
+        ORTE_ERROR_LOG(ret);
         goto cleanup;
     }
     /*
@@ -405,6 +549,7 @@ static int snapc_full_app_ckpt_handshake_start(int *app_term, opal_cr_ckpt_cmd_s
         OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
                              "App) notify_response: Non-checkpointable application, cannot start (%d)", 
                              getpid()));
+        ORTE_ERROR_LOG(ret);
         goto cleanup;
     }
     /*
@@ -415,6 +560,7 @@ static int snapc_full_app_ckpt_handshake_start(int *app_term, opal_cr_ckpt_cmd_s
         OPAL_OUTPUT_VERBOSE((10, mca_snapc_full_component.super.output_handle,
                              "App) notify_response: Error generated, cannot start (%d)", 
                              getpid()));
+        ORTE_ERROR_LOG(ret);
         goto cleanup;
     }
 
@@ -432,6 +578,7 @@ static int snapc_full_app_ckpt_handshake_start(int *app_term, opal_cr_ckpt_cmd_s
         opal_output(mca_snapc_full_component.super.output_handle,
                     "App) notify_response: Error: Unable to read the snapshot_handle len from named pipe (%s). %d\n",
                     app_comm_pipe_r, ret);
+        ORTE_ERROR_LOG(ret);
         goto cleanup;
     }
     
@@ -441,6 +588,7 @@ static int snapc_full_app_ckpt_handshake_start(int *app_term, opal_cr_ckpt_cmd_s
         opal_output(mca_snapc_full_component.super.output_handle,
                     "App) notify_response: Error: Unable to read the snapshot_handle from named pipe (%s). %d\n",
                     app_comm_pipe_r, ret);
+        ORTE_ERROR_LOG(ret);
         goto cleanup;
     }
     
@@ -498,10 +646,49 @@ static int snapc_full_app_ckpt_handshake_start(int *app_term, opal_cr_ckpt_cmd_s
             free( local_snapshot->remote_location );
         local_snapshot->remote_location = strdup(local_snapshot->local_location);
     }
+
     if( NULL != tmp_str ) {
         free(tmp_str);
         tmp_str = NULL;
     }
+
+    /*
+     * Get Global Snapshot Ref
+     */
+    if( sizeof(int) != (ret = read(app_comm_pipe_r_fd, &len, sizeof(int))) ) {
+        opal_output(mca_snapc_full_component.super.output_handle,
+                    "App) notify_response: Error: Unable to read the global snapshot ref len from named pipe (%s). %d\n",
+                    app_comm_pipe_r, ret);
+        ORTE_ERROR_LOG(ret);
+        goto cleanup;
+    }
+
+    tmp_str = (char *) malloc(sizeof(char) * len);
+    tmp_size = sizeof(char) * len;
+    if( tmp_size != (ret = read(app_comm_pipe_r_fd, tmp_str, (sizeof(char) * len))) ) {
+        opal_output(mca_snapc_full_component.super.output_handle,
+                    "App) notify_response: Error: Unable to read the global snapshot ref from named pipe (%s). %d\n",
+                    app_comm_pipe_r, ret);
+        ORTE_ERROR_LOG(ret);
+        goto cleanup;
+    }
+    if( NULL != app_cur_global_ref ) {
+        free(app_cur_global_ref);
+        app_cur_global_ref = NULL;
+    }
+    app_cur_global_ref = strdup(tmp_str);
+
+    /*
+     * Get the Seq. Number
+     */
+    if( sizeof(size_t) != (ret = read(app_comm_pipe_r_fd, &tmp_size, sizeof(size_t))) ) {
+        opal_output(mca_snapc_full_component.super.output_handle,
+                    "App) notify_response: Error: Unable to read the global snapshot seq number from named pipe (%s). %d\n",
+                    app_comm_pipe_r, ret);
+        ORTE_ERROR_LOG(ret);
+        goto cleanup;
+    }
+    app_cur_epoch = (int)tmp_size;
 
  cleanup:
     if( NULL != tmp_str ) {
@@ -516,42 +703,50 @@ static int snapc_full_app_ckpt_handshake_end(int cr_state)
 {
     int ret, exit_status = ORTE_SUCCESS;
     int last_cmd = 0;
+    int err;
 
     /*
      * Return the final checkpoint state to the local coordinator
      */
     if( sizeof(int) != (ret = write(app_comm_pipe_w_fd, &cr_state, sizeof(int))) ) {
+        err = errno;
         opal_output(mca_snapc_full_component.super.output_handle,
-                    "App) notify_response: Error: Unable to write cr_state to named pipe (%s). %d\n",
-                    app_comm_pipe_w, ret);
+                    "App) notify_response: Error: Unable to write cr_state to named pipe (%s). %d/%d/%s\n",
+                    app_comm_pipe_w, ret, err, strerror(err));
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
         goto cleanup;
     }
+
+    OPAL_OUTPUT_VERBOSE((5, mca_snapc_full_component.super.output_handle,
+                         "App) handshake_end: Waiting for release (%d)",
+                         getpid()));
 
     /*
      * Wait for the local coordinator to release us
      */
     if( sizeof(int) != (ret = read(app_comm_pipe_r_fd, &last_cmd, sizeof(int))) ) {
         opal_output(mca_snapc_full_component.super.output_handle,
-                    "App) notify_response: Error: Unable to read the term from named pipe (%s). %d\n",
+                    "App) notify_response: Error: Unable to read the 'last_cmd' from named pipe (%s). %d\n",
                     app_comm_pipe_r, ret);
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
         goto cleanup;
     }
 
-    /*
-     * If the last command is non-zero then we need to terminate instead of
-     * returning to computation.
-     */
-    if( 0 != last_cmd ) {
-        exit(0);
-    }
+    OPAL_OUTPUT_VERBOSE((5, mca_snapc_full_component.super.output_handle,
+                         "App) handshake_end: Released... (%d)",
+                         getpid()));
 
  cleanup:
     return exit_status;
 }
 
 int app_coord_ft_event(int state) {
-    int exit_status = ORTE_SUCCESS;
-    char *tmp_pid = NULL;
+    int ret, exit_status = ORTE_SUCCESS;
+
+    OPAL_OUTPUT_VERBOSE((20, mca_snapc_full_component.super.output_handle,
+                         "App) In ft_event(%d)", state));
 
     /******** Checkpoint Prep ********/
     if(OPAL_CRS_CHECKPOINT == state) {
@@ -571,47 +766,19 @@ int app_coord_ft_event(int state) {
                              "App) Initalized for Application %s (Restart)\n", 
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
 
-        if( 0 <= app_comm_pipe_r_fd ) {
-            close(app_comm_pipe_r_fd);
-            app_comm_pipe_r_fd = -1;
-        }
-        if( 0 <= app_comm_pipe_w_fd ) {
-            close(app_comm_pipe_w_fd);
-            app_comm_pipe_w_fd = -1;
-        }
-        if( NULL != app_comm_pipe_r ) {
-            remove(app_comm_pipe_r);
-            free(app_comm_pipe_r);
-            app_comm_pipe_r = NULL;
-        }
-        if( NULL != app_comm_pipe_w ) {
-            remove(app_comm_pipe_w);
-            free(app_comm_pipe_w);
-            app_comm_pipe_w = NULL;
-        }
-
-        /* String representation of the PID */
-        asprintf(&tmp_pid, "%d", getpid());
-
-        asprintf(&app_comm_pipe_r, "%s/%s.%s", opal_cr_pipe_dir, OPAL_CR_NAMED_PROG_R, tmp_pid);
-        asprintf(&app_comm_pipe_w, "%s/%s.%s", opal_cr_pipe_dir, OPAL_CR_NAMED_PROG_W, tmp_pid);
-
         /*
-         * Setup a signal handler to catch and start the proper thread
-         * to handle the checkpoint
+         * Send new PID to HNP/daemon
+         * The checkpointer could have used a proxy program to boot us
+         * so the pid that the orted got from fork() may not be the
+         * PID of this application.
+         * - Note: BLCR does this because it tries to preseve the PID
+         *         of the program across checkpointes
          */
-        if( SIG_ERR == signal(opal_cr_entry_point_signal, snapc_full_app_signal_handler) ) {
-            opal_output(mca_snapc_full_component.super.output_handle,
-                        "App) init: Error: Failed to register signal %d\n",
-                        opal_cr_entry_point_signal);
-            exit_status = OPAL_ERROR;
+        if( ORTE_SUCCESS != (ret = snapc_full_app_ft_event_update_process_info(orte_process_info.my_name, getpid())) ) {
+            ORTE_ERROR_LOG(ret);
+            exit_status = ret;
             goto cleanup;
         }
-
-        OPAL_OUTPUT_VERBOSE((15, mca_snapc_full_component.super.output_handle,
-                             "App) Named Pipes (%s) (%s), Signal (%d)", 
-                             app_comm_pipe_r, app_comm_pipe_w, opal_cr_entry_point_signal));
-
     }
     /******** Termination ********/
     else if (OPAL_CRS_TERM == state ) {
@@ -626,3 +793,203 @@ int app_coord_ft_event(int state) {
     return exit_status;
 }
 
+static int snapc_full_app_ft_event_update_process_info(orte_process_name_t proc, pid_t proc_pid)
+{
+    int ret, exit_status = ORTE_SUCCESS;
+    opal_buffer_t buffer;
+    orte_snapc_cmd_flag_t command = ORTE_SNAPC_LOCAL_UPDATE_CMD;
+
+    OBJ_CONSTRUCT(&buffer, opal_buffer_t);
+
+    if (ORTE_SUCCESS != (ret = opal_dss.pack(&buffer, &command, 1, ORTE_SNAPC_CMD )) ) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
+    if (ORTE_SUCCESS != (ret = opal_dss.pack(&buffer, &proc, 1, ORTE_NAME))) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
+    if (ORTE_SUCCESS != (ret = opal_dss.pack(&buffer, &proc_pid, 1, OPAL_PID))) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
+    if (0 > (ret = orte_rml.send_buffer(ORTE_PROC_MY_DAEMON, &buffer, ORTE_RML_TAG_SNAPC, 0))) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
+ cleanup:
+    OBJ_DESTRUCT(&buffer);
+
+    return exit_status;
+}
+
+int app_coord_start_ckpt(orte_snapc_base_quiesce_t *datum)
+{
+    int ret, exit_status = ORTE_SUCCESS;
+    orte_snapc_full_cmd_flag_t command = ORTE_SNAPC_FULL_START_CKPT_CMD;
+    opal_buffer_t buffer;
+
+    /*
+     * Identify this as a split checkpoint
+     */
+    app_split_ckpt = true;
+
+    /*
+     * Rank 0: Contact HNP to start checkpoint
+     * Rank *: Wait for HNP to xcast epoch
+     */
+    if( 0 == ORTE_PROC_MY_NAME->vpid ) {
+        /*
+         * Send request to HNP
+         */
+        OBJ_CONSTRUCT(&buffer, opal_buffer_t);
+
+        if (ORTE_SUCCESS != (ret = opal_dss.pack(&buffer, &command, 1, ORTE_SNAPC_FULL_CMD))) {
+            ORTE_ERROR_LOG(ret);
+            exit_status = ret;
+            OBJ_DESTRUCT(&buffer);
+            return ORTE_ERROR;
+        }
+        if (ORTE_SUCCESS != (ret = opal_dss.pack(&buffer, &(ORTE_PROC_MY_NAME->jobid), 1, ORTE_JOBID))) {
+            ORTE_ERROR_LOG(ret);
+            exit_status = ret;
+            OBJ_DESTRUCT(&buffer);
+            return ORTE_ERROR;
+        }
+
+        if (0 > (ret = orte_rml.send_buffer(ORTE_PROC_MY_HNP, &buffer, ORTE_RML_TAG_SNAPC_FULL, 0))) {
+            ORTE_ERROR_LOG(ret);
+            exit_status = ret;
+            OBJ_DESTRUCT(&buffer);
+            return ORTE_ERROR;
+        }
+
+        OBJ_DESTRUCT(&buffer);
+    }
+
+    while( app_cur_epoch < 0 || !app_notif_processed ) {
+        opal_progress();
+        opal_event_loop(OPAL_EVLOOP_NONBLOCK);
+        OPAL_CR_TEST_CHECKPOINT_READY();
+    }
+
+    datum->epoch = app_cur_epoch;
+    asprintf(&(datum->handle), "[%s:%s:%d]", app_cur_global_ref, local_snapshot->reference_name, app_cur_epoch);
+    datum->target_dir = strdup(local_snapshot->local_location);
+
+    /*
+     * INC: Prepare the stack
+     */
+    if(OPAL_SUCCESS != (ret = opal_cr_inc_core_prep() ) ) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+    }
+
+    opal_cr_checkpointing_state = OPAL_CR_STATUS_RUNNING;
+
+    return ORTE_SUCCESS;
+}
+
+int app_coord_end_ckpt(orte_snapc_base_quiesce_t *datum)
+{
+    int ret, exit_status = ORTE_SUCCESS;
+    orte_snapc_full_cmd_flag_t command = ORTE_SNAPC_FULL_END_CKPT_CMD;
+    opal_buffer_t buffer;
+
+    if( datum->restarting ) {
+        datum->cr_state = OPAL_CRS_RESTART;
+    } else {
+        datum->cr_state = OPAL_CRS_CONTINUE;
+    }
+
+    /*
+     * INC: Recover the stack
+     */
+    if(OPAL_SUCCESS != (ret = opal_cr_inc_core_recover(datum->cr_state) ) ) {
+        ORTE_ERROR_LOG(ret);
+        return ret;
+    }
+
+    if( datum->cr_state != OPAL_CRS_CONTINUE ) {
+        if( ORTE_SUCCESS != (ret = app_notify_resp_stage_3(datum->cr_state) )) {
+            ORTE_ERROR_LOG(ret);
+            return ret;
+        }
+        goto cleanup;
+    }
+
+    if( ORTE_SUCCESS != (ret = app_notify_resp_stage_2(datum->cr_state) ) ) {
+        ORTE_ERROR_LOG(ret);
+        return ret;
+    }
+
+    if( ORTE_SUCCESS != (ret = app_notify_resp_stage_3(datum->cr_state) )) {
+        ORTE_ERROR_LOG(ret);
+        return ret;
+    }
+
+    /*
+     * Rank 0: Contact HNP to let them know we are done
+     * Then return to application
+     */
+    if( 0 == ORTE_PROC_MY_NAME->vpid ) {
+        /*
+         * Send request to HNP
+         */
+        OBJ_CONSTRUCT(&buffer, opal_buffer_t);
+
+        if (ORTE_SUCCESS != (ret = opal_dss.pack(&buffer, &command, 1, ORTE_SNAPC_FULL_CMD))) {
+            ORTE_ERROR_LOG(ret);
+            exit_status = ret;
+            OBJ_DESTRUCT(&buffer);
+            return ORTE_ERROR;
+        }
+
+        if (ORTE_SUCCESS != (ret = opal_dss.pack(&buffer, &(ORTE_PROC_MY_NAME->jobid), 1, ORTE_JOBID))) {
+            ORTE_ERROR_LOG(ret);
+            exit_status = ret;
+            OBJ_DESTRUCT(&buffer);
+            return ORTE_ERROR;
+        }
+
+        if (ORTE_SUCCESS != (ret = opal_dss.pack(&buffer, &(datum->epoch), 1, OPAL_INT))) {
+            ORTE_ERROR_LOG(ret);
+            exit_status = ret;
+            OBJ_DESTRUCT(&buffer);
+            return ORTE_ERROR;
+        }
+
+        if (0 > (ret = orte_rml.send_buffer(ORTE_PROC_MY_HNP, &buffer, ORTE_RML_TAG_SNAPC_FULL, 0))) {
+            ORTE_ERROR_LOG(ret);
+            exit_status = ret;
+            OBJ_DESTRUCT(&buffer);
+            return ORTE_ERROR;
+        }
+
+        OBJ_DESTRUCT(&buffer);
+    }
+
+    app_last_epoch = datum->epoch;
+    app_cur_epoch  = -1;
+    if( NULL != app_cur_global_ref ) {
+        free(app_cur_global_ref);
+        app_cur_global_ref = NULL;
+    }
+
+ cleanup:
+    /*
+     * Split checkpoint complete
+     */
+    app_split_ckpt = false;
+    app_notif_processed = false;
+
+    return ORTE_SUCCESS;
+}

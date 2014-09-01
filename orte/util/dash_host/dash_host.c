@@ -17,6 +17,11 @@
  */
 
 #include "orte_config.h"
+
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #include "orte/constants.h"
 #include "orte/types.h"
 
@@ -24,8 +29,6 @@
 #include "opal/util/argv.h"
 #include "opal/util/if.h"
 
-#include "opal/dss/dss.h"
-#include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/plm/plm_types.h"
 #include "orte/util/proc_info.h"
 #include "orte/runtime/orte_globals.h"
@@ -113,7 +116,7 @@ int orte_util_add_dash_host_nodes(opal_list_t *nodes,
                 if (orte_show_resolved_nodenames &&
                     0 != strcmp(mapped_nodes[i], orte_process_info.nodename)) {
                     /* add to list of aliases for this node - only add if unique */
-                    opal_argv_append_unique_nosize(&node->alias, mapped_nodes[i]);
+                    opal_argv_append_unique_nosize(&node->alias, mapped_nodes[i], false);
                 }
                 node->name = strdup(orte_process_info.nodename);
             } else {
@@ -154,7 +157,6 @@ int orte_util_filter_dash_host_nodes(opal_list_t *nodes,
                                      char** host_argv)
 {
     opal_list_item_t* item;
-    bool found;
     opal_list_item_t *next;
     orte_std_cntr_t i, j, k, len_mapped_node=0;
     int rc;
@@ -322,7 +324,6 @@ int orte_util_filter_dash_host_nodes(opal_list_t *nodes,
                 next = opal_list_get_next(item);  /* save this position */
                 node = (orte_node_t*)item;
                 /* search -host list to see if this one is found */
-                found = false;
                 if ((0 == strcmp(node->name, mapped_nodes[i]) ||
                     (0 == strcmp(node->name, orte_process_info.nodename) &&
                     (0 == strcmp(mapped_nodes[i], "localhost") || opal_ifislocal(mapped_nodes[i]))))) {

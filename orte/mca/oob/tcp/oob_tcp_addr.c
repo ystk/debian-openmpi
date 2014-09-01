@@ -37,7 +37,6 @@
 #include "opal/util/if.h"
 #include "opal/util/net.h"
 
-#include "orte/util/proc_info.h"
 
 #include "oob_tcp.h"
 #include "oob_tcp_addr.h"
@@ -76,7 +75,7 @@ int mca_oob_tcp_addr_get_next(mca_oob_tcp_addr_t* addr, struct sockaddr* retval)
     
     if(MCA_OOB_TCP_ADDR_UNCLASSIFIED == addr->addr_matched) {
         orte_std_cntr_t i=0;
-        for(i=0; i<addr->addr_count; i++) {
+        for(i=addr->addr_next; i<addr->addr_count; i++) {
             opal_list_item_t *item;
             for (item = opal_list_get_first(&mca_oob_tcp_component.tcp_available_devices) ;
                  item != opal_list_get_end(&mca_oob_tcp_component.tcp_available_devices) ;
@@ -137,7 +136,7 @@ int mca_oob_tcp_addr_get_next(mca_oob_tcp_addr_t* addr, struct sockaddr* retval)
                                         inmask)) {
                     addr->addr_matched |= MCA_OOB_TCP_ADDR_MATCHED;
                     addr->addr_next = i;
-                   goto done;
+                    goto done;
                 }
             }
         }

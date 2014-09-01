@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -10,6 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -19,19 +21,17 @@
 
 #include "ompi_config.h"
 #include <string.h>
-#include "orte/util/show_help.h"
 #include "ompi/mca/mpool/sm/mpool_sm.h"
-#include "ompi/mca/common/sm/common_sm_mmap.h"
+#include "ompi/mca/common/sm/common_sm.h"
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#include "opal/include/opal/align.h"
 #include "opal/mca/maffinity/maffinity.h"
 #include "opal/mca/maffinity/maffinity_types.h"
 #include "opal/mca/maffinity/base/base.h"
 #include "orte/util/proc_info.h"
 
-#if OPAL_ENABLE_FT    == 1
+#if OPAL_ENABLE_FT_CR    == 1
 #include "ompi/mca/mpool/base/base.h"
 #include "ompi/runtime/ompi_cr.h"
 #endif
@@ -59,7 +59,7 @@ void mca_mpool_sm_module_init(mca_mpool_sm_module_t* mpool)
     mpool->sm_size = 0;
     mpool->sm_allocator = NULL;
     mpool->sm_mmap = NULL;
-    mpool->sm_common_mmap = NULL;
+    mpool->sm_common_module = NULL;
     mpool->mem_node = -1;
 }
 
@@ -69,8 +69,8 @@ void mca_mpool_sm_module_init(mca_mpool_sm_module_t* mpool)
 void* mca_mpool_sm_base(mca_mpool_base_module_t* mpool)
 {
     mca_mpool_sm_module_t *sm_mpool = (mca_mpool_sm_module_t*) mpool;
-    return (NULL != sm_mpool->sm_common_mmap) ?
-        sm_mpool->sm_common_mmap->map_addr : NULL;
+    return (NULL != sm_mpool->sm_common_module) ?
+        sm_mpool->sm_common_module->module_seg_addr : NULL;
 }
 
 /**
@@ -134,27 +134,27 @@ static void sm_module_finalize(mca_mpool_base_module_t* module)
 {
     mca_mpool_sm_module_t *sm_module = (mca_mpool_sm_module_t*) module;
 
-    if (NULL != sm_module->sm_common_mmap) {
+    if (NULL != sm_module->sm_common_module) {
         if (OMPI_SUCCESS == 
-            mca_common_sm_mmap_fini(sm_module->sm_common_mmap)) {
-#if OPAL_ENABLE_FT == 1
+            mca_common_sm_fini(sm_module->sm_common_module)) {
+#if OPAL_ENABLE_FT_CR == 1
             /* Only unlink the file if we are *not* restarting.  If we
                are restarting the file will be unlinked at a later
                time. */
             if (OPAL_CR_STATUS_RESTART_PRE  != opal_cr_checkpointing_state &&
                 OPAL_CR_STATUS_RESTART_POST != opal_cr_checkpointing_state ) {
-                unlink(sm_module->sm_common_mmap->map_path);
+                unlink(sm_module->sm_common_module->shmem_ds.seg_name);
             }
 #else
-            unlink(sm_module->sm_common_mmap->map_path);
+            unlink(sm_module->sm_common_module->shmem_ds.seg_name);
 #endif
         }
-        OBJ_RELEASE(sm_module->sm_common_mmap);
-        sm_module->sm_common_mmap = NULL;
+        OBJ_RELEASE(sm_module->sm_common_module);
+        sm_module->sm_common_module = NULL;
     }
 }
 
-#if OPAL_ENABLE_FT    == 0
+#if OPAL_ENABLE_FT_CR    == 0
 int mca_mpool_sm_ft_event(int state) {
     return OMPI_SUCCESS;
 }
@@ -180,8 +180,8 @@ int mca_mpool_sm_ft_event(int state) {
             self_sm_module = (mca_mpool_sm_module_t*) self_module;
 
             /* Mark the old sm file for eventual removal via CRS */
-            if (NULL != self_sm_module->sm_common_mmap) {
-                opal_crs_base_cleanup_append(self_sm_module->sm_common_mmap->map_path, false);
+            if (NULL != self_sm_module->sm_common_module) {
+                opal_crs_base_cleanup_append(self_sm_module->sm_common_module->shmem_ds.seg_name, false);
             }
 
             /* Remove self from the list of all modules */
@@ -195,8 +195,8 @@ int mca_mpool_sm_ft_event(int state) {
         self_sm_module = (mca_mpool_sm_module_t*) self_module;
 
         /* Mark the old sm file for eventual removal via CRS */
-        if (NULL != self_sm_module->sm_common_mmap) {
-            opal_crs_base_cleanup_append(self_sm_module->sm_common_mmap->map_path, false);
+        if (NULL != self_sm_module->sm_common_module) {
+            opal_crs_base_cleanup_append(self_sm_module->sm_common_module->shmem_ds.seg_name, false);
         }
 
         /* Remove self from the list of all modules */
@@ -211,4 +211,4 @@ int mca_mpool_sm_ft_event(int state) {
 
     return OMPI_SUCCESS;
 }
-#endif /* OPAL_ENABLE_FT */
+#endif /* OPAL_ENABLE_FT_CR */

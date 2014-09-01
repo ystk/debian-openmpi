@@ -19,7 +19,7 @@
 
 #include "osc_pt2pt_sendreq.h"
 
-#include "ompi/datatype/convertor.h"
+#include "opal/datatype/opal_convertor.h"
 
 
 int
@@ -27,7 +27,7 @@ ompi_osc_pt2pt_sendreq_alloc_init(ompi_osc_pt2pt_req_type_t req_type,
                                   void *origin_addr, int origin_count,
                                   struct ompi_datatype_t *origin_dt,
                                   int target, 
-                                  OMPI_PTRDIFF_TYPE target_disp, 
+                                  OPAL_PTRDIFF_TYPE target_disp, 
                                   int target_count,
                                   struct ompi_datatype_t *target_dt,
                                   ompi_osc_pt2pt_module_t *module,
@@ -70,7 +70,7 @@ static void ompi_osc_pt2pt_sendreq_construct(ompi_osc_pt2pt_sendreq_t *req)
     req->super.req_type = OMPI_REQUEST_WIN;
     req->super.req_free = NULL;
     req->super.req_cancel = NULL;
-    OBJ_CONSTRUCT(&(req->req_origin_convertor), ompi_convertor_t);
+    OBJ_CONSTRUCT(&(req->req_origin_convertor), opal_convertor_t);
 }
 
 

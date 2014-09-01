@@ -1,4 +1,27 @@
-#include "config.h"
+/**
+ * VampirTrace
+ * http://www.tu-dresden.de/zih/vampirtrace
+ *
+ * Copyright (c) 2004-2005, The Trustees of Indiana University and Indiana
+ *                          University Research and Technology
+ *
+ * Copyright (c) 2004-2006, The University of Tennessee and The University
+ *                          of Tennessee Research Foundation
+ *
+ * Copyright (c) 2004-2005, High Performance Computing Center Stuttgart,
+ *                          University of Stuttgart
+ *
+ * Copyright (c) 2004-2005, The Regents of the University of California
+ *
+ * Copyright (c) 2007,      Cisco Systems, Inc.
+ *
+ * Copyright (c) 2005-2013, ZIH, TU Dresden, Federal Republic of Germany
+ *
+ * Copyright (c) 1998-2005, Forschungszentrum Juelich, Juelich Supercomputing
+ *                          Centre, Federal Republic of Germany
+ *
+ * See the file COPYING in the package base directory for details
+ **/
 
 #include <errno.h>
 #include <stdio.h>
@@ -77,7 +100,7 @@ static int guess_strlen(const char* fmt, va_list ap)
 	  do {
 	    ++len;
 	    farg /= 10.0;
-	  } while (0 != farg);
+	  } while (0.0 != farg);
 	  break;
 
         case 'g':
@@ -93,7 +116,7 @@ static int guess_strlen(const char* fmt, va_list ap)
 	  do {
 	    ++len;
 	    darg /= 10.0;
-	  } while (0 != darg);
+	  } while (0.0 != darg);
 	  break;
 
         case 'l':
@@ -124,7 +147,7 @@ static int guess_strlen(const char* fmt, va_list ap)
 		  do {
 		    ++len;
 		    darg /= 10.0;
-		  } while (0 != darg);
+		  } while (0.0 != darg);
 		  break;
 
 	        case 'd':
@@ -149,6 +172,12 @@ static int guess_strlen(const char* fmt, va_list ap)
 }
 
 
+void vt_assert_fail(const char* expr, const char* file, int line)
+{
+  fprintf(stderr, "%s:%d: Assertion `%s' failed.", file, line, expr);
+  abort();
+}
+
 int vt_asprintf(char** ptr, const char* fmt, ...)
 {
   int length;
@@ -169,9 +198,9 @@ int vt_vasprintf(char** ptr, const char* fmt, va_list ap)
   /* va_list might have pointer to internal state and using
      it twice is a bad idea.  So make a copy for the second
      use.  Copy order taken from Autoconf docs. */
-#if defined(HAVE_VA_COPY) && HAVE_VA_COPY
+#if defined(va_copy)
   va_copy(ap2, ap);
-#elif defined(HAVE_UNDERSCORE_VA_COPY) && HAVE_UNDERSCORE_VA_COPY
+#elif defined(__va_copy)
   __va_copy(ap2, ap);
 #else
   memcpy (&ap2, &ap, sizeof(va_list));
@@ -190,9 +219,9 @@ int vt_vasprintf(char** ptr, const char* fmt, va_list ap)
 
   /* fill the buffer */
   length = vsprintf(*ptr, fmt, ap2);
-#if (defined(HAVE_VA_COPY) && HAVE_VA_COPY) || (defined(HAVE_UNDERSCORE_VA_COPY) && HAVE_UNDERSCORE_VA_COPY)
+#if defined(va_copy) || defined(__va_copy)
   va_end(ap2);
-#endif /* HAVE_VA_COPY || HAVE_UNDERSCORE_VA_COPY */
+#endif /* va_copy || __va_copy */
 
   /* realloc */
   *ptr = (char*)realloc(*ptr, (size_t)length + 1);
@@ -255,4 +284,40 @@ char* vt_strdup(const char* s)
   strcpy(c, s) ;
 
   return c;
+}
+
+char* vt_strtrim(char* s)
+{
+  int trim_start_idx = 0;
+  int trim_stop_idx = strlen(s);
+  int i, j;
+
+  if (trim_stop_idx > 0)
+  {
+    for ( i = 0; i < trim_stop_idx && s[i] == ' '; i++ ) trim_start_idx++;
+    for ( i = trim_stop_idx - 1; i >= 0 && s[i] == ' '; i-- ) trim_stop_idx--;
+    for ( j = 0, i = trim_start_idx; i < trim_stop_idx; i++, j++ ) s[j] = s[i];
+    s[j] = '\0';
+  }
+
+  return s;
+}
+
+void* vt_memmove(void* dest, const void* src, size_t n)
+{
+  char *d = (char*)dest;
+  char *s = (char*)src;
+  
+  if(src>dest)
+  {
+    while(n-- != 0) *(d++) = *(s++);
+  }
+  else if(src<dest)
+  {
+    d += n;
+    s += n;
+    while(n-- != 0) *(--d) = *(--s);
+  }
+  
+  return dest;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2009 The Trustees of Indiana University.
  *                         All rights reserved.
  *
  * $COPYRIGHT$
@@ -11,15 +11,18 @@
 
 #include "opal_config.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
 #include <sys/types.h>
-#if HAVE_UNISTD_H
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif  /* HAVE_UNISTD_H */
 
 #include "opal/util/opal_environ.h"
 #include "opal/util/output.h"
-#include "opal/util/show_help.h"
 #include "opal/util/argv.h"
+#include "opal/util/show_help.h"
 #include "opal/util/opal_environ.h"
 
 #include "opal/constants.h"
@@ -50,7 +53,10 @@ int opal_crs_none_module_finalize(void)
     return OPAL_SUCCESS;
 }
 
-int opal_crs_none_checkpoint(pid_t pid, opal_crs_base_snapshot_t *snapshot, opal_crs_state_type_t *state)
+int opal_crs_none_checkpoint(pid_t pid,
+                             opal_crs_base_snapshot_t *snapshot,
+                             opal_crs_base_ckpt_options_t *options,
+                             opal_crs_state_type_t *state)
 {
     int ret;
 
@@ -72,12 +78,60 @@ int opal_crs_none_checkpoint(pid_t pid, opal_crs_base_snapshot_t *snapshot, opal
         return ret;
     }
 
+    if( options->stop ) {
+        opal_output(0,
+                    "crs:none: checkpoint(): Error: SIGSTOP Not currently supported!");
+    }
+
     return OPAL_SUCCESS;
 }
 
 int opal_crs_none_restart(opal_crs_base_snapshot_t *base_snapshot, bool spawn_child, pid_t *child_pid)
 {
+    char **tmp_argv = NULL;
+    char **cr_argv = NULL;
+    int status;
+
     *child_pid = getpid();
+
+    opal_crs_base_metadata_read_token(base_snapshot->local_location, CRS_METADATA_CONTEXT, &tmp_argv);
+    if( NULL == tmp_argv ) {
+        opal_output(opal_crs_base_output,
+                    "crs:none: none_restart: Error: Failed to read the %s token from the local checkpoint in %s",
+                    CRS_METADATA_CONTEXT, base_snapshot->local_location);
+        return OPAL_ERROR;
+    }
+
+    if( opal_argv_count(tmp_argv) <= 0 ) {
+        opal_output_verbose(10, opal_crs_base_output,
+                            "crs:none: none_restart: No command line to exec, so just returning");
+        return OPAL_SUCCESS;
+    }
+
+    if ( NULL == (cr_argv = opal_argv_split(tmp_argv[0], ' ')) ) {
+        return OPAL_ERROR;
+    }
+
+    if( !spawn_child ) {
+        opal_output_verbose(10, opal_crs_base_output,
+                            "crs:none: none_restart: exec :(%s, %s):",
+                            strdup(cr_argv[0]),
+                            opal_argv_join(cr_argv, ' '));
+
+        status = execvp(strdup(cr_argv[0]), cr_argv);
+
+        if(status < 0) {
+            opal_output(opal_crs_base_output,
+                        "crs:none: none_restart: Child failed to execute :(%d):", status);
+        }
+        opal_output(opal_crs_base_output,
+                    "crs:none: none_restart: execvp returned %d", status);
+        return status;
+    } else {
+        opal_output(opal_crs_base_output,
+                   "crs:none: none_restart: Spawn not implemented");
+        return OPAL_ERR_NOT_IMPLEMENTED;
+    }
 
     return OPAL_SUCCESS;
 }

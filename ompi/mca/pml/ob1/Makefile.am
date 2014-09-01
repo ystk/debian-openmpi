@@ -9,6 +9,8 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+# Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
+# Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
 #
 # $COPYRIGHT$
 # 
@@ -17,7 +19,10 @@
 # $HEADER$
 #
 
-EXTRA_DIST = post_configure.sh pml_ob1_endpoint.c pml_ob1_endpoint.h .windows
+dist_pkgdata_DATA = \
+	help-mpi-pml-ob1.txt
+
+EXTRA_DIST = post_configure.sh .windows
 
 ob1_sources  = \
 	pml_ob1.c \

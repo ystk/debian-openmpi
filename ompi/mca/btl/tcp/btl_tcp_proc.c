@@ -2,14 +2,14 @@
  * Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2010 Oracle and/or its affiliates.  All rights reserved
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -19,11 +19,11 @@
 
 #include "ompi_config.h"
 
-#ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
-#endif
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
+#endif
+#ifdef HAVE_ARPA_INET_H
+#include <arpa/inet.h>
 #endif
 
 #include "opal/class/opal_hash_table.h"
@@ -40,50 +40,50 @@
 static void mca_btl_tcp_proc_construct(mca_btl_tcp_proc_t* proc);
 static void mca_btl_tcp_proc_destruct(mca_btl_tcp_proc_t* proc);
 
-mca_btl_tcp_interface_t* local_interfaces[MAX_KERNEL_INTERFACES];
-mca_btl_tcp_interface_t* peer_interfaces[MAX_KERNEL_INTERFACES];
-int local_kindex_to_index[MAX_KERNEL_INTERFACE_INDEX];
-int peer_kindex_to_index[MAX_KERNEL_INTERFACE_INDEX];
-size_t num_local_interfaces;
-size_t num_peer_interfaces;
-unsigned int *best_assignment;
-int max_assignment_weight;
-int max_assignment_cardinality;
-enum mca_btl_tcp_connection_quality **weights;
-struct mca_btl_tcp_addr_t ***best_addr;
+static mca_btl_tcp_interface_t** local_interfaces = NULL;
+static int local_kindex_to_index[MAX_KERNEL_INTERFACE_INDEX];
+static size_t num_local_interfaces, max_local_interfaces;
+static mca_btl_tcp_interface_t** peer_interfaces = NULL;
+static size_t num_peer_interfaces, max_peer_interfaces;
+static int peer_kindex_to_index[MAX_KERNEL_INTERFACE_INDEX];
+static unsigned int *best_assignment;
+static int max_assignment_weight;
+static int max_assignment_cardinality;
+static enum mca_btl_tcp_connection_quality **weights;
+static struct mca_btl_tcp_addr_t ***best_addr;
 
 OBJ_CLASS_INSTANCE( mca_btl_tcp_proc_t, 
                     opal_list_item_t, 
                     mca_btl_tcp_proc_construct, 
                     mca_btl_tcp_proc_destruct );
 
-void mca_btl_tcp_proc_construct(mca_btl_tcp_proc_t* proc)
+void mca_btl_tcp_proc_construct(mca_btl_tcp_proc_t* tcp_proc)
 {
-    proc->proc_ompi = 0;
-    proc->proc_addrs = NULL;
-    proc->proc_addr_count = 0;
-    proc->proc_endpoints = NULL;
-    proc->proc_endpoint_count = 0;
-    OBJ_CONSTRUCT(&proc->proc_lock, opal_mutex_t);
+    tcp_proc->proc_ompi = 0;
+    tcp_proc->proc_addrs = NULL;
+    tcp_proc->proc_addr_count = 0;
+    tcp_proc->proc_endpoints = NULL;
+    tcp_proc->proc_endpoint_count = 0;
+    OBJ_CONSTRUCT(&tcp_proc->proc_lock, opal_mutex_t);
 }
 
 /*
  * Cleanup ib proc instance
  */
 
-void mca_btl_tcp_proc_destruct(mca_btl_tcp_proc_t* proc)
+void mca_btl_tcp_proc_destruct(mca_btl_tcp_proc_t* tcp_proc)
 {
     /* remove from list of all proc instances */
     OPAL_THREAD_LOCK(&mca_btl_tcp_component.tcp_lock);
     opal_hash_table_remove_value_uint64(&mca_btl_tcp_component.tcp_procs, 
-                                        orte_util_hash_name(&proc->proc_name));
+                                        orte_util_hash_name(&tcp_proc->proc_ompi->proc_name));
     OPAL_THREAD_UNLOCK(&mca_btl_tcp_component.tcp_lock);
 
     /* release resources */
-    if(NULL != proc->proc_endpoints) {
-        free(proc->proc_endpoints);
-        OBJ_DESTRUCT(&proc->proc_lock);
+    if(NULL != tcp_proc->proc_endpoints) {
+        free(tcp_proc->proc_endpoints);
     }
+    OBJ_DESTRUCT(&tcp_proc->proc_lock);
 }
 
 /*
@@ -113,7 +113,6 @@ mca_btl_tcp_proc_t* mca_btl_tcp_proc_create(ompi_proc_t* ompi_proc)
     if(NULL == btl_proc)
         return NULL;
     btl_proc->proc_ompi = ompi_proc;
-    btl_proc->proc_name = ompi_proc->proc_name;
     
     /* add to hash table of all proc instance */
     opal_hash_table_set_value_uint64(&mca_btl_tcp_component.tcp_procs,
@@ -131,8 +130,8 @@ mca_btl_tcp_proc_t* mca_btl_tcp_proc_create(ompi_proc_t* ompi_proc)
         return NULL;
     }
     if(0 != (size % sizeof(mca_btl_tcp_addr_t))) {
-        BTL_ERROR(("mca_base_modex_recv: invalid size %d: btl-size: %d\n",
-          size, sizeof(mca_btl_tcp_addr_t)));
+        BTL_ERROR(("mca_base_modex_recv: invalid size %lu: btl-size: %lu\n",
+          (unsigned long) size, (unsigned long)sizeof(mca_btl_tcp_addr_t)));
         return NULL;
     }
     btl_proc->proc_addr_count = size / sizeof(mca_btl_tcp_addr_t);
@@ -175,8 +174,6 @@ static void evaluate_assignment(int *a) {
     unsigned int max_interfaces = num_local_interfaces;
     int assignment_weight = 0;
     int assignment_cardinality = 0;
-
-
 
     if(max_interfaces < num_peer_interfaces) {
         max_interfaces = num_peer_interfaces;
@@ -232,7 +229,140 @@ static void mca_btl_tcp_initialise_interface(mca_btl_tcp_interface_t* interface,
     interface->inuse = 0;
 }
 
+static mca_btl_tcp_interface_t** mca_btl_tcp_retrieve_local_interfaces(void)
+{
+    struct sockaddr_storage local_addr;
+    char local_if_name[IF_NAMESIZE];
+    char **include, **exclude, **argv;
+    int idx;
 
+    if( NULL != local_interfaces )
+        return local_interfaces;
+
+    max_local_interfaces = MAX_KERNEL_INTERFACES;
+    num_local_interfaces = 0;
+    local_interfaces = (mca_btl_tcp_interface_t**)calloc( max_local_interfaces, sizeof(mca_btl_tcp_interface_t*) );
+    if( NULL == local_interfaces )
+        return NULL;
+
+    memset(local_kindex_to_index, -1, sizeof(int)*MAX_KERNEL_INTERFACE_INDEX);
+
+    /* Collect up the list of included and excluded interfaces, if any */
+    include = opal_argv_split(mca_btl_tcp_component.tcp_if_include,',');
+    exclude = opal_argv_split(mca_btl_tcp_component.tcp_if_exclude,',');
+
+    /*
+     * identify all kernel interfaces and the associated addresses of
+     * the local node
+     */
+    for( idx = opal_ifbegin(); idx >= 0; idx = opal_ifnext (idx) ) {
+        int kindex, index;
+        bool skip = false;
+
+        opal_ifindextoaddr (idx, (struct sockaddr*) &local_addr, sizeof (local_addr));
+        opal_ifindextoname (idx, local_if_name, sizeof (local_if_name));
+
+        /* If we were given a list of included interfaces, then check
+         * to see if the current one is a member of this set.  If so,
+         * drop down and complete processing.  If not, skip it and
+         * continue on to the next one.  Note that providing an include
+         * list will override providing an exclude list as the two are
+         * mutually exclusive.  This matches how it works in
+         * mca_btl_tcp_component_create_instances() which is the function
+         * that exports the interfaces.  */
+        if(NULL != include) {
+            argv = include;
+            skip = true;
+            while(argv && *argv) {
+                /* When comparing included interfaces, we look for exact matches.
+                   That is why we are using strcmp() here. */
+                if (0 == strcmp(*argv, local_if_name)) {
+                    skip = false;
+                    break;
+                }
+                argv++;
+            }
+        } else if (NULL != exclude) {
+            /* If we were given a list of excluded interfaces, then check to see if the
+             * current one is a member of this set.  If not, drop down and complete
+             * processing.  If so, skip it and continue on to the next one. */
+            argv = exclude;
+            while(argv && *argv) {
+                /* When looking for interfaces to exclude, we only look at
+                 * the number of characters equal to what the user provided.
+                 * For example, excluding "lo" excludes "lo", "lo0" and
+                 * anything that starts with "lo" */
+                if(0 == strncmp(*argv, local_if_name, strlen(*argv))) {
+                    skip = true;
+                    break;
+                }
+                argv++;
+            }
+        }
+        if (true == skip) {
+            /* This interface is not part of the requested set, so skip it */
+            continue;
+        }
+
+        kindex = opal_ifindextokindex(idx);
+        index = local_kindex_to_index[kindex];
+
+        /* create entry for this kernel index previously not seen */
+        if(-1 == index) {
+            index = num_local_interfaces++;
+            local_kindex_to_index[kindex] = index;
+
+            if( num_local_interfaces == max_local_interfaces ) {
+                max_local_interfaces <<= 1;
+                local_interfaces = (mca_btl_tcp_interface_t**)realloc( local_interfaces,
+                                                                       max_local_interfaces * sizeof(mca_btl_tcp_interface_t*) );
+                if( NULL == local_interfaces )
+                    return NULL;
+            }
+            local_interfaces[index] = (mca_btl_tcp_interface_t *) malloc(sizeof(mca_btl_tcp_interface_t));
+            assert(NULL != local_interfaces[index]);
+            mca_btl_tcp_initialise_interface(local_interfaces[index], kindex, index);
+        }
+
+        switch(local_addr.ss_family) {
+        case AF_INET:
+            /* if AF is disabled, skip it completely */
+            if (4 == mca_btl_tcp_component.tcp_disable_family) {
+                continue;
+            }
+
+            local_interfaces[local_kindex_to_index[kindex]]->ipv4_address = 
+                (struct sockaddr_storage*) malloc(sizeof(local_addr));
+            memcpy(local_interfaces[local_kindex_to_index[kindex]]->ipv4_address, 
+                   &local_addr, sizeof(local_addr));
+            opal_ifindextomask(idx, 
+                               &local_interfaces[local_kindex_to_index[kindex]]->ipv4_netmask, 
+                               sizeof(int));
+            break;
+        case AF_INET6:
+            /* if AF is disabled, skip it completely */
+            if (6 == mca_btl_tcp_component.tcp_disable_family) {
+                continue;
+            }
+
+            local_interfaces[local_kindex_to_index[kindex]]->ipv6_address 
+                = (struct sockaddr_storage*) malloc(sizeof(local_addr));
+            memcpy(local_interfaces[local_kindex_to_index[kindex]]->ipv6_address, 
+                   &local_addr, sizeof(local_addr));
+            opal_ifindextomask(idx, 
+                               &local_interfaces[local_kindex_to_index[kindex]]->ipv6_netmask, 
+                               sizeof(int));
+            break;
+        default:
+            opal_output(0, "unknown address family for tcp: %d\n",
+                        local_addr.ss_family);
+        }
+    }
+    opal_argv_free(include);
+    opal_argv_free(exclude);
+
+    return local_interfaces;
+}
 /*
  * Note that this routine must be called with the lock on the process
  * already held.  Insert a btl instance into the proc array and assign 
@@ -241,19 +371,10 @@ static void mca_btl_tcp_initialise_interface(mca_btl_tcp_interface_t* interface,
 int mca_btl_tcp_proc_insert( mca_btl_tcp_proc_t* btl_proc, 
                              mca_btl_base_endpoint_t* btl_endpoint )
 {
-    size_t i, j;
-    struct sockaddr_storage endpoint_addr_ss, local_addr;
-    int idx, rc;
-    int *a = NULL;
+    struct sockaddr_storage endpoint_addr_ss;
     unsigned int perm_size;
-    char **include;
-    char **exclude;
-    char **argv;
-    bool skip;
-    char local_if_name[IF_NAMESIZE];
-
-    num_local_interfaces = 0;
-    num_peer_interfaces = 0;
+    int rc, *a = NULL;
+    size_t i, j;
 
 #ifndef WORDS_BIGENDIAN
     /* if we are little endian and our peer is not so lucky, then we
@@ -270,122 +391,22 @@ int mca_btl_tcp_proc_insert( mca_btl_tcp_proc_t* btl_proc,
     btl_endpoint->endpoint_proc = btl_proc;
     btl_proc->proc_endpoints[btl_proc->proc_endpoint_count++] = btl_endpoint;
 
-
-    memset(local_kindex_to_index, -1, sizeof(int)*MAX_KERNEL_INTERFACE_INDEX);
-    memset(peer_kindex_to_index, -1, sizeof(int)*MAX_KERNEL_INTERFACE_INDEX);
-    memset(local_interfaces, 0, sizeof(local_interfaces));
-    memset(peer_interfaces, 0, sizeof(peer_interfaces));
-
-    /* Collect up the list of included and excluded interfaces, if any */
-    include = opal_argv_split(mca_btl_tcp_component.tcp_if_include,',');
-    exclude = opal_argv_split(mca_btl_tcp_component.tcp_if_exclude,',');
-
-    /*
-     * the following two blocks shout CODE DUPLICATION. We are aware of
-     * the problem
-     */
-
-    /*
-     * identify all kernel interfaces and the associated addresses of
-     * the local node
-     */
-    for (idx = opal_ifbegin(); idx >= 0; idx=opal_ifnext (idx)) {
-        int kindex, index;
-
-        opal_ifindextoaddr (idx, (struct sockaddr*) &local_addr, sizeof (local_addr));
-        opal_ifindextoname (idx, local_if_name, sizeof (local_if_name));
-
-        /* If we were given a list of included interfaces, then check to see if the
-         * current one is a member of this set.  If so, drop down and complete
-         * processing.  If not, skip it and continue on to the next one. */
-        if(NULL != include) {
-            argv = include;
-            skip = true;
-            while(argv && *argv) {
-                /* When comparing included interfaces, we look for exact matches.
-                   That is why we are using strcmp() here. */
-                if (0 == strcmp(*argv, local_if_name)) {
-                    skip = false;
-                    break;
-                }
-                argv++;
-            }
-            if (true == skip) {
-                /* This interface is not part of the included set, so skip it */
-                continue;
-            }
-        }
-
-        /* If we were given a list of excluded interfaces, then check to see if the
-         * current one is a member of this set.  If not, drop down and complete
-         * processing.  If so, skip it and continue on to the next one. */
-        if (NULL != exclude) {
-            argv = exclude;
-            skip = false;
-            while(argv && *argv) {
-                /* When looking for interfaces to exclude, we only look at
-                 * the number of characters equal to what the user provided.
-                 * For example, excluding "lo" excludes "lo", "lo0" and
-                 * anything that starts with "lo" */
-                if(0 == strncmp(*argv, local_if_name, strlen(*argv))) {
-                    skip = true;
-                    break;
-                }
-                argv++;
-            }
-            if(true == skip) {
-                continue;
-            }
-        }
-
-        kindex = opal_ifindextokindex(idx);
-        index = local_kindex_to_index[kindex];
-
-        /* create entry for this kernel index previously not seen */
-        if(-1 == index) {
-            index = num_local_interfaces++;
-            local_kindex_to_index[kindex] = index;
-            local_interfaces[index] = (mca_btl_tcp_interface_t *) malloc(sizeof(mca_btl_tcp_interface_t));
-            assert(NULL != local_interfaces[index]);
-            mca_btl_tcp_initialise_interface(local_interfaces[index], kindex, index);
-        }
-
-        switch(local_addr.ss_family) {
-            case AF_INET:
-                /* if AF is disabled, skip it completely */
-                if (4 == mca_btl_tcp_component.tcp_disable_family) {
-                    continue;
-                }
-
-                local_interfaces[local_kindex_to_index[kindex]]->ipv4_address = 
-                    (struct sockaddr_storage*) malloc(sizeof(local_addr));
-                memcpy(local_interfaces[local_kindex_to_index[kindex]]->ipv4_address, 
-                        &local_addr, sizeof(local_addr));
-                opal_ifindextomask(idx, 
-                        &local_interfaces[local_kindex_to_index[kindex]]->ipv4_netmask, 
-                        sizeof(int));
-                break;
-            case AF_INET6:
-                /* if AF is disabled, skip it completely */
-                if (6 == mca_btl_tcp_component.tcp_disable_family) {
-                    continue;
-                }
-
-                local_interfaces[local_kindex_to_index[kindex]]->ipv6_address 
-                    = (struct sockaddr_storage*) malloc(sizeof(local_addr));
-                memcpy(local_interfaces[local_kindex_to_index[kindex]]->ipv6_address, 
-                        &local_addr, sizeof(local_addr));
-                opal_ifindextomask(idx, 
-                        &local_interfaces[local_kindex_to_index[kindex]]->ipv6_netmask, 
-                        sizeof(int));
-                break;
-            default:
-                opal_output(0, "unknown address family for tcp: %d\n",
-                        local_addr.ss_family);
-        }
+    /* sanity checks */
+    if( NULL == local_interfaces ) {
+        if( NULL == mca_btl_tcp_retrieve_local_interfaces() )
+            return OMPI_ERR_OUT_OF_RESOURCE;
     }
-    opal_argv_free(include);
-    opal_argv_free(exclude);
+    if( 0 == num_local_interfaces ) {
+        return OMPI_ERR_UNREACH;
+    }
+
+    if( NULL == peer_interfaces ) {
+        max_peer_interfaces = max_local_interfaces;
+        peer_interfaces = (mca_btl_tcp_interface_t**)malloc( max_peer_interfaces * sizeof(mca_btl_tcp_interface_t*) );
+    }
+    num_peer_interfaces = 0;
+    memset(peer_kindex_to_index, -1, sizeof(int)*MAX_KERNEL_INTERFACE_INDEX);
+    memset(peer_interfaces, 0, max_peer_interfaces * sizeof(mca_btl_tcp_interface_t*));
 
     /*
      * identify all kernel interfaces and the associated addresses of
@@ -405,9 +426,16 @@ int mca_btl_tcp_proc_insert( mca_btl_tcp_proc_t* btl_proc,
         if(-1 == index) {
             index = num_peer_interfaces++;
             peer_kindex_to_index[endpoint_addr->addr_ifkindex] = index;
+            if( num_peer_interfaces == max_peer_interfaces ) {
+                max_peer_interfaces <<= 1;
+                peer_interfaces = (mca_btl_tcp_interface_t**)realloc( peer_interfaces,
+                                                                      max_peer_interfaces * sizeof(mca_btl_tcp_interface_t*) );
+                if( NULL == peer_interfaces )
+                    return OMPI_ERR_OUT_OF_RESOURCE;
+            }
             peer_interfaces[index] = (mca_btl_tcp_interface_t *) malloc(sizeof(mca_btl_tcp_interface_t));
             mca_btl_tcp_initialise_interface(peer_interfaces[index], 
-                    endpoint_addr->addr_ifkindex, index);
+                                             endpoint_addr->addr_ifkindex, index);
         }       
         
         /*
@@ -419,25 +447,25 @@ int mca_btl_tcp_proc_insert( mca_btl_tcp_proc_t* btl_proc,
         }
 
         switch(endpoint_addr_ss.ss_family) {
-            case AF_INET:
-                peer_interfaces[index]->ipv4_address = (struct sockaddr_storage*) malloc(sizeof(endpoint_addr_ss));
-                peer_interfaces[index]->ipv4_endpoint_addr = endpoint_addr;
-                memcpy(peer_interfaces[index]->ipv4_address, 
-                        &endpoint_addr_ss, sizeof(endpoint_addr_ss));
-                break;
-            case AF_INET6:
-                peer_interfaces[index]->ipv6_address = (struct sockaddr_storage*) malloc(sizeof(endpoint_addr_ss));
-                peer_interfaces[index]->ipv6_endpoint_addr = endpoint_addr;
-                memcpy(peer_interfaces[index]->ipv6_address, 
-                        &endpoint_addr_ss, sizeof(endpoint_addr_ss));
-                break;
-            default:
-                opal_output(0, "unknown address family for tcp: %d\n",
-                        local_addr.ss_family);
-                /*
-                 * return OMPI_UNREACH or some error, as this is not
-                 * good
-                 */
+        case AF_INET:
+            peer_interfaces[index]->ipv4_address = (struct sockaddr_storage*) malloc(sizeof(endpoint_addr_ss));
+            peer_interfaces[index]->ipv4_endpoint_addr = endpoint_addr;
+            memcpy(peer_interfaces[index]->ipv4_address, 
+                   &endpoint_addr_ss, sizeof(endpoint_addr_ss));
+            break;
+        case AF_INET6:
+            peer_interfaces[index]->ipv6_address = (struct sockaddr_storage*) malloc(sizeof(endpoint_addr_ss));
+            peer_interfaces[index]->ipv6_endpoint_addr = endpoint_addr;
+            memcpy(peer_interfaces[index]->ipv6_address, 
+                   &endpoint_addr_ss, sizeof(endpoint_addr_ss));
+            break;
+        default:
+            opal_output(0, "unknown address family for tcp: %d\n",
+                        endpoint_addr_ss.ss_family);
+            /*
+             * return OMPI_UNREACH or some error, as this is not
+             * good
+             */
         }
     }
 
@@ -451,17 +479,17 @@ int mca_btl_tcp_proc_insert( mca_btl_tcp_proc_t* btl_proc,
     }
 
     weights = (enum mca_btl_tcp_connection_quality**) malloc(perm_size
-            * sizeof(enum mca_btl_tcp_connection_quality*));
+                                                             * sizeof(enum mca_btl_tcp_connection_quality*));
     
     best_addr = (mca_btl_tcp_addr_t ***) malloc(perm_size
-            * sizeof(mca_btl_tcp_addr_t **));
+                                                * sizeof(mca_btl_tcp_addr_t **));
     for(i = 0; i < perm_size; ++i) {
         weights[i] = (enum mca_btl_tcp_connection_quality*) malloc(perm_size *
-                sizeof(enum mca_btl_tcp_connection_quality));
+                                                                   sizeof(enum mca_btl_tcp_connection_quality));
         memset(weights[i], 0, perm_size * sizeof(enum mca_btl_tcp_connection_quality));
 
         best_addr[i] = (mca_btl_tcp_addr_t **) malloc(perm_size *
-                sizeof(mca_btl_tcp_addr_t *));
+                                                      sizeof(mca_btl_tcp_addr_t *));
         memset(best_addr[i], 0, perm_size * sizeof(mca_btl_tcp_addr_t *));
     }
     
@@ -478,11 +506,11 @@ int mca_btl_tcp_proc_insert( mca_btl_tcp_proc_t* btl_proc,
 
                 /*  check for RFC1918 */
                 if(opal_net_addr_isipv4public((struct sockaddr*) local_interfaces[i]->ipv4_address)
-                        && opal_net_addr_isipv4public((struct sockaddr*) 
-                            peer_interfaces[j]->ipv4_address)) {
+                   && opal_net_addr_isipv4public((struct sockaddr*) 
+                                                 peer_interfaces[j]->ipv4_address)) {
                     if(opal_net_samenetwork((struct sockaddr*) local_interfaces[i]->ipv4_address,
-                                (struct sockaddr*) peer_interfaces[j]->ipv4_address,
-                                local_interfaces[i]->ipv4_netmask)) {
+                                            (struct sockaddr*) peer_interfaces[j]->ipv4_address,
+                                            local_interfaces[i]->ipv4_netmask)) {
                         weights[i][j] = CQ_PUBLIC_SAME_NETWORK;
                     } else {
                         weights[i][j] = CQ_PUBLIC_DIFFERENT_NETWORK;
@@ -491,8 +519,8 @@ int mca_btl_tcp_proc_insert( mca_btl_tcp_proc_t* btl_proc,
                     continue;
                 } else {
                     if(opal_net_samenetwork((struct sockaddr*) local_interfaces[i]->ipv4_address,
-                                (struct sockaddr*) peer_interfaces[j]->ipv4_address,
-                                local_interfaces[i]->ipv4_netmask)) {
+                                            (struct sockaddr*) peer_interfaces[j]->ipv4_address,
+                                            local_interfaces[i]->ipv4_netmask)) {
                         weights[i][j] = CQ_PRIVATE_SAME_NETWORK;
                     } else {
                         weights[i][j] = CQ_PRIVATE_DIFFERENT_NETWORK;
@@ -507,8 +535,8 @@ int mca_btl_tcp_proc_insert( mca_btl_tcp_proc_t* btl_proc,
             if(NULL != local_interfaces[i]->ipv6_address &&
                NULL != peer_interfaces[j]->ipv6_address) {
                 if(opal_net_samenetwork((struct sockaddr*) local_interfaces[i]->ipv6_address,
-                            (struct sockaddr*) peer_interfaces[j]->ipv6_address,
-                            local_interfaces[i]->ipv6_netmask)) {
+                                        (struct sockaddr*) peer_interfaces[j]->ipv6_address,
+                                        local_interfaces[i]->ipv6_netmask)) {
                     weights[i][j] = CQ_PUBLIC_SAME_NETWORK;
                 } else {
                     weights[i][j] = CQ_PUBLIC_DIFFERENT_NETWORK;
@@ -531,24 +559,54 @@ int mca_btl_tcp_proc_insert( mca_btl_tcp_proc_t* btl_proc,
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
 
-    memset(a, 0, perm_size * sizeof(int));
-    max_assignment_cardinality = -1;
-    max_assignment_weight = -1;
-    visit(0, -1, perm_size, a);
+    /* Can only find the best set of connections when the number of
+     * interfaces is not too big.  When it gets larger, we fall back
+     * to a simpler and faster (and not as optimal) algorithm. */
+    if (perm_size <= MAX_PERMUTATION_INTERFACES) {
+       memset(a, 0, perm_size * sizeof(int));
+       max_assignment_cardinality = -1;
+       max_assignment_weight = -1;
+       visit(0, -1, perm_size, a);
 
-    rc = OMPI_ERR_UNREACH;
-    for(i = 0; i < perm_size; ++i) {
-        if(best_assignment[i] > num_peer_interfaces
-                || weights[i][best_assignment[i]] == CQ_NO_CONNECTION
-                || peer_interfaces[best_assignment[i]]->inuse 
-                || NULL == peer_interfaces[best_assignment[i]]) {
-            continue;
-        } 
-        peer_interfaces[best_assignment[i]]->inuse++;
-        btl_endpoint->endpoint_addr = best_addr[i][best_assignment[i]];
-        btl_endpoint->endpoint_addr->addr_inuse++;
-        rc = OMPI_SUCCESS;
-        break;
+       rc = OMPI_ERR_UNREACH;
+       for(i = 0; i < perm_size; ++i) {
+	   if(best_assignment[i] > num_peer_interfaces
+	      || weights[i][best_assignment[i]] == CQ_NO_CONNECTION
+	      || peer_interfaces[best_assignment[i]]->inuse 
+	      || NULL == peer_interfaces[best_assignment[i]]) {
+	       continue;
+	   } 
+	   peer_interfaces[best_assignment[i]]->inuse++;
+	   btl_endpoint->endpoint_addr = best_addr[i][best_assignment[i]];
+	   btl_endpoint->endpoint_addr->addr_inuse++;
+	   rc = OMPI_SUCCESS;
+	   break;
+       }
+    } else {
+	enum mca_btl_tcp_connection_quality max;
+	int i_max = 0, j_max = 0;
+	/* Find the best connection that is not in use.  Save away
+	 * the indices of the best location. */
+	max = CQ_NO_CONNECTION;
+	for(i=0; i<num_local_interfaces; ++i) {
+	    for(j=0; j<num_peer_interfaces; ++j) {
+		if (!peer_interfaces[j]->inuse) {
+		    if (weights[i][j] > max) {
+			max = weights[i][j];
+			i_max = i;
+			j_max = j;
+		    }
+		}
+	    }
+	}
+	/* Now see if there is a some type of connection available. */
+	rc = OMPI_ERR_UNREACH;
+	if (CQ_NO_CONNECTION != max) {
+	    peer_interfaces[j_max]->inuse++;
+	    btl_endpoint->endpoint_addr = best_addr[i_max][j_max];
+	    btl_endpoint->endpoint_addr->addr_inuse++;
+	    rc = OMPI_SUCCESS;
+	}
     }
 
     for(i = 0; i < perm_size; ++i) {
@@ -565,6 +623,9 @@ int mca_btl_tcp_proc_insert( mca_btl_tcp_proc_t* btl_proc,
         }
         free(peer_interfaces[i]);
     }
+    free(peer_interfaces);
+    peer_interfaces = NULL;
+    max_peer_interfaces = 0;
 
     for(i = 0; i < num_local_interfaces; ++i) {
         if(NULL != local_interfaces[i]->ipv4_address) {
@@ -575,6 +636,9 @@ int mca_btl_tcp_proc_insert( mca_btl_tcp_proc_t* btl_proc,
         }
         free(local_interfaces[i]);
     }
+    free(local_interfaces);
+    local_interfaces = NULL;
+    max_local_interfaces = 0;
 
     free(weights);
     free(best_addr);

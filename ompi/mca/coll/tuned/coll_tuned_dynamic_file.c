@@ -23,10 +23,6 @@
 
 #include "mpi.h"
 #include "opal/mca/mca.h"
-#include "ompi/mca/coll/coll.h"
-#include "ompi/request/request.h"
-#include "ompi/mca/pml/pml.h"
-#include "orte/util/show_help.h"
 #include "coll_tuned.h"
 
 /* need to include our own topo prototypes so we can malloc data on the comm correctly */
@@ -41,8 +37,7 @@
 
 #define MYEOF   -999
 
-static void skiptonewline (FILE *fptr); /* local function */
-static int getnext (FILE *fptr); /* local function */
+static long getnext (FILE *fptr); /* local function */
 
 static int fileline=0; /* used for verbose error messages */
 
@@ -61,12 +56,8 @@ static int fileline=0; /* used for verbose error messages */
 int ompi_coll_tuned_read_rules_config_file (char *fname, ompi_coll_alg_rule_t** rules, int n_collectives)
 {
     FILE *fptr = (FILE*) NULL;
-    int X;
-    int CI;
-    int NCS;
-    int CS;
-    int NMS;
-    int MS, ALG, FANINOUT, SS;
+    int X, CI, NCS, CS, ALG, NMS, FANINOUT;
+    long MS, SS;
     int x, ncs, nms;
 
     ompi_coll_alg_rule_t *alg_rules = (ompi_coll_alg_rule_t*) NULL;   /* complete table of rules */
@@ -105,7 +96,7 @@ int ompi_coll_tuned_read_rules_config_file (char *fname, ompi_coll_alg_rule_t** 
     /* make space and init the algorithm rules for each of the n_collectives MPI collectives */
     alg_rules = ompi_coll_tuned_mk_alg_rules (n_collectives);
 
-    X = getnext(fptr);
+    X = (int)getnext(fptr);
     if (X<0) {
         OPAL_OUTPUT((ompi_coll_tuned_stream,"Could not read number of collectives in configuration file around line %d\n", fileline));
         goto on_file_error;
@@ -117,7 +108,7 @@ int ompi_coll_tuned_read_rules_config_file (char *fname, ompi_coll_alg_rule_t** 
 
     for (x=0;x<X;x++) { /* for each collective */
 
-        CI = getnext (fptr);
+        CI = (int)getnext (fptr);
         if (CI<0) {
             OPAL_OUTPUT((ompi_coll_tuned_stream,"Could not read next Collective id in configuration file around line %d\n", fileline));
             goto on_file_error;
@@ -139,7 +130,7 @@ int ompi_coll_tuned_read_rules_config_file (char *fname, ompi_coll_alg_rule_t** 
         alg_p->n_com_sizes = 0;
         alg_p->com_rules = (ompi_coll_com_rule_t *) NULL;
 
-        NCS = getnext (fptr);
+        NCS = (int)getnext (fptr);
         if (NCS<0) {
             OPAL_OUTPUT((ompi_coll_tuned_stream,"Could not read count of communicators for collective ID %d at around line %d\n", CI, fileline));
             goto on_file_error;
@@ -152,7 +143,7 @@ int ompi_coll_tuned_read_rules_config_file (char *fname, ompi_coll_alg_rule_t** 
 
             com_p = &(alg_p->com_rules[ncs]);
         
-            CS = getnext (fptr);
+            CS = (int)getnext (fptr);
             if (CS<0) {
                 OPAL_OUTPUT((ompi_coll_tuned_stream,"Could not read communicator size for collective ID %d com rule %d at around line %d\n", CI, ncs, fileline));
                 goto on_file_error;
@@ -160,7 +151,7 @@ int ompi_coll_tuned_read_rules_config_file (char *fname, ompi_coll_alg_rule_t** 
 
             com_p->mpi_comsize = CS;
 
-            NMS = getnext (fptr);
+            NMS = (int)getnext (fptr);
             if (NMS<0) {
                 OPAL_OUTPUT((ompi_coll_tuned_stream,"Could not read number of message sizes for collective ID %d com rule %d at around line %d\n", CI, ncs, fileline));
                 goto on_file_error;
@@ -181,16 +172,16 @@ int ompi_coll_tuned_read_rules_config_file (char *fname, ompi_coll_alg_rule_t** 
                     OPAL_OUTPUT((ompi_coll_tuned_stream,"Could not read message size for collective ID %d com rule %d msg rule %d at around line %d\n", CI, ncs, nms, fileline));
                     goto on_file_error;
                 }
-                msg_p->msg_size = MS;
+                msg_p->msg_size = (size_t)MS;
 
-                ALG = getnext (fptr);
+                ALG = (int)getnext (fptr);
                 if (ALG<0) {
                     OPAL_OUTPUT((ompi_coll_tuned_stream,"Could not read target algorithm method for collective ID %d com rule %d msg rule %d at around line %d\n", CI, ncs, nms, fileline));
                     goto on_file_error;
                 }
                 msg_p->result_alg = ALG;
 
-                FANINOUT = getnext (fptr);
+                FANINOUT = (int)getnext (fptr);
                 if (FANINOUT<0) {
                     OPAL_OUTPUT((ompi_coll_tuned_stream,"Could not read fan in/out topo for collective ID %d com rule %d msg rule %d at around line %d\n", CI, ncs, nms, fileline));
                     goto on_file_error;
@@ -206,7 +197,7 @@ int ompi_coll_tuned_read_rules_config_file (char *fname, ompi_coll_alg_rule_t** 
 
                 if (!nms && MS) {
                     OPAL_OUTPUT((ompi_coll_tuned_stream,"All algorithms must specify a rule for message size of zero upwards always first!\n"));
-                    OPAL_OUTPUT((ompi_coll_tuned_stream,"Message size was %d for collective ID %d com rule %d msg rule %d at around line %d\n", MS, CI, ncs, nms, fileline));
+                    OPAL_OUTPUT((ompi_coll_tuned_stream,"Message size was %lu for collective ID %d com rule %d msg rule %d at around line %d\n", MS, CI, ncs, nms, fileline));
                     goto on_file_error;
                 }
 
@@ -259,24 +250,6 @@ int ompi_coll_tuned_read_rules_config_file (char *fname, ompi_coll_alg_rule_t** 
 }
 
 
-static int getnext (FILE *fptr)
-{
-    int val;
-    int rc;
-    char trash;
-
-    do {
-        rc = fscanf(fptr, "%d", &val);
-        if (rc==EOF) return (MYEOF);
-        if (1==rc) return (val);
-        else { 
-            rc = fread(&trash, 1, 1, fptr);
-            if ('\n'==trash) fileline++;
-            if ('#'==trash) skiptonewline (fptr);
-        }
-    } while (1);
-}
-
 static void skiptonewline (FILE *fptr)
 {
     char val;
@@ -284,11 +257,28 @@ static void skiptonewline (FILE *fptr)
 
     do {
         rc = fread(&val, 1, 1, fptr);
-        if (0==rc) return;
-        if ((1==rc)&&('\n'==val)) {
+        if (0 == rc) return;
+        if ((1 == rc)&&('\n' == val)) {
             fileline++;
             return;
         }
+    } while (1);
+}
+
+static long getnext (FILE *fptr)
+{
+    long val;
+    int rc;
+    char trash;
+
+    do {
+        rc = fscanf(fptr, "%li", &val);
+        if (rc == EOF) return MYEOF;
+        if (1 == rc) return val;
+        /* in all other cases, skip to the end */
+        rc = fread(&trash, 1, 1, fptr);
+        if ('\n' == trash) fileline++;
+        if ('#' == trash) skiptonewline (fptr);
     } while (1);
 }
 

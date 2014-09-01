@@ -3,7 +3,7 @@
 # Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
-# Copyright (c) 2004-2005 The University of Tennessee and The University
+# Copyright (c) 2004-2011 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
 # Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -11,6 +11,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2007-2011 Oracle and/or its affiliates.  All rights reserved.
+# Copyright (c) 2010-2011 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -28,9 +29,8 @@ AC_DEFUN([MCA_memory_malloc_solaris_COMPILE_MODE], [
 #                        [action-if-cant-compile])
 # ------------------------------------------------
 AC_DEFUN([MCA_memory_malloc_solaris_CONFIG],[
-    OMPI_VAR_SCOPE_PUSH([memory_malloc_solaris_happy],
-                        [memory_malloc_solaris_should_use],
-                        [memory_malloc_solaris_munmap])
+
+    OMPI_VAR_SCOPE_PUSH([memory_malloc_solaris_happy memory_malloc_solaris_should_use memory_malloc_solaris_munmap memory_alloc_solaris_legacy])
 
     AC_MSG_CHECKING([for Solaris])
 

@@ -22,7 +22,7 @@
 #include "ompi/errhandler/errhandler.h"
 #include "ompi/communicator/communicator.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_STARTALL = mpi_startall_f
 #pragma weak pmpi_startall = mpi_startall_f
 #pragma weak pmpi_startall_ = mpi_startall_f
@@ -37,14 +37,14 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_STARTALL,
                            (count, array_of_requests, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_STARTALL = mpi_startall_f
 #pragma weak mpi_startall = mpi_startall_f
 #pragma weak mpi_startall_ = mpi_startall_f
 #pragma weak mpi_startall__ = mpi_startall_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_STARTALL,
                            mpi_startall,
                            mpi_startall_,
@@ -55,7 +55,7 @@ OMPI_GENERATE_F77_BINDINGS (MPI_STARTALL,
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
@@ -68,7 +68,7 @@ void mpi_startall_f(MPI_Fint *count, MPI_Fint *array_of_requests,
     MPI_Request *c_req;
     int i;
 
-    c_req = malloc(*count * sizeof(MPI_Request));
+    c_req = (MPI_Request *) malloc(*count * sizeof(MPI_Request));
     if (NULL == c_req) {
         *ierr = OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_NO_MEM,
                                        FUNC_NAME);

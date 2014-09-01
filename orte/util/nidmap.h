@@ -30,9 +30,6 @@
 #include "orte_config.h"
 #include "orte/types.h"
 
-#include "opal/class/opal_list.h"
-#include "opal/class/opal_pointer_array.h"
-#include "opal/class/opal_value_array.h"
 #include "opal/dss/dss_types.h"
 
 #include "orte/runtime/orte_globals.h"
@@ -43,15 +40,25 @@ BEGIN_C_DECLS
 #define ORTE_CONTIG_NODE_CMD        0x01
 #define ORTE_NON_CONTIG_NODE_CMD    0x02
 
+ORTE_DECLSPEC int orte_util_nidmap_init(opal_buffer_t *buffer);
+ORTE_DECLSPEC void orte_util_nidmap_finalize(void);
+ORTE_DECLSPEC int orte_util_setup_local_nidmap_entries(void);
+
+ORTE_DECLSPEC orte_jmap_t* orte_util_lookup_jmap(orte_jobid_t job);
+ORTE_DECLSPEC orte_pmap_t* orte_util_lookup_pmap(orte_process_name_t *proc);
+ORTE_DECLSPEC orte_nid_t* orte_util_lookup_nid(orte_process_name_t *proc);
 
 ORTE_DECLSPEC int orte_util_encode_nodemap(opal_byte_object_t *boptr);
-ORTE_DECLSPEC int orte_util_decode_nodemap(opal_byte_object_t *boptr, opal_pointer_array_t *nodes);
+ORTE_DECLSPEC int orte_util_decode_nodemap(opal_byte_object_t *boptr);
 
-ORTE_DECLSPEC int orte_util_encode_pidmap(orte_job_t *jdata, opal_byte_object_t *boptr);
-ORTE_DECLSPEC int orte_util_decode_pidmap(opal_byte_object_t *boptr, orte_vpid_t *num_procs,
-                                          opal_value_array_t *procs, int32_t **app_idx,
-                                          char ***slot_str);
+ORTE_DECLSPEC int orte_util_encode_pidmap(opal_byte_object_t *boptr);
+ORTE_DECLSPEC int orte_util_decode_pidmap(opal_byte_object_t *boptr);
 
+ORTE_DECLSPEC int orte_util_build_daemon_nidmap(char **nodes);
+
+ORTE_DECLSPEC void orte_nidmap_dump(void);
+ORTE_DECLSPEC void orte_jmap_dump(orte_jmap_t *jmap);
+ORTE_DECLSPEC void orte_jobmap_dump(void);
 
 END_C_DECLS
 #endif

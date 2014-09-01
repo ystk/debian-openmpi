@@ -21,16 +21,9 @@
 #ifndef MCA_BML_R2_FT_H
 #define MCA_BML_R2_FT_H
 
-#include "orte/util/show_help.h"
-#include "ompi/mca/btl/btl.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
-
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif

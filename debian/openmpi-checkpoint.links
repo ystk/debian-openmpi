@@ -1,2 +1,2 @@
-usr/bin/orte-checkpoint			usr/bin/ompi-checkpoint
-usr/bin/orte-restart			usr/bin/ompi-restart
+#usr/bin/orte-checkpoint			usr/bin/ompi-checkpoint
+#usr/bin/orte-restart			usr/bin/ompi-restart

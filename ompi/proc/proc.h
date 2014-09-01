@@ -31,12 +31,14 @@
 #ifndef OMPI_PROC_PROC_H
 #define OMPI_PROC_PROC_H
 
+#include "ompi_config.h"
 #include "ompi/types.h"
 #include "opal/class/opal_list.h"
-#include "opal/threads/mutex.h"
 #include "opal/dss/dss_types.h"
+#include "opal/mca/paffinity/paffinity.h"
 
-#include "orte/runtime/orte_globals.h"
+#include "orte/types.h"
+
 
 BEGIN_C_DECLS
 
@@ -55,7 +57,7 @@ struct ompi_proc_t {
     /** this process' name */
     orte_process_name_t             proc_name;
     /** PML specific proc data */
-    struct mca_pml_base_endpoint_t* proc_pml;
+    struct mca_pml_endpoint_t* proc_pml;
     /** BML specific proc data */
     struct mca_bml_base_endpoint_t* proc_bml;
     /** architecture of this process */
@@ -63,7 +65,7 @@ struct ompi_proc_t {
     /** flags for this proc */
     uint8_t                         proc_flags;
     /** Base convertor for the proc described by this process */
-    struct ompi_convertor_t*        proc_convertor;
+    struct opal_convertor_t*        proc_convertor;
     /** A pointer to the name of this host - data is
      * actually stored in the RTE
      */
@@ -85,13 +87,6 @@ OBJ_CLASS_DECLARATION(ompi_proc_t);
  * Please use ompi_proc_local() instead.
  */
 OMPI_DECLSPEC extern ompi_proc_t* ompi_proc_local_proc;
-
-
-/* ******************************************************************** */
-
-
-/** Process is on the same node as the local process */
-#define OMPI_PROC_FLAG_LOCAL  0x01
 
 
 /* ******************************************************************** */

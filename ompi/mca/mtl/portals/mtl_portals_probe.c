@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -18,7 +18,6 @@
 
 #include "ompi_config.h"
 #include "ompi/communicator/communicator.h"
-#include "ompi/request/request.h"
 #include "mtl_portals.h"
 #include "mtl_portals_request.h"
 #include "mtl_portals_recv.h"
@@ -49,7 +48,7 @@ ompi_mtl_portals_iprobe(struct mca_mtl_base_module_t* mtl,
         *flag              = 1;
         status->MPI_SOURCE = PTL_GET_SOURCE(recv_event->ev.match_bits);
         status->MPI_TAG    = PTL_GET_TAG(recv_event->ev.match_bits);
-        status->_count     = recv_event->ev.rlength;
+        status->_ucount     = recv_event->ev.rlength;
         status->MPI_ERROR  = OMPI_SUCCESS;
     } else {
         *flag = 0;

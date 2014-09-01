@@ -369,7 +369,7 @@ AC_DEFUN([MCA_CONFIGURE_FRAMEWORK],[
                    [m4_fatal([Framework $2 using STOP_AT_FIRST but at least one component has no configure.m4])])])
     m4_if(OMPI_EVAL_ARG([MCA_]mca_framework[_CONFIGURE_MODE]), [STOP_AT_FIRST_PRIORITY],
           [m4_ifval(mca_$2_no_config_component_list,
-                   [m4_fatal([Framework $2 using STOP_AT_FIRST but at least one component has no configure.m4])])])
+                   [m4_fatal([Framework $2 using STOP_AT_FIRST_PRIORITY but at least one component has no configure.m4])])])
     m4_foreach(mca_component, [mca_$2_no_config_component_list],
                [m4_ifval(mca_component,
                   [MCA_CONFIGURE_NO_CONFIG_COMPONENT($1, $2, mca_component, 
@@ -549,9 +549,15 @@ AC_DEFUN([MCA_CONFIGURE_M4_CONFIG_COMPONENT],[
 
     # try to configure the component.  pay no attention to
     # --enable-dist, since we'll always have makefiles.
-    AS_IF([test "$should_build" = "1"],
-          [MCA_$2_$3_CONFIG([should_build=1], 
-                            [should_build=0])])
+    m4_ifdef([MCA_]$2[_]$3[_CONFIG],
+             [MCA_$2_$3_CONFIG([should_build=$should_build], 
+                               [should_build=0])],
+              # If they forgot to define an MCA_<fw>_<comp>_CONFIG 
+              # macro, print a friendly warning and abort.
+             [AC_MSG_WARN([*** The $2:$3 did not define an])
+              AC_MSG_WARN([*** MCA_$2_$3_CONFIG macro in the])
+              AC_MSG_WARN([*** $1/$2/$3/configure.m4 file])
+              AC_MSG_ERROR([Cannot continue])])
 
     AS_IF([test "$should_build" = "1"],
           [MCA_PROCESS_COMPONENT($1, $2, $3, $4, $5, $6, $7, $compile_mode)],

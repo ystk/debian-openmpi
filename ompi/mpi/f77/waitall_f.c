@@ -23,7 +23,7 @@
 #include "ompi/errhandler/errhandler.h"
 #include "ompi/communicator/communicator.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILE_LAYER
 #pragma weak PMPI_WAITALL = mpi_waitall_f
 #pragma weak pmpi_waitall = mpi_waitall_f
 #pragma weak pmpi_waitall_ = mpi_waitall_f
@@ -38,14 +38,14 @@ OMPI_GENERATE_F77_BINDINGS (PMPI_WAITALL,
                            (count, array_of_requests, array_of_statuses, ierr) )
 #endif
 
-#if OMPI_HAVE_WEAK_SYMBOLS
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_WAITALL = mpi_waitall_f
 #pragma weak mpi_waitall = mpi_waitall_f
 #pragma weak mpi_waitall_ = mpi_waitall_f
 #pragma weak mpi_waitall__ = mpi_waitall_f
 #endif
 
-#if ! OMPI_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
+#if ! OPAL_HAVE_WEAK_SYMBOLS && ! OMPI_PROFILE_LAYER
 OMPI_GENERATE_F77_BINDINGS (MPI_WAITALL,
                            mpi_waitall,
                            mpi_waitall_,
@@ -56,7 +56,7 @@ OMPI_GENERATE_F77_BINDINGS (MPI_WAITALL,
 #endif
 
 
-#if OMPI_PROFILE_LAYER && ! OMPI_HAVE_WEAK_SYMBOLS
+#if OMPI_PROFILE_LAYER && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpi/f77/profile/defines.h"
 #endif
 
@@ -70,7 +70,7 @@ void mpi_waitall_f(MPI_Fint *count, MPI_Fint *array_of_requests,
     MPI_Status *c_status;
     int i;
 
-    c_req = malloc(OMPI_FINT_2_INT(*count) *
+    c_req = (MPI_Request *) malloc(OMPI_FINT_2_INT(*count) *
                    (sizeof(MPI_Request) + sizeof(MPI_Status)));
     if (NULL == c_req) {
         *ierr = OMPI_INT_2_FINT(OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD,

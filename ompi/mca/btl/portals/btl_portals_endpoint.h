@@ -19,13 +19,9 @@
 #ifndef MCA_BTL_PORTALS_ENDPOINT_H
 #define MCA_BTL_PORTALS_ENDPOINT_H
 
-#include "opal/class/opal_list.h"
-#include "ompi/mca/btl/btl.h"
 #include "btl_portals.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /**
  * An abstraction that represents a connection to a endpoint process.
@@ -36,8 +32,6 @@ extern "C" {
     typedef ptl_process_id_t mca_btl_base_endpoint_t;
     typedef mca_btl_base_endpoint_t  mca_btl_portals_endpoint_t;
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* MCA_BTL_PORTALS_ENDPOINT_H */

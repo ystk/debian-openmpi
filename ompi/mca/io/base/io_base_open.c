@@ -20,13 +20,11 @@
 #include "ompi_config.h"
 #include <stdio.h>
 
-#include "ompi/class/ompi_free_list.h"
-#include "orte/util/show_help.h"
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 
-#include "orte/util/show_help.h"
 
 #include "ompi/mca/io/io.h"
 #include "ompi/mca/io/base/base.h"
@@ -98,14 +96,6 @@ int mca_io_base_open(void)
     /* Find the index of the MCA "io" param for selection */
     
     mca_io_base_param = mca_base_param_find("io", "base", NULL);
-
-    /* Initialize some io framework resrouces */
-
-    mca_io_base_component_init();
-
-    /* Intialize the request progression code */
-
-    mca_io_base_request_progress_init();
 
     /* All done */
     

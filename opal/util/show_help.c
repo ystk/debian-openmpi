@@ -37,23 +37,33 @@
 /*
  * Private variables
  */
-#if 0
-/* not attempting i18n-like support right now */
-static const char *default_language = "C";
-#endif
 static const char *default_filename = "help-messages";
 static const char *dash_line = "--------------------------------------------------------------------------\n";
 static int output_stream = -1;
+static char **search_dirs = NULL;
+
+/*
+ * Local functions
+ */
+static int opal_show_vhelp_internal(const char *filename, const char *topic, 
+                                    bool want_error_header, va_list arglist);
+static int opal_show_help_internal(const char *filename, const char *topic, 
+                                   bool want_error_header, ...);
+
+opal_show_help_fn_t opal_show_help = opal_show_help_internal;
+opal_show_vhelp_fn_t opal_show_vhelp = opal_show_vhelp_internal;
 
 
 int opal_show_help_init(void)
 {
     opal_output_stream_t lds;
-
+    
     OBJ_CONSTRUCT(&lds, opal_output_stream_t);
     lds.lds_want_stderr = true;
     output_stream = opal_output_open(&lds);
-
+    
+    opal_argv_append_nosize(&search_dirs, opal_install_dirs.pkgdatadir);
+    
     return OPAL_SUCCESS;
 }
 
@@ -61,6 +71,12 @@ int opal_show_help_finalize(void)
 {
     opal_output_close(output_stream);
     output_stream = -1;
+    
+    /* destruct the search list */
+    if (NULL != search_dirs) {
+        opal_argv_free(search_dirs);
+    };
+    
     return OPAL_SUCCESS;
 }
 
@@ -119,72 +135,39 @@ static int array2string(char **outstring,
  */
 static int open_file(const char *base, const char *topic)
 {
-#if 0
-    /* not attempting i18n-like support right now */
-    const char *lang;
-#endif
     char *filename;
-    char *err_msg = 0;
+    char *err_msg = NULL;
     size_t base_len;
-
+    int i;
+    
     /* If no filename was supplied, use the default */
 
     if (NULL == base) {
         base = default_filename;
     }
-
-    /* Don't try any i18n-like support right now */
-#if 1
+    
     /* Try to open the file.  If we can't find it, try it with a .txt
-       extension. */
-
-    filename = opal_os_path( false, opal_install_dirs.pkgdatadir, base, NULL );
-    opal_show_help_yyin = fopen(filename, "r");
-    if (NULL == opal_show_help_yyin) {
-        asprintf(&err_msg, "%s: %s", filename, strerror(errno));
-        base_len = strlen(base);
-        if (4 > base_len || 0 != strcmp(base + base_len - 4, ".txt")) {
-            free(filename);
-            asprintf(&filename, "%s%s%s.txt", opal_install_dirs.pkgdatadir,
-                     OPAL_PATH_SEP, base);
-            opal_show_help_yyin = fopen(filename, "r");
+     * extension.
+     */
+    for (i=0; NULL != search_dirs[i]; i++) {
+        filename = opal_os_path( false, search_dirs[i], base, NULL );
+        opal_show_help_yyin = fopen(filename, "r");
+        if (NULL == opal_show_help_yyin) {
+            asprintf(&err_msg, "%s: %s", filename, strerror(errno));
+            base_len = strlen(base);
+            if (4 > base_len || 0 != strcmp(base + base_len - 4, ".txt")) {
+                free(filename);
+                asprintf(&filename, "%s%s%s.txt", search_dirs[i], OPAL_PATH_SEP, base);
+                opal_show_help_yyin = fopen(filename, "r");
+            }
+        }
+        free(filename);
+        if (NULL != opal_show_help_yyin) {
+            break;
         }
     }
-    free(filename);
-#else
-    /* What's our locale? */
-
-    lang = setlocale(LC_MESSAGES, "");
-    if (NULL == lang) {
-        lang = default_language;
-    }
-
-    /* Do we have a file matching that locale?  If not, open the
-       default language (because we know that we have that one) */
-
-    asprintf(&filename, "%s%s%s.%s", opal_install_dirs.pkgdatadir,
-             OPAL_PATH_SEP, base, lang);
-    opal_show_help_yyin = fopen(filename, "r");
-    if (NULL == opal_show_help_yyin) {
-        asprintf(&err_msg, "%s: %s", filename, strerror(errno));
-        free(filename);
-        asprintf(&filename, "%s%s%s.%s", opal_install_dirs.pkgdatadir, 
-                 OPAL_PATH_SEP, base, default_language);
-        opal_show_help_yyin = fopen(filename, "r");
-    }
-    free(filename);
-
-    /* If we still couldn't find it, try with no extension */
-
-    if (NULL == opal_show_help_yyin) {
-        filename = opal_os_path( false, opal_install_dirs.pkgdatadir, base, NULL );
-        opal_show_help_yyin = fopen(filename, "r");
-        free(filename);
-    }
-#endif
 
     /* If we still couldn't open it, then something is wrong */
-
     if (NULL == opal_show_help_yyin) {
         opal_output(output_stream, "%sSorry!  You were supposed to get help about:\n    %s\nBut I couldn't open the help file:\n    %s.  Sorry!\n%s", dash_line, topic, err_msg, dash_line);
         free(err_msg);
@@ -340,8 +323,8 @@ char *opal_show_help_string(const char *filename, const char *topic,
     return output;
 }
 
-int opal_show_vhelp(const char *filename, const char *topic, 
-                    bool want_error_header, va_list arglist)
+static int opal_show_vhelp_internal(const char *filename, const char *topic, 
+                                    bool want_error_header, va_list arglist)
 {
     char *output;
 
@@ -358,8 +341,8 @@ int opal_show_vhelp(const char *filename, const char *topic,
     return (NULL == output) ? OPAL_ERROR : OPAL_SUCCESS;
 }
 
-int opal_show_help(const char *filename, const char *topic, 
-                   bool want_error_header, ...)
+static int opal_show_help_internal(const char *filename, const char *topic, 
+                                   bool want_error_header, ...)
 {
     va_list arglist;
     int rc;
@@ -370,4 +353,10 @@ int opal_show_help(const char *filename, const char *topic,
     va_end(arglist);
 
     return rc;
+}
+
+int opal_show_help_add_dir(const char *directory)
+{
+    opal_argv_append_nosize(&search_dirs, directory);
+    return OPAL_SUCCESS;
 }

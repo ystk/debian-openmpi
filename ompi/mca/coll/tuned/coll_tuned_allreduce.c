@@ -21,7 +21,7 @@
 
 #include "mpi.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
@@ -59,7 +59,7 @@ ompi_coll_tuned_allreduce_intra_nonoverlapping(void *sbuf, void *rbuf, int count
     /* Reduce to 0 and broadcast. */
 
     if (MPI_IN_PLACE == sbuf) {
-        if (0 == ompi_comm_rank(comm)) {
+        if (0 == rank) {
             err = comm->c_coll.coll_reduce (MPI_IN_PLACE, rbuf, count, dtype, 
                                             op, 0, comm, comm->c_coll.coll_reduce_module);
         } else {
@@ -143,26 +143,26 @@ ompi_coll_tuned_allreduce_intra_recursivedoubling(void *sbuf, void *rbuf,
    /* Special case for size == 1 */
    if (1 == size) {
       if (MPI_IN_PLACE != sbuf) {
-         ret = ompi_ddt_copy_content_same_ddt(dtype, count, (char*)rbuf, (char*)sbuf);
+         ret = ompi_datatype_copy_content_same_ddt(dtype, count, (char*)rbuf, (char*)sbuf);
          if (ret < 0) { line = __LINE__; goto error_hndl; }
       }
       return MPI_SUCCESS;
    }
 
    /* Allocate and initialize temporary send buffer */
-   ret = ompi_ddt_get_extent(dtype, &lb, &extent);
+   ret = ompi_datatype_get_extent(dtype, &lb, &extent);
    if (MPI_SUCCESS != ret) { line = __LINE__; goto error_hndl; }
-   ret = ompi_ddt_get_true_extent(dtype, &true_lb, &true_extent);
+   ret = ompi_datatype_get_true_extent(dtype, &true_lb, &true_extent);
    if (MPI_SUCCESS != ret) { line = __LINE__; goto error_hndl; }
 
    inplacebuf = (char*) malloc(true_extent + (count - 1) * extent);
    if (NULL == inplacebuf) { ret = -1; line = __LINE__; goto error_hndl; }
 
    if (MPI_IN_PLACE == sbuf) {
-      ret = ompi_ddt_copy_content_same_ddt(dtype, count, inplacebuf, (char*)rbuf);
+      ret = ompi_datatype_copy_content_same_ddt(dtype, count, inplacebuf, (char*)rbuf);
       if (ret < 0) { line = __LINE__; goto error_hndl; }
    } else {
-      ret = ompi_ddt_copy_content_same_ddt(dtype, count, inplacebuf, (char*)sbuf);
+      ret = ompi_datatype_copy_content_same_ddt(dtype, count, inplacebuf, (char*)sbuf);
       if (ret < 0) { line = __LINE__; goto error_hndl; }
    }
 
@@ -258,7 +258,7 @@ ompi_coll_tuned_allreduce_intra_recursivedoubling(void *sbuf, void *rbuf,
 
    /* Ensure that the final result is in rbuf */
    if (tmpsend != rbuf) {
-      ret = ompi_ddt_copy_content_same_ddt(dtype, count, (char*)rbuf, tmpsend);
+      ret = ompi_datatype_copy_content_same_ddt(dtype, count, (char*)rbuf, tmpsend);
       if (ret < 0) { line = __LINE__; goto error_hndl; }
    }
 
@@ -363,7 +363,7 @@ ompi_coll_tuned_allreduce_intra_ring(void *sbuf, void *rbuf, int count,
    /* Special case for size == 1 */
    if (1 == size) {
       if (MPI_IN_PLACE != sbuf) {
-         ret = ompi_ddt_copy_content_same_ddt(dtype, count, (char*)rbuf, (char*)sbuf);
+         ret = ompi_datatype_copy_content_same_ddt(dtype, count, (char*)rbuf, (char*)sbuf);
          if (ret < 0) { line = __LINE__; goto error_hndl; }
       }
       return MPI_SUCCESS;
@@ -379,11 +379,11 @@ ompi_coll_tuned_allreduce_intra_ring(void *sbuf, void *rbuf, int count,
    }
 
    /* Allocate and initialize temporary buffers */
-   ret = ompi_ddt_get_extent(dtype, &lb, &extent);
+   ret = ompi_datatype_get_extent(dtype, &lb, &extent);
    if (MPI_SUCCESS != ret) { line = __LINE__; goto error_hndl; }
-   ret = ompi_ddt_get_true_extent(dtype, &true_lb, &true_extent);
+   ret = ompi_datatype_get_true_extent(dtype, &true_lb, &true_extent);
    if (MPI_SUCCESS != ret) { line = __LINE__; goto error_hndl; }
-   ret = ompi_ddt_type_size( dtype, &typelng);
+   ret = ompi_datatype_type_size( dtype, &typelng);
    if (MPI_SUCCESS != ret) { line = __LINE__; goto error_hndl; }
 
    /* Determine the number of elements per block and corresponding 
@@ -408,7 +408,7 @@ ompi_coll_tuned_allreduce_intra_ring(void *sbuf, void *rbuf, int count,
 
    /* Handle MPI_IN_PLACE */
    if (MPI_IN_PLACE != sbuf) {
-      ret = ompi_ddt_copy_content_same_ddt(dtype, count, (char*)rbuf, (char*)sbuf);
+      ret = ompi_datatype_copy_content_same_ddt(dtype, count, (char*)rbuf, (char*)sbuf);
       if (ret < 0) { line = __LINE__; goto error_hndl; }
    }
 
@@ -644,18 +644,18 @@ ompi_coll_tuned_allreduce_intra_ring_segmented(void *sbuf, void *rbuf, int count
    /* Special case for size == 1 */
    if (1 == size) {
       if (MPI_IN_PLACE != sbuf) {
-         ret = ompi_ddt_copy_content_same_ddt(dtype, count, (char*)rbuf, (char*)sbuf);
+         ret = ompi_datatype_copy_content_same_ddt(dtype, count, (char*)rbuf, (char*)sbuf);
          if (ret < 0) { line = __LINE__; goto error_hndl; }
       }
       return MPI_SUCCESS;
    }
 
    /* Determine segment count based on the suggested segment size */
-   ret = ompi_ddt_get_extent(dtype, &lb, &extent);
+   ret = ompi_datatype_get_extent(dtype, &lb, &extent);
    if (MPI_SUCCESS != ret) { line = __LINE__; goto error_hndl; }
-   ret = ompi_ddt_get_true_extent(dtype, &true_lb, &true_extent);
+   ret = ompi_datatype_get_true_extent(dtype, &true_lb, &true_extent);
    if (MPI_SUCCESS != ret) { line = __LINE__; goto error_hndl; }
-   ret = ompi_ddt_type_size( dtype, &typelng);
+   ret = ompi_datatype_type_size( dtype, &typelng);
    if (MPI_SUCCESS != ret) { line = __LINE__; goto error_hndl; }
    segcount = count;
    COLL_TUNED_COMPUTED_SEGCOUNT(segsize, typelng, segcount)
@@ -699,7 +699,7 @@ ompi_coll_tuned_allreduce_intra_ring_segmented(void *sbuf, void *rbuf, int count
 
    /* Handle MPI_IN_PLACE */
    if (MPI_IN_PLACE != sbuf) {
-      ret = ompi_ddt_copy_content_same_ddt(dtype, count, (char*)rbuf, (char*)sbuf);
+      ret = ompi_datatype_copy_content_same_ddt(dtype, count, (char*)rbuf, (char*)sbuf);
       if (ret < 0) { line = __LINE__; goto error_hndl; }
    }
 
@@ -897,7 +897,7 @@ ompi_coll_tuned_allreduce_intra_basic_linear(void *sbuf, void *rbuf, int count,
     /* Reduce to 0 and broadcast. */
 
     if (MPI_IN_PLACE == sbuf) {
-        if (0 == ompi_comm_rank(comm)) {
+        if (0 == rank) {
             err = ompi_coll_tuned_reduce_intra_basic_linear (MPI_IN_PLACE, rbuf, count, dtype,
 							     op, 0, comm, module);
         } else {
@@ -943,8 +943,11 @@ int ompi_coll_tuned_allreduce_intra_check_forced_init (coll_tuned_force_algorith
                                   "allreduce_algorithm",
                                   "Which allreduce algorithm is used. Can be locked down to any of: 0 ignore, 1 basic linear, 2 nonoverlapping (tuned reduce + tuned bcast), 3 recursive doubling, 4 ring, 5 segmented ring",
                                   false, false, 0, NULL);
+    if (mca_param_indices->algorithm_param_index < 0) {
+        return mca_param_indices->algorithm_param_index;
+    }
     mca_base_param_lookup_int( mca_param_indices->algorithm_param_index, &(requested_alg));
-    if( requested_alg > max_alg ) {
+    if( 0 > requested_alg || requested_alg > max_alg ) {
         if( 0 == ompi_comm_rank( MPI_COMM_WORLD ) ) {
             opal_output( 0, "Allreduce algorithm #%d is not available (range [0..%d]). Switching back to ignore(0)\n",
                          requested_alg, max_alg );

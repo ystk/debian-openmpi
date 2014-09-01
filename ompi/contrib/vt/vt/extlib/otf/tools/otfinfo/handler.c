@@ -1,5 +1,5 @@
 /*
- This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2009.
+ This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2013.
  Authors: Michael Heyde
 */
 
@@ -28,6 +28,14 @@ int handleDefCreator( void *userData, uint32_t stream, const char *creator )
   return OTF_RETURN_OK;
 }
 
+int handleDefUniqueId( void *userData, uint32_t stream, uint64_t uid )
+{
+  definitionInfoT *info  = userData;
+  info->traceUniqueId = uid;
+
+  return OTF_RETURN_OK;
+}
+
 int handleDefVersion( void *userData, uint32_t stream, uint8_t major,
                       uint8_t minor, uint8_t sub, const char *string )
 {
@@ -35,7 +43,13 @@ int handleDefVersion( void *userData, uint32_t stream, uint8_t major,
   info->otfVersionMajor  = major;
   info->otfVersionMinor  = minor;
   info->otfVersionSub    = sub;
-  info->otfVersionString = strdup(string);
+
+  if( string != NULL ) {
+  	info->otfVersionString = strdup(string);
+  } else {
+	info->otfVersionString = strdup("");
+  }
+
   return OTF_RETURN_OK;
 }
 
@@ -61,7 +75,7 @@ int handleDefProcess( void *userData, uint32_t stream, uint32_t process,
 
 int handleDefTimerResolution( void *userData, uint32_t stream,
                               uint64_t ticksPerSecond )
-{
+{ 
   ((definitionInfoT*)userData)->timerResolution = ticksPerSecond;
   return OTF_RETURN_OK;
 }
@@ -71,7 +85,7 @@ int handleDefinitionComment( void *userData, uint32_t stream,
 {
   definitionInfoT *info = (definitionInfoT*)userData;
   uint32_t index = (info->counterDefinitionComment)++;
-  (info->definitionComments) = (char**)realloc(info->definitionComments,(index + 1) * sizeof(char**));
+  (info->definitionComments) = (char**)realloc(info->definitionComments,(index + 1) * sizeof(char*));
   (info->definitionComments)[index] = strdup(comment);
   return OTF_RETURN_OK;
 }
@@ -117,6 +131,47 @@ int handleDefCounter( void *userData, uint32_t stream, uint32_t counter,
     (info->counters)[i].name = strdup(name);
     (info->counters)[i].id = counter;
     (info->counters)[i].properties = properties;
+  }
+  return OTF_RETURN_OK;
+}
+
+int handleDefMarker( void *userData, uint32_t stream, uint32_t token,
+                     const char *name, uint32_t type )
+{
+  /*in a low info level, increment the marker counter*/
+  if( MAXINFOLEVEL > ((definitionInfoT*)userData)->infoLevel )
+  {
+    ((definitionInfoT*)userData)->counterMarkerDefinition++;
+  }
+  else
+  {
+    /*in the max info level, get the marker names*/
+    uint32_t index = 0;
+    definitionInfoT *info = (definitionInfoT*)userData;
+    while(info->markerNames[index])
+      index++;
+    (info->markerNames)[index] = strdup(name);
+  }
+  return OTF_RETURN_OK;
+}
+
+int handleDefCollectiveOperation( void *userData, uint32_t stream,
+                                  uint32_t collOp, const char *name,
+                                  uint32_t type )
+{
+  /*in a low info level, increment the collective counter*/
+  if( 3 > ((definitionInfoT*)userData)->infoLevel )
+  {
+    ((definitionInfoT*)userData)->counterCollectiveOperationDefinition++;
+  }
+  else
+  {
+    /*in the max info level, get the collective operation names*/
+    int index = 0;
+    definitionInfoT *info = (definitionInfoT*)userData;
+    while(info->collectiveOperationNames[index])
+      index++;
+    (info->collectiveOperationNames)[index] = strdup(name);
   }
   return OTF_RETURN_OK;
 }
@@ -187,7 +242,7 @@ int handleDefSclFile( void *userData, uint32_t stream, uint32_t sourceFile,
   definitionInfoT *info = (definitionInfoT*)userData;
   uint32_t index = (info->counterSourceFileName)++;
   (info->sourceFileNames) = (char**)realloc( info->sourceFileNames,(index + 1)
-                                             * sizeof(char**) );
+                                             * sizeof(char*) );
   (info->sourceFileNames)[index] = strdup(name);
   return OTF_RETURN_OK;
 }
@@ -224,22 +279,57 @@ int handleRecvMsg( void *userData, uint64_t time, uint32_t recvProc,
   return OTF_RETURN_OK;
 }
 
-int handleDefCollectiveOperation( void *userData, uint32_t stream,
-                                  uint32_t collOp, const char *name,
-                                  uint32_t type )
+int handleRMAPut( void *userData, uint64_t time, uint32_t process,
+                  uint32_t origin, uint32_t target, uint32_t communicator,
+                  uint32_t tag, uint64_t bytes, uint32_t source )
 {
-  /*in a low info level, increment the collective counter*/
+  ((definitionInfoT*)userData)->counterRMAPut++;
+  return OTF_RETURN_OK;
+}
+int handleRMAPutRemoteEnd( void *userData, uint64_t time, uint32_t process,
+                           uint32_t origin, uint32_t target,
+                           uint32_t communicator, uint32_t tag, uint64_t bytes,
+                           uint32_t source )
+{
+  ((definitionInfoT*)userData)->counterRMAPutRemoteEnd++;
+  return OTF_RETURN_OK;
+}
+int handleRMAGet( void *userData, uint64_t time, uint32_t process,
+                  uint32_t origin, uint32_t target, uint32_t communicator,
+                  uint32_t tag, uint64_t bytes, uint32_t source )
+{
+  ((definitionInfoT*)userData)->counterRMAGet++;
+  return OTF_RETURN_OK;
+}
+int handleRMAEnd( void *userData, uint64_t time, uint32_t process,
+                  uint32_t remote, uint32_t communicator, uint32_t tag,
+                  uint32_t source )
+{
+  ((definitionInfoT*)userData)->counterRMAEnd++;
+  return OTF_RETURN_OK;
+}
+
+int handleMarker( void *userData, uint64_t time, uint32_t process,
+                  uint32_t token, const char* text )
+{
+  ((definitionInfoT*)userData)->counterMarker++;
+  return OTF_RETURN_OK;
+}
+
+int handleCollectiveOperation( void *userData, uint64_t time,
+                               uint32_t process, uint32_t collective,
+                               uint32_t procGroup, uint32_t rootProc,
+                               uint32_t sent, uint32_t received,
+                               uint64_t duration, uint32_t source )
+{
   ((definitionInfoT*)userData)->counterCollectiveOperation++;
-  if( MAXINFOLEVEL <= ((definitionInfoT*)userData)->infoLevel )
-  {
-    /*in the max info level, get the collective operation names*/
-    definitionInfoT *info = (definitionInfoT*)userData;
-    int index = ((definitionInfoT*)userData)->counterCollectiveOperation;
-    (info->collectiveOperationNames) = (char**)realloc(
-                                         info->collectiveOperationNames,
-                                         (index) * sizeof(char**) );
-    (info->collectiveOperationNames)[index-1] = strdup(name);
-  }
+  return OTF_RETURN_OK;
+}
+
+int handleEndCollectiveOperation( void *userData, uint64_t time,
+                                  uint32_t process, uint64_t matchingId )
+{
+  ((definitionInfoT*)userData)->counterCollectiveOperation++;
   return OTF_RETURN_OK;
 }
 
@@ -247,6 +337,15 @@ int handleFileOperation( void *userData, uint64_t time, uint32_t fileid,
                          uint32_t process, uint64_t handleid,
                          uint32_t operation, uint64_t bytes, uint64_t duration,
                          uint32_t source )
+{
+  ((definitionInfoT*)userData)->counterFileOperation++;
+  return OTF_RETURN_OK;
+}
+
+int handleEndFileOperation( void *userData, uint64_t time, uint32_t process,
+                            uint32_t fileid, uint64_t handleid,
+                            uint32_t operation, uint64_t bytes,
+                            uint32_t source )
 {
   ((definitionInfoT*)userData)->counterFileOperation++;
   return OTF_RETURN_OK;
@@ -269,8 +368,8 @@ int handleCounter( void* userData, uint64_t time, uint32_t process,
   mapInfoProcessT *currentElement = NULL;
   definitionInfoT *info = (definitionInfoT*)userData;
 
-  while( (info->counters[i].id != counter) &&
-         (i < info->counterCounterDefinition) )
+  while( (i < info->counterCounterDefinition) &&
+         (info->counters[i].id != counter))
   {
     i++;
   }

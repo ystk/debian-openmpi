@@ -19,6 +19,8 @@
 #ifndef OPAL_UTIL_PTY_H
 #define OPAL_UTIL_PTY_H
 
+#include "opal_config.h"
+
 #ifdef HAVE_UTIL_H
 #include <util.h>
 #endif
@@ -33,11 +35,9 @@
 # endif
 #endif
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
-#if OMPI_ENABLE_PTY_SUPPORT 
+#if OPAL_ENABLE_PTY_SUPPORT 
 
 OPAL_DECLSPEC int opal_openpty(int *amaster, int *aslave, char *name, 
                                struct termios *termp, struct winsize *winp);
@@ -49,8 +49,6 @@ OPAL_DECLSPEC int opal_openpty(int *amaster, int *aslave, char *name,
 
 #endif
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OPAL_UTIL_PTY_H */

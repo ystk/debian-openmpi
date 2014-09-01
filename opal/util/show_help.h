@@ -128,15 +128,17 @@ OPAL_DECLSPEC int opal_show_help_finalize(void);
  * based on the topic, and displays it.  If want_error_header is
  * true, a header and footer of asterisks are also displayed.
  */
-OPAL_DECLSPEC int opal_show_help(const char *filename, const char *topic, 
-                                 bool want_error_header, ...);
+typedef int (*opal_show_help_fn_t)(const char *filename, const char *topic, 
+                                   bool want_error_header, ...);
+OPAL_DECLSPEC extern opal_show_help_fn_t opal_show_help;
 
 /**
  * This function does the same thing as opal_show_help(), but accepts
  * a va_list form of varargs.
  */
-OPAL_DECLSPEC int opal_show_vhelp(const char *filename, const char *topic, 
-                                  bool want_error_header, va_list ap);
+typedef int (*opal_show_vhelp_fn_t)(const char *filename, const char *topic, 
+                                    bool want_error_header, va_list ap);
+OPAL_DECLSPEC extern opal_show_vhelp_fn_t opal_show_vhelp;
 
 /**
  * This function does the same thing as opal_show_help(), but returns
@@ -153,6 +155,21 @@ OPAL_DECLSPEC char* opal_show_help_string(const char *filename,
 OPAL_DECLSPEC char* opal_show_help_vstring(const char *filename, 
                                           const char *topic, 
                                           bool want_error_header, va_list ap);
+
+/**
+ * This function adds another search location for the files that
+ * back show_help messages. Locations will be searched starting
+ * with the prefix installation directory, then cycled through
+ * any additional directories in the order they were added
+ *
+ * This interface allows libraries that use OMPI to take advantage
+ * of the show_help functionality. OMPI defines the show_help directory
+ * based on where OMPI was installed. However, if the library wants to
+ * use show_help to provide error output specific to itself, then it
+ * nees to tell show_help how to find its own show_help files - without
+ * interfering with the linked ORTE libs when they need to do show_help.
+ */
+OPAL_DECLSPEC int opal_show_help_add_dir(const char *directory);
 
 /** 
  * \internal

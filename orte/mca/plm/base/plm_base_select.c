@@ -19,14 +19,11 @@
 #include "orte_config.h"
 #include "orte/constants.h"
 
-#include "opal/class/opal_list.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_component_repository.h"
 
-#include "orte/util/show_help.h"
 #include "orte/util/proc_info.h"
-#include "orte/mca/errmgr/errmgr.h"
 
 #include "orte/mca/plm/base/plm_private.h"
 #include "orte/mca/plm/base/base.h"
@@ -55,7 +52,7 @@ int orte_plm_base_select(void)
          * If we didn't find one, and we are a daemon, then default to retaining the proxy.
          * Otherwise, if we didn't find one to select, that is unacceptable. 
          */
-        if (orte_process_info.daemon) {
+        if (ORTE_PROC_IS_DAEMON) {
             /* don't record a selected component or flag selected
              * so we finalize correctly - just leave the plm alone
              * as it defaults to pointing at the proxy

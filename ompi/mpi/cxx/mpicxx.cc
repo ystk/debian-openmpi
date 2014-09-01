@@ -12,6 +12,7 @@
 //                         All rights reserved.
 // Copyright (c) 2007-2009 Cisco Systems, Inc.  All rights reserved.
 // Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
+// Copyright (c) 2011      FUJITSU LIMITED.  All rights reserved.
 // $COPYRIGHT$
 // 
 // Additional copyrights may follow
@@ -24,9 +25,9 @@
    SEEK_SET and friends right */
 #include "ompi_config.h"
 
-#if OMPI_CXX_USE_PRAGMA_IDENT
+#if OPAL_CXX_USE_PRAGMA_IDENT
 #pragma ident OMPI_IDENT_STRING
-#elif OMPI_CXX_USE_IDENT
+#elif OPAL_CXX_USE_IDENT
 #ident OMPI_IDENT_STRING
 #endif
 namespace MPI {
@@ -81,7 +82,7 @@ const Datatype REAL((MPI_Datatype)&(ompi_mpi_real));
 const Datatype INTEGER((MPI_Datatype)&(ompi_mpi_integer));
 const Datatype DOUBLE_PRECISION((MPI_Datatype)&(ompi_mpi_dblprec));
 const Datatype F_COMPLEX((MPI_Datatype)&(ompi_mpi_cplex));
-const Datatype LOGICAL((MPI_Datatype)&(ompi_mpi_logic));
+const Datatype LOGICAL((MPI_Datatype)&(ompi_mpi_logical));
 const Datatype CHARACTER((MPI_Datatype)&(ompi_mpi_character));
 
 // datatype for reduction functions (Fortran)
@@ -102,11 +103,13 @@ const Datatype REAL8((MPI_Datatype)&(ompi_mpi_double));
 // optional datatype (C / C++)
 const Datatype UNSIGNED_LONG_LONG(MPI_UNSIGNED_LONG_LONG);
 const Datatype LONG_LONG(MPI_LONG_LONG);
+const Datatype LONG_LONG_INT(MPI_LONG_LONG_INT);
 
 // c++ types
 const Datatype BOOL((MPI_Datatype)&(ompi_mpi_cxx_bool));
 const Datatype COMPLEX((MPI_Datatype)&(ompi_mpi_cxx_cplex));
 const Datatype DOUBLE_COMPLEX((MPI_Datatype)&(ompi_mpi_cxx_dblcplex));
+const Datatype F_DOUBLE_COMPLEX((MPI_Datatype)&(ompi_mpi_cxx_dblcplex));
 const Datatype LONG_DOUBLE_COMPLEX((MPI_Datatype)&(ompi_mpi_cxx_ldblcplex));
 
 // reserved communicators

@@ -35,13 +35,13 @@
  * In a interface (.h) file, define the class.  The first element
  * should always be the parent class, for example
  * @code
- *   typedef struct sally_t sally_t;
  *   struct sally_t
  *   {
  *     parent_t parent;
  *     void *first_member;
  *     ...
  *   };
+ *   typedef struct sally_t sally_t;
  *
  *   OBJ_CLASS_DECLARATION(sally_t);
  * @endcode
@@ -59,7 +59,8 @@
  *     OBJ_CLASS(parent_t),  // pointer to parent_t_class
  *     sally_construct,
  *     sally_destruct,
- *     0, 0, NULL, NULL
+ *     0, 0, NULL, NULL,
+ *     sizeof ("sally_t")
  *   };
  * @endcode
  * This variable should be declared in the interface (.h) file using
@@ -115,16 +116,19 @@
 #ifndef OPAL_OBJECT_H
 #define OPAL_OBJECT_H
 
+#include "opal_config.h"
 #include <assert.h>
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
 #endif  /* HAVE_STDLIB_H */
 
-#if OMPI_HAVE_THREAD_SUPPORT
+#if OPAL_HAVE_THREAD_SUPPORT
 #include "opal/sys/atomic.h"
-#endif  /* OMPI_HAVE_THREAD_SUPPORT */
+#endif  /* OPAL_HAVE_THREAD_SUPPORT */
 
-#if OMPI_ENABLE_DEBUG
+BEGIN_C_DECLS
+
+#if OPAL_ENABLE_DEBUG
 /* Any kind of unique ID should do the job */
 #define OPAL_OBJ_MAGIC_ID ((0xdeafbeedULL << 32) + 0xdeafbeedULL)
 #endif
@@ -164,7 +168,7 @@ struct opal_class_t {
  *
  * @param NAME   Name of the class to initialize
  */
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 #define OPAL_OBJ_STATIC_INIT(BASE_CLASS) { OPAL_OBJ_MAGIC_ID, OBJ_CLASS(BASE_CLASS), 1, __FILE__, __LINE__ }
 #else
 #define OPAL_OBJ_STATIC_INIT(BASE_CLASS) { OBJ_CLASS(BASE_CLASS), 1 }
@@ -176,17 +180,17 @@ struct opal_class_t {
  * This is special and does not follow the pattern for other classes.
  */
 struct opal_object_t {
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     /** Magic ID -- want this to be the very first item in the
         struct's memory */
     uint64_t obj_magic_id;
 #endif
     opal_class_t *obj_class;            /**< class descriptor */
     volatile int32_t obj_reference_count;   /**< reference count */
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
    const char* cls_init_file_name;        /**< In debug mode store the file where the object get contructed */
    int   cls_init_lineno;           /**< In debug mode store the line number where the object get contructed */
-#endif  /* OMPI_ENABLE_DEBUG */
+#endif  /* OPAL_ENABLE_DEBUG */
 };
 
 /* macros ************************************************************/
@@ -241,7 +245,7 @@ struct opal_object_t {
  * @return              Pointer to the object 
  */
 static inline opal_object_t *opal_obj_new(opal_class_t * cls);
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 static inline opal_object_t *opal_obj_new_debug(opal_class_t* type, const char* file, int line)
 {
     opal_object_t* object = opal_obj_new(type);
@@ -255,14 +259,14 @@ static inline opal_object_t *opal_obj_new_debug(opal_class_t* type, const char* 
 #else
 #define OBJ_NEW(type)                                   \
     ((type *) opal_obj_new(OBJ_CLASS(type)))
-#endif  /* OMPI_ENABLE_DEBUG */
+#endif  /* OPAL_ENABLE_DEBUG */
 
 /**
  * Retain an object (by incrementing its reference count)
  *
  * @param object        Pointer to the object
  */
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 #define OBJ_RETAIN(object)                                              \
     do {                                                                \
         assert(NULL != ((opal_object_t *) (object))->obj_class);        \
@@ -278,7 +282,7 @@ static inline opal_object_t *opal_obj_new_debug(opal_class_t* type, const char* 
  * Helper macro for the debug mode to store the locations where the status of
  * an object change.
  */
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 #define OBJ_REMEMBER_FILE_AND_LINENO( OBJECT, FILE, LINENO )    \
     do {                                                        \
         ((opal_object_t*)(OBJECT))->cls_init_file_name = FILE;  \
@@ -291,7 +295,7 @@ static inline opal_object_t *opal_obj_new_debug(opal_class_t* type, const char* 
 #else
 #define OBJ_REMEMBER_FILE_AND_LINENO( OBJECT, FILE, LINENO )
 #define OBJ_SET_MAGIC_ID( OBJECT, VALUE )
-#endif  /* OMPI_ENABLE_DEBUG */
+#endif  /* OPAL_ENABLE_DEBUG */
 
 /**
  * Release an object (by decrementing its reference count).  If the
@@ -303,7 +307,7 @@ static inline opal_object_t *opal_obj_new_debug(opal_class_t* type, const char* 
  *
  * @param object        Pointer to the object
  */
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 #define OBJ_RELEASE(object)                                             \
     do {                                                                \
         assert(NULL != ((opal_object_t *) (object))->obj_class);        \
@@ -358,7 +362,7 @@ do {                                                                \
  *
  * @param object        Pointer to the object
  */
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 #define OBJ_DESTRUCT(object)                                    \
 do {                                                            \
     assert(OPAL_OBJ_MAGIC_ID == ((opal_object_t *) (object))->obj_magic_id); \
@@ -373,8 +377,6 @@ do {                                                            \
     OBJ_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
 } while (0)
 #endif
-
-BEGIN_C_DECLS
 
 OPAL_DECLSPEC OBJ_CLASS_DECLARATION(opal_object_t);
 
@@ -401,7 +403,6 @@ OPAL_DECLSPEC void opal_class_initialize(opal_class_t *);
  */
 OPAL_DECLSPEC int opal_class_finalize(void);
 
-END_C_DECLS
 /**
  * Run the hierarchy of class constructors for this object, in a
  * parent-first order.
@@ -491,7 +492,7 @@ static inline opal_object_t *opal_obj_new(opal_class_t * cls)
 static inline int opal_obj_update(opal_object_t *object, int inc) __opal_attribute_always_inline__;
 static inline int opal_obj_update(opal_object_t *object, int inc)
 {
-#if OMPI_HAVE_THREAD_SUPPORT
+#if OPAL_HAVE_THREAD_SUPPORT
     return opal_atomic_add_32(&(object->obj_reference_count), inc );
 #else
     object->obj_reference_count += inc;
@@ -499,7 +500,7 @@ static inline int opal_obj_update(opal_object_t *object, int inc)
 #endif
 }
 
+END_C_DECLS
 
-/**********************************************************************/
+#endif
 
-#endif                          /* OPAL_OBJECT_H */

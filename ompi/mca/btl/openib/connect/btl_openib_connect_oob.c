@@ -9,11 +9,12 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2008 Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2008      Mellanox Technologies.  All rights reserved.
- * Copyright (c) 2009-2011 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2008-2011 Mellanox Technologies.  All rights reserved.
+ * Copyright (c) 2009      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved
  *
  * $COPYRIGHT$
  * 
@@ -25,10 +26,12 @@
 #include "ompi_config.h"
 
 #include "opal/dss/dss.h"
+#include "opal_stdint.h"
 #include "orte/util/show_help.h"
 #include "opal/util/error.h"
-#include "orte/mca/oob/base/base.h"
+#include "opal/util/output.h"
 #include "orte/mca/rml/rml.h"
+#include "orte/mca/rml/rml_types.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
@@ -40,6 +43,12 @@
 #include "connect/connect.h"
 #include "orte/util/show_help.h"
 
+#if (ENABLE_DYNAMIC_SL)
+#include "connect/btl_openib_connect_sl.h"
+#endif
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
 typedef enum {
     ENDPOINT_CONNECT_REQUEST,
     ENDPOINT_CONNECT_RESPONSE,
@@ -119,7 +128,7 @@ static int oob_component_query(mca_btl_openib_module_t *btl,
        transport_type member, then we must be < OFED v1.2, and
        therefore we must be IB. */   
 #if defined(HAVE_STRUCT_IBV_DEVICE_TRANSPORT_TYPE)
-    if (IBV_TRANSPORT_IB != btl->device->ib_dev->transport_type) {
+    if (BTL_OPENIB_CONNECT_BASE_CHECK_IF_NOT_IB(btl)) {
         opal_output_verbose(5, mca_btl_base_output,
                             "openib BTL: oob CPC only supported on InfiniBand; skipped on  %s:%d",
                             ibv_get_device_name(btl->device->ib_dev),
@@ -214,7 +223,9 @@ static int oob_component_finalize(void)
         orte_rml.recv_cancel(ORTE_NAME_WILDCARD, OMPI_RML_TAG_OPENIB);
         rml_recv_posted = false;
     }
-
+#if (ENABLE_DYNAMIC_SL)
+    btl_openib_connect_sl_finalize();
+#endif
     return OMPI_SUCCESS;
 }
 
@@ -264,9 +275,9 @@ static int set_remote_info(mca_btl_base_endpoint_t* endpoint,
     free(endpoint->rem_info.rem_qps);
 
     /* copy the rem_info stuff */
-    memcpy(&((mca_btl_openib_endpoint_t*) endpoint)->rem_info,
-           rem_info, sizeof(mca_btl_openib_rem_info_t));
-
+    memcpy(&((mca_btl_openib_endpoint_t*) endpoint)->rem_info, 
+           rem_info, sizeof(mca_btl_openib_rem_info_t)); 
+    
     BTL_VERBOSE(("Setting QP info,  LID = %d", endpoint->rem_info.rem_lid));
     return ORTE_SUCCESS;
 
@@ -297,9 +308,24 @@ static int qp_connect_all(mca_btl_openib_endpoint_t *endpoint)
         attr.min_rnr_timer  = mca_btl_openib_component.ib_min_rnr_timer;
         attr.ah_attr.is_global     = 0;
         attr.ah_attr.dlid          = endpoint->rem_info.rem_lid;
-        attr.ah_attr.sl            = mca_btl_openib_component.ib_service_level;
         attr.ah_attr.src_path_bits = openib_btl->src_path_bits;
         attr.ah_attr.port_num      = openib_btl->port_num;
+        attr.ah_attr.sl            = mca_btl_openib_component.ib_service_level;
+
+#if (ENABLE_DYNAMIC_SL)
+        /* if user enabled dynamic SL, get it from PathRecord */
+        if (0 != mca_btl_openib_component.ib_path_record_service_level) {
+            int rc = btl_openib_connect_get_pathrecord_sl(qp->context,
+                                                          attr.ah_attr.port_num,
+                                                          openib_btl->lid,
+                                                          attr.ah_attr.dlid);
+            if (OMPI_ERROR == rc) {
+                return OMPI_ERROR;
+            }
+            attr.ah_attr.sl = rc;
+        }
+#endif
+
         /* JMS to be filled in later dynamically */
         attr.ah_attr.static_rate   = 0;
 
@@ -457,11 +483,15 @@ static int qp_create_one(mca_btl_base_endpoint_t* endpoint, int qp,
     }
     init_attr.cap.max_send_wr  = max_send_wr;
 
-    my_qp = ibv_create_qp(openib_btl->device->ib_pd, &init_attr); 
-    
-    if (NULL == my_qp) { 
-        BTL_ERROR(("error creating qp errno says %s", strerror(errno))); 
-        return OMPI_ERROR; 
+    my_qp = ibv_create_qp(openib_btl->device->ib_pd, &init_attr);
+
+    if (NULL == my_qp) {
+	orte_show_help("help-mpi-btl-openib-cpc-base.txt",
+		       "ibv_create_qp failed", true,
+		       orte_process_info.nodename,
+		       ibv_get_device_name(openib_btl->device->ib_dev),
+		       "Reliable connected (RC)");
+        return OMPI_ERROR;
     }
     endpoint->qps[qp].qp->lcl_qp = my_qp;
 
@@ -595,7 +625,7 @@ static int send_connect_data(mca_btl_base_endpoint_t* endpoint,
         ORTE_ERROR_LOG(rc);
         return rc;
     }
-    BTL_VERBOSE(("Sent QP Info, LID = %d, SUBNET = %016x\n",
+    BTL_VERBOSE(("Sent QP Info, LID = %d, SUBNET = %" PRIx64 "\n",
                  endpoint->endpoint_btl->lid, 
                  endpoint->subnet_id));
 
@@ -724,7 +754,7 @@ static void rml_recv_cb(int status, orte_process_name_t* process_name,
         }
     }
     
-    BTL_VERBOSE(("Received QP Info,  LID = %d, SUBNET = %016x\n",
+    BTL_VERBOSE(("Received QP Info,  LID = %d, SUBNET = %" PRIx64 "\n",
                  rem_info.rem_lid, 
                  rem_info.rem_subnet_id));
     
@@ -765,6 +795,8 @@ static void rml_recv_cb(int status, orte_process_name_t* process_name,
                slave try to find  endpoint in closed state and
                initiate connection back */
             mca_btl_openib_endpoint_t *ib_endpoint_found = NULL;
+            int master_first_closed = -1;
+
             for (i = 0; i < ib_proc->proc_endpoint_count; i++) { 
                 ib_endpoint = ib_proc->proc_endpoints[i];
                 if (ib_endpoint->subnet_id != rem_info.rem_subnet_id ||
@@ -773,6 +805,13 @@ static void rml_recv_cb(int status, orte_process_name_t* process_name,
                     continue;
                 found = true;
                 ib_endpoint_found = ib_endpoint;
+
+                if (master && -1 == master_first_closed &&
+                    MCA_BTL_IB_CLOSED == ib_endpoint->endpoint_state ) {
+                    /* capture in case no endpoint in connecting state */
+                    master_first_closed = i;
+                }
+
                 if ((master &&
                      MCA_BTL_IB_CONNECTING == ib_endpoint->endpoint_state) ||
                     (!master &&
@@ -781,6 +820,14 @@ static void rml_recv_cb(int status, orte_process_name_t* process_name,
             }
             ib_endpoint = ib_endpoint_found;
             
+            if (found && master &&
+                MCA_BTL_IB_CLOSED == ib_endpoint->endpoint_state ) {
+                /* since this is master and no endpoints found in
+                 * connecting state use the first endpoint found
+                 * in closed state */
+                ib_endpoint = ib_proc->proc_endpoints[master_first_closed];
+            }
+
             /* if this is slave and there is no endpoints in closed
                state then all connection are already in progress so
                just ignore this connection request */

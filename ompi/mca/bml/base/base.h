@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -29,9 +30,7 @@
  * Global functions for the BML
  */
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 
 struct mca_bml_base_selected_module_t {
@@ -59,12 +58,11 @@ OMPI_DECLSPEC  int mca_bml_base_ft_event(int state);
 /*
  * Globals
  */
+extern int mca_bml_base_already_opened;
 OMPI_DECLSPEC extern int mca_bml_base_output;
 OMPI_DECLSPEC extern mca_bml_base_component_t mca_bml_component;
 OMPI_DECLSPEC extern opal_list_t mca_bml_base_components_available; 
 OMPI_DECLSPEC extern mca_bml_base_module_t mca_bml; 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif /* MCA_BML_BASE_H */

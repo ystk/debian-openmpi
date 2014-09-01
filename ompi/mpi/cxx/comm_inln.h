@@ -11,6 +11,7 @@
 // Copyright (c) 2004-2005 The Regents of the University of California.
 //                         All rights reserved.
 // Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
+// Copyright (c) 2011      FUJITSU LIMITED.  All rights reserved.
 // $COPYRIGHT$
 // 
 // Additional copyrights may follow
@@ -543,7 +544,7 @@ MPI::Comm::Get_errhandler() const
 }
 
 inline void
-MPI::Comm::Set_errhandler(const MPI::Errhandler& errhandler) const
+MPI::Comm::Set_errhandler(const MPI::Errhandler& errhandler)
 {
     (void)MPI_Comm_set_errhandler(mpi_comm, errhandler);
 }
@@ -660,17 +661,17 @@ MPI::Comm::DUP_FN(const MPI::Comm& oldcomm, int comm_keyval,
 			 void* extra_state, void* attribute_val_in,
 			 void* attribute_val_out, bool& flag)
 {
-#if OMPI_SIZEOF_BOOL != OMPI_SIZEOF_INT
-  int f = (int)flag;
-  int ret;
-  ret = MPI_DUP_FN(oldcomm, comm_keyval, extra_state, attribute_val_in,
-		   attribute_val_out, &f);
-  flag = OPAL_INT_TO_BOOL(f);
-  return ret;
-#else
-  return MPI_DUP_FN(oldcomm, comm_keyval, extra_state, attribute_val_in,
-		    attribute_val_out, (int*)&flag);
-#endif
+    if (sizeof(bool) != sizeof(int)) {
+        int f = (int)flag;
+        int ret;
+        ret = MPI_DUP_FN(oldcomm, comm_keyval, extra_state, attribute_val_in,
+                         attribute_val_out, &f);
+        flag = OPAL_INT_TO_BOOL(f);
+        return ret;
+    } else {
+        return MPI_DUP_FN(oldcomm, comm_keyval, extra_state, attribute_val_in,
+                          attribute_val_out, (int*)&flag);
+    }
 }
 
 // Comment out the unused parameters so that compilers don't warn

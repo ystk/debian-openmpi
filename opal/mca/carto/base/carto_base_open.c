@@ -46,7 +46,6 @@ bool opal_carto_base_components_opened_valid = false;
 opal_list_t opal_carto_base_components_opened;
 opal_carto_graph_t *opal_carto_base_common_host_graph=NULL;
 
-
 /*
  * default carto module when no components are found
  */

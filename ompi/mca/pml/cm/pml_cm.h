@@ -14,13 +14,13 @@
 #ifndef PML_CM_H
 #define PML_CM_H
 
-#include "opal/util/cmd_line.h"
+#include "ompi_config.h"
 #include "ompi/request/request.h"
 #include "ompi/mca/pml/pml.h"
 #include "ompi/mca/pml/base/base.h"
-#include "ompi/datatype/datatype.h"
-#include "ompi/datatype/convertor.h"
-#include "opal/class/opal_free_list.h"
+#include "ompi/datatype/ompi_datatype.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/request/request.h"
 #include "ompi/mca/mtl/mtl.h"
 
 BEGIN_C_DECLS

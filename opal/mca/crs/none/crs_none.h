@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2009 The Trustees of Indiana University.
  *                         All rights reserved.
  * $COPYRIGHT$
  * 
@@ -21,14 +21,11 @@
 
 #include "opal_config.h"
 
-#include "opal/util/output.h"
 
 #include "opal/mca/mca.h"
 #include "opal/mca/crs/crs.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
     /*
      * Local Component structures
@@ -51,7 +48,10 @@ extern "C" {
     /*
      * Actual funcationality
      */
-    int opal_crs_none_checkpoint( pid_t pid, opal_crs_base_snapshot_t *snapshot, opal_crs_state_type_t *state);
+    int opal_crs_none_checkpoint( pid_t pid,
+                                  opal_crs_base_snapshot_t *snapshot,
+                                  opal_crs_base_ckpt_options_t *options,
+                                  opal_crs_state_type_t *state);
 
     int opal_crs_none_restart(    opal_crs_base_snapshot_t *snapshot, bool spawn_child, pid_t *child_pid);
 
@@ -69,8 +69,6 @@ extern "C" {
 
     extern bool opal_crs_none_select_warning;
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* MCA_CRS_NONE_EXPORT_H */

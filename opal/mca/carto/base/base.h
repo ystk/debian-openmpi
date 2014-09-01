@@ -99,6 +99,12 @@ OPAL_DECLSPEC int opal_carto_base_select(void);
 OPAL_DECLSPEC int opal_carto_base_close(void);
 
 /**
+ * Indication of whether a component was successfully selected or
+ * not
+ */
+OPAL_DECLSPEC extern bool opal_carto_base_selected;
+
+/**
  * Global component struct for the selected component
  */
 OPAL_DECLSPEC extern const opal_carto_base_component_2_0_0_t 
@@ -189,6 +195,7 @@ OPAL_DECLSPEC extern int opal_carto_base_output;
 OPAL_DECLSPEC extern opal_carto_graph_t *opal_carto_base_common_host_graph;
 
 OPAL_DECLSPEC extern opal_carto_base_module_1_0_0_t opal_carto_default_module;
+
 
 END_C_DECLS
 

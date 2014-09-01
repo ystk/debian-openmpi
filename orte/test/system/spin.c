@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include "orte/util/proc_info.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/runtime/runtime.h"
@@ -21,7 +20,7 @@ int main(int argc, char* argv[])
     double pi;
     pid_t pid;
 
-    if (0 > (rc = orte_init(ORTE_NON_TOOL))) {
+    if (0 > (rc = orte_init(&argc, &argv, ORTE_PROC_NON_MPI))) {
         fprintf(stderr, "spin: couldn't init orte - error code %d\n", rc);
         return rc;
     }

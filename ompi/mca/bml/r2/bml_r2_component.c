@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Cisco Systems, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -17,11 +18,9 @@
  */
 
 #include "ompi_config.h"
-#include "opal/sys/cache.h"
 #include "opal/event/event.h"
 #include "mpi.h"
 #include "ompi/mca/bml/bml.h"
-#include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "bml_r2.h"

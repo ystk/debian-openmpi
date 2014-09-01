@@ -35,7 +35,6 @@
 
 #include "mpi.h"
 #include "opal/class/opal_list.h"
-#include "ompi/mca/coll/coll.h"
 
 
 /*
@@ -43,7 +42,6 @@
  */
 
 BEGIN_C_DECLS
-
 /**
  * Initialize the coll MCA framework
  *
@@ -160,18 +158,13 @@ int mca_coll_base_comm_unselect(struct ompi_communicator_t *comm);
  *
  * It must be the last function invoked on the coll MCA framework.
  */
-OMPI_DECLSPEC  int mca_coll_base_close(void);
+OMPI_DECLSPEC int mca_coll_base_close(void);
 
 
 /*
  * Globals
  */
 
-/**
- * Index number from the "coll" MCA parameter, created when the coll
- * framework is initialized and used during scope selection.
- */
-OMPI_DECLSPEC extern int mca_coll_base_param;
 /**
  * Coll framework debugging stream ID used with opal_output() and
  * opal_output_verbose().
@@ -205,5 +198,4 @@ extern bool mca_coll_base_components_available_valid;
 extern opal_list_t mca_coll_base_components_available;
 
 END_C_DECLS
-
 #endif /* MCA_BASE_COLL_H */

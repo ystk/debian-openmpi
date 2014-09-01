@@ -1,0 +1,44 @@
+Index: openmpi-1.6.5/opal/config/opal_config_asm.m4
+===================================================================
+--- openmpi-1.6.5.orig/opal/config/opal_config_asm.m4	2013-07-01 09:47:08.000000000 +0200
++++ openmpi-1.6.5/opal/config/opal_config_asm.m4	2013-07-01 09:47:07.000000000 +0200
+@@ -900,7 +900,7 @@
+             OMPI_GCC_INLINE_ASSIGN='"bis [$]31,[$]31,%0" : "=&r"(ret)'
+             ;;
+ 
+-        armv7*)
++        armv7*|arm-*-linux-gnueabihf)
+             ompi_cv_asm_arch="ARM"
+             OPAL_ASM_SUPPORT_64BIT=1
+             OPAL_ASM_ARM_VERSION=7
+@@ -919,7 +919,7 @@
+             OMPI_GCC_INLINE_ASSIGN='"mov %0, #0" : "=&r"(ret)'
+             ;;
+ 
+-        armv5*linux*|armv4*linux*)
++        armv5*linux*|armv4*linux*|arm-*-linux-gnueabi)
+             # uses Linux kernel helpers for some atomic operations
+             ompi_cv_asm_arch="ARM"
+             OPAL_ASM_SUPPORT_64BIT=0
+Index: openmpi-1.6.5/configure
+===================================================================
+--- openmpi-1.6.5.orig/configure	2013-07-01 09:47:08.000000000 +0200
++++ openmpi-1.6.5/configure	2013-07-01 09:47:08.000000000 +0200
+@@ -27192,7 +27192,7 @@
+             OMPI_GCC_INLINE_ASSIGN='"bis $31,$31,%0" : "=&r"(ret)'
+             ;;
+ 
+-        armv7*)
++        armv7*|arm-*-linux-gnueabihf)
+             ompi_cv_asm_arch="ARM"
+             OPAL_ASM_SUPPORT_64BIT=1
+             OPAL_ASM_ARM_VERSION=7
+@@ -27217,7 +27217,7 @@
+             OMPI_GCC_INLINE_ASSIGN='"mov %0, #0" : "=&r"(ret)'
+             ;;
+ 
+-        armv5*linux*|armv4*linux*)
++        armv5*linux*|armv4*linux*|arm-*-linux-gnueabi)
+             # uses Linux kernel helpers for some atomic operations
+             ompi_cv_asm_arch="ARM"
+             OPAL_ASM_SUPPORT_64BIT=0

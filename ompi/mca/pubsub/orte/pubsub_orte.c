@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,24 +26,18 @@
 
 #include "orte/util/show_help.h"
 #include "opal/util/argv.h"
-#include "opal/util/opal_getcwd.h"
 
 #include "opal/dss/dss.h"
 #include "orte/mca/errmgr/errmgr.h"
-#include "orte/mca/grpcomm/grpcomm.h"
-#include "orte/mca/plm/plm.h"
 #include "orte/mca/rml/rml.h"
+#include "orte/mca/rml/rml_types.h"
 #include "orte/mca/rml/base/rml_contact.h"
 #include "orte/mca/routed/routed.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/runtime/orte_data_server.h"
 
-#include "ompi/communicator/communicator.h"
-#include "ompi/proc/proc.h"
-#include "ompi/mca/pml/pml.h"
 #include "ompi/info/info.h"
-#include "ompi/runtime/ompi_module_exchange.h"
 
 #include "ompi/mca/pubsub/base/base.h"
 #include "pubsub_orte.h"

@@ -19,7 +19,6 @@
 #include "ompi_config.h"
 
 #include "ompi/mca/mtl/mtl.h"
-#include "ompi/communicator/communicator.h"
 #include "opal/class/opal_list.h"
 
 #include "mtl_portals.h"
@@ -54,7 +53,9 @@ mca_mtl_portals_module_t ompi_mtl_portals = {
         ompi_mtl_portals_irecv,
         ompi_mtl_portals_iprobe,
 
-        NULL        /* cancel */
+        NULL,       /* cancel */
+        NULL,       /* add_comm */
+        NULL        /* del_comm */
     }
 };
 
@@ -70,13 +71,13 @@ ompi_mtl_portals_catchall_callback(ptl_event_t *ev,
                                    ompi_mtl_portals_request_t *ptl_request)
 {
     if (ptl_request == &catchall_send_request) {
-        opal_output(fileno(stderr),"ERROR - received catchall event on send queue"); 
+        opal_output(fileno(stderr), "ERROR - received catchall event on send queue"); 
     } else if (ptl_request == &catchall_ack_request) {
-        opal_output(fileno(stderr),"ERROR - received catchall event on ack queue");  
+        opal_output(fileno(stderr), "ERROR - received catchall event on ack queue");  
     } else if (ptl_request == &catchall_read_request) {
-        opal_output(fileno(stderr),"ERROR - received catchall event on read queue");  
+        opal_output(fileno(stderr), "ERROR - received catchall event on read queue");  
     } else {
-        opal_output(fileno(stderr),"ERROR - received catchall event of unknown origin");  
+        opal_output(fileno(stderr), "ERROR - received catchall event of unknown origin");  
     }
 
     abort();
@@ -101,7 +102,7 @@ ompi_mtl_portals_add_procs(struct mca_mtl_base_module_t *mtl,
     
     assert(mtl == &ompi_mtl_portals.base);
 
-    /* if we havne't already initialized the network, do so now.  We
+    /* if we haven't already initialized the network, do so now.  We
        delay until add_procs because if we want the automatic runtime
        environment setup the common code does for the utcp
        implementation, we can't do it until modex information can be
@@ -119,7 +120,7 @@ ompi_mtl_portals_add_procs(struct mca_mtl_base_module_t *mtl,
                      PTL_EQ_HANDLER_NONE,
                      &(ompi_mtl_portals.ptl_eq_h));
     assert(ret == PTL_OK);
-    
+
     /* event queue for unexpected receives */
     ret = PtlEQAlloc(ompi_mtl_portals.ptl_ni_h,
                      ompi_mtl_portals.ptl_unexpected_queue_size,
@@ -318,8 +319,17 @@ ompi_mtl_portals_finalize(struct mca_mtl_base_module_t *mtl)
 
     /* Don't try to wait for things to finish if we've never initialized */
     if (PTL_INVALID_HANDLE != ompi_mtl_portals.ptl_ni_h) {
+        ptl_event_t ev;
+        int ret;
+
         opal_progress_unregister(ompi_mtl_portals_progress);
-        while (0 != ompi_mtl_portals_progress()) { }
+
+        /* Before progressing remaining events, check whether we don't get PTL_EQ_INVALID */
+        ret = PtlEQPeek(ompi_mtl_portals.ptl_eq_h, &ev);
+
+        if (PTL_EQ_INVALID != ret) {
+            while (0 != ompi_mtl_portals_progress()) { }
+        }
     }
 
     ompi_common_portals_ni_finalize();
@@ -335,8 +345,6 @@ ompi_mtl_portals_progress(void)
     int count = 0, ret;
     ptl_event_t ev;
     ompi_mtl_portals_request_t *ptl_request;
-    int which;
-    ompi_mtl_portals_event_t *unex_recv;
 
     while (true) {
 
@@ -350,7 +358,7 @@ ompi_mtl_portals_progress(void)
                 ret = ptl_request->event_callback(&ev, ptl_request);
 
                 if (OMPI_SUCCESS != ret) {
-                    opal_output(0, " Error returned from the even callback.  Error code - %d \n",ret);
+                    opal_output(0, " Error returned from the event callback.  Error code - %d \n",ret);
                     abort();
                 }
             }

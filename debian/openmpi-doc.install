@@ -1,2 +1,3 @@
-usr/share/man/man3/*
-usr/share/man/man7/orte_hosts.7
+#usr/share/man/man7/orte_filem.7
+#usr/share/man/man7/orte_hosts.7
+#usr/share/man/man7/orte_snapc.7

@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -58,9 +58,7 @@
 
 #include "opal_config.h"
 
-#include "opal/class/opal_value_array.h"
 #include "opal/class/opal_list.h"
-#include "opal/class/opal_hash_table.h"
 #include "opal/mca/mca.h"
 
 
@@ -145,9 +143,7 @@ typedef struct mca_base_param_info_t mca_base_param_info_t;
  * Global functions for MCA
  */
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
     /**
      * Make a real object for the info
@@ -324,6 +320,9 @@ extern "C" {
      * Note that if a string value is read in from a file then it will
      * never be NULL. It will always have a value, even if that value is
      * the empty string.
+     *
+     * Strings returned in the \em current_value parameter should later
+     * be free()'ed.
      *
      * This function is identical to mca_base_param_reg_int() except
      * that you are registering a string parameter with an associated
@@ -513,7 +512,7 @@ extern "C" {
      * never be NULL. It will always have a value, even if that value is
      * the empty string.
      * 
-     * Strings returns in the \em value parameter should later be
+     * Strings returned in the \em value parameter should later be
      * free()'ed.
      *
      * The value of a specific MCA parameter can be looked up using the
@@ -526,8 +525,10 @@ extern "C" {
      *
      * @param index [in] Index of MCA parameter to set
      * @param source [out] Enum value indicating source
-     * @param source_file [out] If value came from source, name of the file
-     * that set it.  The caller should not modify or free this string.
+     * @param source_file [out] If value came from source, name of the
+     * file that set it.  The caller should not modify or free this
+     * string.  It is permissable to specify source_file==NULL if the
+     * caller does not care to know the filename.
      *
      * @retval OPAL_ERROR If the parameter was not found.
      * @retval OPAL_SUCCESS Upon success.
@@ -535,9 +536,9 @@ extern "C" {
      * This function looks up to see where the value of an MCA
      * parameter came from.
      */
-    OPAL_DECLSPEC bool mca_base_param_lookup_source(int index, 
-                                                    mca_base_param_source_t *source,
-                                                    char **source_file);
+    OPAL_DECLSPEC int mca_base_param_lookup_source(int index, 
+                                                   mca_base_param_source_t *source,
+                                                   char **source_file);
 
     /**
      * Sets an "override" value for an integer MCA parameter.
@@ -548,7 +549,7 @@ extern "C" {
      * @retval OPAL_ERROR If the parameter was not found.
      * @retval OPAL_SUCCESS Upon success.
      *
-     * This function sets an integer value on the MCA parmeter
+     * This function sets an integer value on the MCA parameter
      * indicated by the index value index.  This value will be used in
      * lieu of any other value from any other MCA source (environment
      * variable, file, etc.) until the value is unset with
@@ -568,7 +569,7 @@ extern "C" {
      * @retval OPAL_ERROR If the parameter was not found.
      * @retval OPAL_SUCCESS Upon success.
      *
-     * This function sets a string value on the MCA parmeter
+     * This function sets a string value on the MCA parameter
      * indicated by the index value index.  This value will be used in
      * lieu of any other value from any other MCA source (environment
      * variable, file, etc.) until the value is unset with
@@ -634,6 +635,120 @@ extern "C" {
     OPAL_DECLSPEC int mca_base_param_find(const char *type, 
                                           const char *component, 
                                           const char *param);
+
+/**
+ * Find an MCA parameter in an env array based on its names.
+ *
+ * @param component [in] Pointer to the component for which the
+ * parameter was registered.
+ * @param param_name [in] The name of the parameter being
+ * registered (string).
+ * @param env [in] NULL-terminated list of strings (e.g., from an environment).
+ * @param current_value [out] Return the current value (if found).
+ *
+ * @retval OPAL_ERROR If the parameter was not found.
+ *
+ * Look for a specific MCA parameter in an environment and return its value
+ */
+OPAL_DECLSPEC int mca_base_param_find_int(const mca_base_component_t *component,
+                                          const char *param_name,
+                                          char **env,
+                                          int *current_value);
+
+/**
+ * Find an MCA parameter (in an env array) that is not associated with a
+ * component.
+ *
+ * @param type [in] Although this parameter is not associated with
+ * a component, it still must have a string type name that will
+ * act as a prefix (string).
+ * @param param_name [in] The name of the parameter being
+ * registered (string).
+ * @param env [in] NULL-terminated list of strings (e.g., from an environment).
+ * @param current_value [out] Return the current value (if found).
+ *
+ * @retval OPAL_ERROR If the parameter was not found.
+ *
+ * Look for a specific MCA parameter in an environment and return its value
+ */
+OPAL_DECLSPEC int mca_base_param_find_int_name(const char *type,
+                                               const char *param_name,
+                                               char **env,
+                                               int *current_value);
+/**
+ * Find a string MCA parameter in an env array based on its names.
+ *
+ * @param component [in] Pointer to the component for which the
+ * parameter was registered.
+ * @param param_name [in] The name of the parameter being
+ * registered (string).
+ * @param env [in] NULL-terminated list of strings (e.g., from an environment).
+ * @param current_value [out] Return the current value (if found).
+ *
+ * @retval OPAL_ERROR If the parameter was not found.
+ *
+ * Look for a specific MCA parameter in an environment and return its value
+ */
+OPAL_DECLSPEC int mca_base_param_find_string(const mca_base_component_t *component,
+                                             const char *param_name,
+                                             char **env,
+                                             char **current_value);
+
+/**
+ * Find a string MCA parameter (in an env array) that is not associated with a
+ * component.
+ *
+ * @param type [in] Although this parameter is not associated with
+ * a component, it still must have a string type name that will
+ * act as a prefix (string).
+ * @param param_name [in] The name of the parameter being
+ * registered (string).
+ * @param env [in] NULL-terminated list of strings (e.g., from an environment).
+ * @param current_value [out] Return the current value (if found).
+ *
+ * @retval OPAL_ERROR If the parameter was not found.
+ *
+ * Look for a specific MCA parameter in an environment and return its value
+ */
+OPAL_DECLSPEC int mca_base_param_find_string_name(const char *type,
+                                                  const char *param_name,
+                                                  char **env,
+                                                  char **current_value);
+
+/**
+ * Check that two MCA parameters were not both set to non-default
+ * values.
+ *
+ * @param type_a [in] Framework name of parameter A (string).
+ * @param component_a [in] Component name of parameter A (string).
+ * @param param_a [in] Parameter name of parameter A (string.
+ * @param type_b [in] Framework name of parameter A (string).
+ * @param component_b [in] Component name of parameter A (string).
+ * @param param_b [in] Parameter name of parameter A (string.
+ *
+ * This function is useful for checking that the user did not set both
+ * of 2 mutually-exclusive MCA parameters.
+ *
+ * This function will print an opal_show_help() message and return
+ * OPAL_ERR_BAD_PARAM if it finds that the two parameters both have
+ * value sources that are not MCA_BASE_PARAM_SOURCE_DEFAULT.  This
+ * means that both parameters have been set by the user (i.e., they're
+ * not default values).
+ *
+ * Note that opal_show_help() allows itself to be hooked, so if this
+ * happens after the aggregated orte_show_help() system is
+ * initialized, the messages will be aggregated (w00t).
+ *
+ * @returns OPAL_ERR_BAD_PARAM if the two parameters have sources that
+ * are not MCA_BASE_PARAM_SOURCE_DEFAULT.
+ * @returns OPAL_SUCCESS otherwise.
+ */
+OPAL_DECLSPEC int mca_base_param_check_exclusive_string(const char *type_a,
+                                          const char *component_a,
+                                          const char *param_a,
+                                          const char *type_b,
+                                          const char *component_b,
+                                          const char *param_b);
 
     /**
      * Set the "internal" flag on an MCA parameter to true or false.
@@ -855,8 +970,6 @@ extern "C" {
                                                         const char *comp,
                                                         const char *param) /* __opal_attribute_deprecated__ */;
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OPAL_MCA_BASE_PARAM_H */

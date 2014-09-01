@@ -5,7 +5,7 @@
 **  Copyright (c) 1998-2008                                                **
 **  Forschungszentrum Juelich, Juelich Supercomputing Centre               **
 **                                                                         **
-**  See the file COPYING in the package base directory for details       **
+**  See the file COPYING in the package base directory for details         **
 ****************************************************************************/
 
 #include <iostream>
@@ -115,11 +115,16 @@ namespace {
     label="";
     if (! (line.size()) ) return false;
 
-    // is there a 'do ' 
-    pstart = lowline.find("do ");
-    if(pstart==string::npos) return false;
+    // is there a 'do '
+    pstart = lowline.find("do");
+    if(pstart==string::npos ||
+       (lowline[pstart+2] != '\0' &&
+        lowline[pstart+2] != ' '  &&
+        lowline[pstart+2] != '\t')) {
+      return false;
+    }
 
-    
+
     pos = lowline.find_first_not_of(" \t");
     if(pos!=pstart) {
       // there is a DO_construct_name
@@ -131,8 +136,13 @@ namespace {
     }
 
     //check again, if pos now start of do, otherwise not a correct do statement
-    pstart = lowline.find("do ",pos);
-    if(pstart!=pos) return false; 
+    pstart = lowline.find("do",pos);
+    if(pstart!=pos ||
+       (lowline[pstart+2] != '\0' &&
+        lowline[pstart+2] != ' '  &&
+        lowline[pstart+2] != '\t')) {
+      return false;
+    }
 
     pos = lowline.find_first_not_of(" \t",pos+2);
     if(isdigit(lowline[pos])) {
@@ -171,12 +181,18 @@ namespace {
 
     } else {
       // search for block Do loop
-      pos = lowline.find("end",pos);
+      if(lowline.compare(pos, 3, "end") != 0)
+        return false;
+
+      pos = lowline.find_first_not_of(" \t", pos+3);
       if(pos==string::npos) return false;
 
-      pos = lowline.find("do",pos+3);
-      if(pos==string::npos) return false;
-      
+      if(lowline.compare(pos, 2, "do") != 0)
+        return false;
+
+      if(!(lowline[pos+2] == ' ' || lowline[pos+2] == '\t' || lowline[pos+2] == '\0'))
+        return false;
+
       // search for label
       if(toplabel.size()) {
 	
@@ -336,6 +352,10 @@ void process_fortran(istream& is, const char* infile, ostream& os,
     /* workaround for bogus getline implementations */
     if ( line.size() == 1 && line[0] == '\0' ) break;
 
+    /* remove possible trailing Carriage Return from line */
+    if ( line.size() > 0 && line[line.length()-1] == '\r' )
+      line.erase(line.length()-1);
+
     ++lineno;
     string lowline(line);
     transform(line.begin(), line.end(), lowline.begin(), fo_tolower());
@@ -417,6 +437,15 @@ void process_fortran(istream& is, const char* infile, ostream& os,
         currPragma->lines.push_back(lowline);
       } else {
         // new directive
+        if ( currPragma ) {
+          // if necessary process last complete directive
+          typeOfLastLine = check_pragma(currPragma);
+          test_and_insert_ompenddo(os, typeOfLastLine, waitforOMPEndDo,
+                                   infile, currPragma->lineno, pragma_indent,
+                                   pomp, addSharedDecl);
+          process_pragma(currPragma, os);
+          currPragma = 0;
+        }
         currPragma
                 = new OMPragmaF(infile, lineno, pstart+5+pomp, lowline, pomp,
                                 addSharedDecl);
@@ -424,7 +453,7 @@ void process_fortran(istream& is, const char* infile, ostream& os,
       string::size_type com = lowline.find("!", pstart+4+pomp);
       if ( com != string::npos ) --com;
       string::size_type amp = lowline.find_last_not_of(" \t", com);
-      if ( lowline[amp] == '&' ) {
+      if ( amp != string::npos && lowline[amp] == '&' ) {
         // last non-white non-comment character == '&' --> continuation
         needPragma = true;
       } else {
@@ -532,4 +561,9 @@ void process_fortran(istream& is, const char* infile, ostream& os,
       }
     }
   }
+
+  // currPragma should be deleted at this point; ensure that to prevent
+  // memory leak
+  if ( currPragma )
+    delete currPragma;
 }

@@ -22,10 +22,10 @@
 # Version of auto tools that we want
 #
 
-M4_TARGET_VERSION=1.4.11
-AM_TARGET_VERSION=1.10.3
-AC_TARGET_VERSION=2.63
-LT_TARGET_VERSION=2.2.6b
+M4_TARGET_VERSION=1.4.16
+AM_TARGET_VERSION=1.11.3
+AC_TARGET_VERSION=2.68
+LT_TARGET_VERSION=2.4.2
 FLEX_TARGET_VERSION=2.5.35
 
 #
@@ -102,8 +102,8 @@ check_gnu_version() {
     # somehow" kind of message (because I'm not going to code up a
     # complex/clever alphanumeric lower/higher comparison thingy).
     # Sigh.
-    ver_release=`echo $ver_release | sed 's/[a-z]//g'`
-    target_release=`echo $target_release | sed 's/[a-z]//g'`
+    ver_release=`echo $ver_release | sed 's/[A-Za-z]//g'`
+    target_release=`echo $target_release | sed 's/[A-Za-z]//g'`
 
     result=same
     if test "$ver" != "$target"; then 
@@ -117,8 +117,12 @@ check_gnu_version() {
             result=high
         elif test "$ver_major" = "$target_major" -a "$ver_minor" -gt "$target_minor"; then
             result=high
+        elif test "$ver_major" = "$target_major" -a "$ver_minor" = "$target_minor" -a "$ver_release" = "$target_release"; then
+            result=same
         elif test "$ver_major" = "$target_major" -a "$ver_minor" = "$target_minor" -a "$ver_release" -gt "$target_release"; then
             result=high
+        elif test "$ver_major" = "$target_major" -a "$ver_minor" = "$target_minor" -a "$ver_release" -lt "$target_release"; then
+            result=low
         else
             result=unknown
         fi
@@ -302,31 +306,47 @@ fi
 #
 # Do svn up and all that
 #
-echo "*** Removing old VERSION file..."
-rm -f VERSION
 
 if test -d .svn; then
+    echo "*** Removing old VERSION file..."
+    rm -f VERSION
+    echo "*** Restoring pristine VERSION file..."
+    svn revert VERSION
     echo "*** Running svn up..."
     svn up
     if test ! "$?" = "0"; then
         echo "SVN update failed.  Aborting"
         exit 1
     fi
+    echo "*** Getting svn r number..."
+    svn_r="r`svnversion .`"
 elif test -d .hg; then
-    echo "*** Running hg up..."
+    echo "*** Removing old VERSION file..."
+    rm -f VERSION
+    echo "*** Restoring pristine VERSION file..."
     hg revert VERSION
+    echo "*** Running hg up..."
     hg up
     if test ! "$?" = "0"; then
         echo "HG update failed.  Aborting"
         exit 1
     fi
+    echo "*** Getting hg version number..."
+    svn_r=hg`hg tip | grep ^changeset: | head -n 1 | cut -d: -f3`
+fi
+echo "    Repo rev number: $svn_r"
+if test "$svn_r" = ""; then
+    echo "Somehow the repo rev number is empty.  Abort!"
+    exit 1
+elif test "`echo $svn_r | grep ' '`" != ""; then
+    echo "Somehow the repo rev number has a space in it -- bad!"
+    exit 1
 fi
 
 #
 # Ditch "svn/hg" from all version numbers
 #
 echo "*** Removing svn version numbers..."
-svn_r="r`svnversion .`"
 version_files=VERSION
 release_date=`date '+%b %d, %Y'`
 for file in $version_files; do

@@ -22,8 +22,8 @@
 
 #include <string.h>
 
-#include "orte/util/show_help.h"
 #include "opal/util/argv.h"
+#include "opal/mca/paffinity/paffinity.h"
 
 #include "orte/mca/errmgr/base/base.h"
 #include "orte/util/name_fns.h"
@@ -35,32 +35,31 @@
 #include "orte/mca/ess/base/base.h"
 #include "orte/mca/ess/portals_utcp/ess_portals_utcp.h"
 
-static int rte_init(char flags);
+static int rte_init(void);
 static int rte_finalize(void);
 static void rte_abort(int status, bool report) __opal_attribute_noreturn__;
-static bool proc_is_local(orte_process_name_t *proc);
+static uint8_t proc_get_locality(orte_process_name_t *proc);
 static char* proc_get_hostname(orte_process_name_t *proc);
-static uint32_t proc_get_arch(orte_process_name_t *proc);
 static orte_local_rank_t proc_get_local_rank(orte_process_name_t *proc);
 static orte_node_rank_t proc_get_node_rank(orte_process_name_t *proc);
-static int update_arch(orte_process_name_t *proc, uint32_t arch);
 
 orte_ess_base_module_t orte_ess_portals_utcp_module = {
     rte_init,
     rte_finalize,
     rte_abort,
-    proc_is_local,
+    proc_get_locality,
+    NULL,   /* proc_get_daemon is only used in ORTE */
     proc_get_hostname,
-    proc_get_arch,
     proc_get_local_rank,
     proc_get_node_rank,
-    update_arch,
+    NULL,   /* add_pidmap is only used in ORTE */
+    NULL,   /* update_nidmap is only used in ORTE */
     NULL /* ft_event */
 };
 
 static char **nidmap=NULL;
 
-static int rte_init(char flags)
+static int rte_init(void)
 {
     int rc;
     orte_vpid_t vpid;
@@ -134,31 +133,21 @@ static void rte_abort(int status, bool report)
     exit(status);
 }
 
-static bool proc_is_local(orte_process_name_t *proc)
+static uint8_t proc_get_locality(orte_process_name_t *proc)
 {
     if (NULL != nidmap[proc->vpid] &&
         NULL != nidmap[ORTE_PROC_MY_NAME->vpid] &&
         0 == strcmp(nidmap[proc->vpid],
                     nidmap[ORTE_PROC_MY_NAME->vpid])) {
-        return true;
+        return (OPAL_PROC_ON_NODE | OPAL_PROC_ON_CU | OPAL_PROC_ON_CLUSTER);
     }
     
-    return false;
+    return OPAL_PROC_NON_LOCAL;
 }
 
 static char* proc_get_hostname(orte_process_name_t *proc)
 {
     return nidmap[proc->vpid];
-}
-
-static uint32_t proc_get_arch(orte_process_name_t *proc)
-{
-    return orte_process_info.arch;
-}
-
-static int update_arch(orte_process_name_t *proc, uint32_t arch)
-{
-    return ORTE_SUCCESS;
 }
 
 static orte_local_rank_t proc_get_local_rank(orte_process_name_t *proc)

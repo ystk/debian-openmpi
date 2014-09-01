@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,25 +21,27 @@
 #include "orte_config.h"
 #include "orte/constants.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #if !ORTE_DISABLE_FULL_SUPPORT
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
+#include "opal/mca/hwloc/base/base.h"
 #include "opal/mca/paffinity/base/base.h"
-#include "opal/util/trace.h"
+#include "opal/mca/sysinfo/sysinfo.h"
+#include "opal/util/output.h"
 #include "opal/util/path.h"
 #include "opal/util/argv.h"
-#include "opal/class/opal_value_array.h"
-#include "opal/class/opal_pointer_array.h"
-#include "opal/dss/dss.h"
 
-#include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/plm/plm_types.h"
+#include "orte/mca/errmgr/errmgr.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/util/show_help.h"
 #include "orte/util/parse_options.h"
-#include "orte/util/proc_info.h"
 
 #include "orte/mca/odls/base/odls_private.h"
 
@@ -76,6 +79,7 @@ orte_odls_base_module_t orte_odls;
 static void orte_odls_child_constructor(orte_odls_child_t *ptr)
 {
     ptr->name = NULL;
+    ptr->restarts = 0;
     ptr->pid = 0;
     ptr->app_idx = -1;
     ptr->alive = false;
@@ -86,10 +90,13 @@ static void orte_odls_child_constructor(orte_odls_child_t *ptr)
      */
     ptr->state = ORTE_PROC_STATE_FAILED_TO_START;
     ptr->exit_code = 0;
+    ptr->init_recvd = false;
+    ptr->fini_recvd = false;
     ptr->rml_uri = NULL;
     ptr->slot_list = NULL;
     ptr->waitpid_recvd = false;
     ptr->iof_complete = false;
+    ptr->do_not_barrier = false;
 }
 static void orte_odls_child_destructor(orte_odls_child_t *ptr)
 {
@@ -105,23 +112,25 @@ OBJ_CLASS_INSTANCE(orte_odls_child_t,
 static void orte_odls_job_constructor(orte_odls_job_t *ptr)
 {
     ptr->jobid = ORTE_JOBID_INVALID;
+    ptr->state = ORTE_JOB_STATE_UNDEF;
+    ptr->launch_msg_processed = false;
     ptr->apps = NULL;
     ptr->num_apps = 0;
     ptr->policy = 0;
     ptr->cpus_per_rank = 1;
     ptr->stride = 1;
+    ptr->controls = 0;
     ptr->stdin_target = ORTE_VPID_INVALID;
     ptr->total_slots_alloc = 0;
     ptr->num_procs = 0;
     ptr->num_local_procs = 0;
-    OBJ_CONSTRUCT(&ptr->procmap, opal_value_array_t);
-    opal_value_array_init(&ptr->procmap, sizeof(orte_pmap_t));
+    ptr->regexp = NULL;
     ptr->pmap = NULL;
     OBJ_CONSTRUCT(&ptr->collection_bucket, opal_buffer_t);
     OBJ_CONSTRUCT(&ptr->local_collection, opal_buffer_t);
     ptr->collective_type = ORTE_GRPCOMM_COLL_NONE;
     ptr->num_contributors = 0;
-    ptr->num_participating = 0;
+    ptr->num_participating = -1;
     ptr->num_collected = 0;
 }
 static void orte_odls_job_destructor(orte_odls_job_t *ptr)
@@ -137,7 +146,9 @@ static void orte_odls_job_destructor(orte_odls_job_t *ptr)
         }
     }
     
-    OBJ_DESTRUCT(&ptr->procmap);
+    if (NULL != ptr->regexp) {
+        free(ptr->regexp);
+    }
     
     if (NULL != ptr->pmap && NULL != ptr->pmap->bytes) {
         free(ptr->pmap->bytes);
@@ -165,10 +176,10 @@ orte_odls_globals_t orte_odls_globals;
 int orte_odls_base_open(void)
 {
     char **ranks=NULL, *tmp;
-    int i, rank, sock, core;
+    int i, rank, sock, core, rc;
     orte_namelist_t *nm;
     bool xterm_hold;
-
+    
     /* Debugging / verbose output.  Always have stream open, with
         verbose set by the mca open system... */
     orte_odls_globals.output = opal_output_open(NULL);
@@ -177,35 +188,59 @@ int orte_odls_base_open(void)
                                 "Time to wait for a process to die after issuing a kill signal to it",
                                 false, false, 1, &orte_odls_globals.timeout_before_sigkill);
 
-    /* see if the user wants us to report bindings */
-    mca_base_param_reg_int_name("odls", "base_report_bindings",
-                                "Report process bindings [default: no]",
-                                false, false, (int)false, &i);
-    orte_odls_globals.report_bindings = OPAL_INT_TO_BOOL(i);
-    
     /* initialize ODLS globals */
     OBJ_CONSTRUCT(&orte_odls_globals.mutex, opal_mutex_t);
     OBJ_CONSTRUCT(&orte_odls_globals.cond, opal_condition_t);
     OBJ_CONSTRUCT(&orte_odls_globals.xterm_ranks, opal_list_t);
     orte_odls_globals.xtermcmd = NULL;
     orte_odls_globals.dmap = NULL;
-    
-    /* initialize and setup the daemonmap */
-    OBJ_CONSTRUCT(&orte_daemonmap, opal_pointer_array_t);
-    opal_pointer_array_init(&orte_daemonmap, 8, INT32_MAX, 8);
+    orte_odls_globals.debugger = NULL;
+    orte_odls_globals.debugger_launched = false;
+    OBJ_CONSTRUCT(&orte_odls_globals.sysinfo, opal_list_t);
 
-    /* get any external processor bindings */
+#if OPAL_HAVE_HWLOC
+    /* ensure we have the local topology */
+    if (NULL == opal_hwloc_topology) {
+        if (0 != hwloc_topology_init(&opal_hwloc_topology) ||
+            0 != hwloc_topology_load(opal_hwloc_topology)) {
+            return ORTE_ERR_NOT_SUPPORTED;
+        }
+    }
+#endif
+    
+    /* init globals */
     OPAL_PAFFINITY_CPU_ZERO(orte_odls_globals.my_cores);
     orte_odls_globals.bound = false;
     orte_odls_globals.num_processors = 0;
+    orte_odls_globals.num_sockets = orte_default_num_sockets_per_board;
+    orte_odls_globals.num_cores_per_socket = orte_default_num_cores_per_socket;
     OBJ_CONSTRUCT(&orte_odls_globals.sockets, opal_bitmap_t);
     opal_bitmap_init(&orte_odls_globals.sockets, 16);
-    /* default the number of sockets to those found during startup */
-    orte_odls_globals.num_sockets = orte_default_num_sockets_per_board;
+    
     /* see if paffinity is supported */
-    if (ORTE_SUCCESS == opal_paffinity_base_get(&orte_odls_globals.my_cores)) {
+    if (ORTE_SUCCESS == (rc = opal_paffinity_base_get(&orte_odls_globals.my_cores))) {
+        /* get the number of local sockets unless we were given a number */
+        if (0 == orte_default_num_sockets_per_board) {
+            opal_paffinity_base_get_socket_info(&orte_odls_globals.num_sockets);
+            /* on some really old kernels or unusual systems, we may not
+             * see any sockets - so default to a value of 1 to avoid
+             * the segfault
+             */
+            if (orte_odls_globals.num_sockets <= 0) {
+                orte_odls_globals.num_sockets = 1;
+            }
+        }
         /* get the number of local processors */
         opal_paffinity_base_get_processor_info(&orte_odls_globals.num_processors);
+        /* compute the base number of cores/socket, if not given */
+        if (0 == orte_default_num_cores_per_socket) {
+            orte_odls_globals.num_cores_per_socket = orte_odls_globals.num_processors / orte_odls_globals.num_sockets;
+        }
+        OPAL_OUTPUT_VERBOSE((1, orte_odls_globals.output,
+                             "%s FOUND %d SOCKETS WITH %d CORES-PER-SOCKET",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             orte_odls_globals.num_sockets,
+                             orte_odls_globals.num_cores_per_socket));
         /* determine if we are bound */
         OPAL_PAFFINITY_PROCESS_IS_BOUND(orte_odls_globals.my_cores, &orte_odls_globals.bound);
         /* if we are bound, determine the number of sockets - and which ones - that are available to us */
@@ -223,13 +258,18 @@ int orte_odls_base_open(void)
                     orte_odls_globals.num_sockets++;
                 }
             }
-            if (orte_process_info.hnp && orte_odls_globals.report_bindings) {
+            if (ORTE_PROC_IS_HNP && orte_report_bindings) {
                 opal_output(0, "System has detected external process binding to cores %04lx",
                             orte_odls_globals.my_cores.bitmask[0]);
             }
         }
+    } else {
+        OPAL_OUTPUT_VERBOSE((1, orte_odls_globals.output,
+                             "%s AFFINITY NOT SUPPORTED: %s",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ORTE_ERROR_NAME(rc)));
     }
-
+    
     /* check if the user requested that we display output in xterms */
     if (NULL != orte_xterm) {
         /* construct a list of ranks to be displayed */
@@ -277,6 +317,36 @@ int orte_odls_base_open(void)
         opal_argv_append_nosize(&orte_odls_globals.xtermcmd, "-e");
     }
     
+    /* collect the system info */
+    if (NULL != opal_sysinfo.query) {
+        char *keys[] = {
+            OPAL_SYSINFO_CPU_TYPE,
+            OPAL_SYSINFO_CPU_MODEL,
+            OPAL_SYSINFO_NUM_CPUS,
+            OPAL_SYSINFO_MEM_SIZE,
+            NULL
+        };
+        opal_list_item_t *item;
+        opal_sysinfo_value_t *info;
+
+        /* get and store our local resources */
+        opal_sysinfo.query(keys, &orte_odls_globals.sysinfo);
+        /* find our cpu type and model, save it for later */
+        for (item = opal_list_get_first(&orte_odls_globals.sysinfo);
+             item != opal_list_get_end(&orte_odls_globals.sysinfo) &&
+                (NULL == orte_local_cpu_type || NULL == orte_local_cpu_model);
+             item = opal_list_get_next(item)) {
+            info = (opal_sysinfo_value_t*)item;
+
+            if (0 == strcmp(info->key, OPAL_SYSINFO_CPU_TYPE)) {
+                orte_local_cpu_type = strdup(info->data.str);
+            }
+            if (0 == strcmp(info->key, OPAL_SYSINFO_CPU_MODEL)) {
+                orte_local_cpu_model = strdup(info->data.str);
+            }
+        }
+    }
+
     /* Open up all available components */
 
     if (ORTE_SUCCESS != 

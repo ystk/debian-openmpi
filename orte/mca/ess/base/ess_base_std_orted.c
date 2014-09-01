@@ -1,14 +1,17 @@
 /*
- * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2009      Institut National de Recherche en Informatique
+ *                         et Automatique. All rights reserved.
+ * Copyright (c) 2011      Oracle and/or its affiliates. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -32,24 +35,29 @@
 #include "orte/util/show_help.h"
 #include "opal/runtime/opal.h"
 #include "opal/runtime/opal_cr.h"
+#include "opal/mca/pstat/base/base.h"
 #include "opal/mca/paffinity/base/base.h"
+#include "opal/mca/sysinfo/base/base.h"
+
 
 #include "orte/mca/rml/base/base.h"
 #include "orte/mca/routed/base/base.h"
 #include "orte/mca/routed/routed.h"
+#include "orte/mca/grpcomm/grpcomm.h"
 #include "orte/mca/grpcomm/base/base.h"
 #include "orte/mca/iof/base/base.h"
 #include "orte/mca/plm/base/base.h"
 #include "orte/mca/odls/base/base.h"
 #include "orte/mca/errmgr/errmgr.h"
-#include "orte/mca/errmgr/base/base.h"
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
 #include "orte/mca/snapc/base/base.h"
 #endif
 #include "orte/mca/filem/base/base.h"
 #include "orte/util/proc_info.h"
 #include "orte/util/session_dir.h"
 #include "orte/util/name_fns.h"
+#include "orte/util/nidmap.h"
+#include "orte/util/regex.h"
 #include "orte/util/show_help.h"
 #include "orte/mca/notifier/base/base.h"
 
@@ -61,36 +69,40 @@
 
 static bool plm_in_use;
 
-int orte_ess_base_orted_setup(void)
+int orte_ess_base_orted_setup(char **hosts)
 {
     int ret;
     char *error = NULL;
     char *plm_to_use;
-    int value;
 
     /* initialize the global list of local children and job data */
     OBJ_CONSTRUCT(&orte_local_children, opal_list_t);
     OBJ_CONSTRUCT(&orte_local_jobdata, opal_list_t);
     
-    /* determine the topology info */
-    if (0 == orte_default_num_sockets_per_board) {
-        /* we weren't given a number, so try to determine it */
-        if (OPAL_SUCCESS != opal_paffinity_base_get_socket_info(&value)) {
-            /* can't get any info - default to 1 */
-            value = 1;
-        }
-        orte_default_num_sockets_per_board = (uint8_t)value;
+    /* open and setup the opal_pstat framework so we can provide
+     * process stats if requested
+     */
+    if (ORTE_SUCCESS != (ret = opal_pstat_base_open())) {
+        ORTE_ERROR_LOG(ret);
+        error = "opal_pstat_base_open";
+        goto error;
     }
-    if (0 == orte_default_num_cores_per_socket) {
-        /* we weren't given a number, so try to determine it */
-        if (OPAL_SUCCESS != opal_paffinity_base_get_core_info(0, &value)) {
-            /* don't have topo info - can we at least get #processors? */
-            if (OPAL_SUCCESS != opal_paffinity_base_get_processor_info(&value)) {
-                /* can't get any info - default to 1 */
-                value = 1;
-            }
-        }
-        orte_default_num_cores_per_socket = (uint8_t)value;
+    if (ORTE_SUCCESS != (ret = opal_pstat_base_select())) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_pstat_base_select";
+        goto error;
+    }
+    
+    /* open and setup the local resource discovery framework */
+    if (ORTE_SUCCESS != (ret = opal_sysinfo_base_open())) {
+        ORTE_ERROR_LOG(ret);
+        error = "opal_sysinfo_base_open";
+        goto error;
+    }
+    if (ORTE_SUCCESS != (ret = opal_sysinfo_base_select())) {
+        ORTE_ERROR_LOG(ret);
+        error = "opal_sysinfo_base_select";
+        goto error;
     }
     
     /* some environments allow remote launches - e.g., ssh - so
@@ -122,7 +134,7 @@ int orte_ess_base_orted_setup(void)
 
     /* Setup the communication infrastructure */
     
-    /* Runtime Messaging Layer */
+    /* Runtime Messaging Layer - this opens/selects the OOB as well */
     if (ORTE_SUCCESS != (ret = orte_rml_base_open())) {
         ORTE_ERROR_LOG(ret);
         error = "orte_rml_base_open";
@@ -133,6 +145,7 @@ int orte_ess_base_orted_setup(void)
         error = "orte_rml_base_select";
         goto error;
     }
+
     /* Routed system */
     if (ORTE_SUCCESS != (ret = orte_routed_base_open())) {
         ORTE_ERROR_LOG(ret);
@@ -177,6 +190,53 @@ int orte_ess_base_orted_setup(void)
         goto error;
     }
     
+    /* initialize the nidmaps */
+    if (ORTE_SUCCESS != (ret = orte_util_nidmap_init(NULL))) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_util_nidmap_init";
+        goto error;
+    }
+    /* if we are using static ports, then we need to setup
+     * the daemon info so the RML can function properly
+     * without requiring a wireup stage. This must be done
+     * after we enable_comm as that function determines our
+     * own port, which we need in order to construct the nidmap
+     */
+    if (orte_static_ports) {
+        if (NULL != orted_launch_cmd) {
+            /* the launch cmd was given via regexp on the cmd line - parse
+             * it to get the contact info
+             */
+            if (ORTE_SUCCESS != (ret = orte_regex_decode_maps(orted_launch_cmd, NULL))) {
+                ORTE_ERROR_LOG(ret);
+                error = "orte_regex_decode_maps";
+                goto error;
+            }
+        } else {
+            if (ORTE_SUCCESS != (ret = orte_util_setup_local_nidmap_entries())) {
+                ORTE_ERROR_LOG(ret);
+                error = "orte_util_nidmap_init";
+                goto error;
+            }
+            /* extract the node info from the environment and
+             * build a nidmap from it
+             */
+            if (ORTE_SUCCESS != (ret = orte_util_build_daemon_nidmap(hosts))) {
+                ORTE_ERROR_LOG(ret);
+                error = "construct daemon map from static ports";
+                goto error;
+            }
+        }
+    }
+    /* be sure to update the routing tree so the initial "phone home"
+     * to mpirun goes through the tree!
+     */
+    if (ORTE_SUCCESS != (ret = orte_routed.update_routing_tree())) {
+        ORTE_ERROR_LOG(ret);
+        error = "failed to update routing tree";
+        goto error;
+    }
+
     /* Now provide a chance for the PLM
      * to perform any module-specific init functions. This
      * needs to occur AFTER the communications are setup
@@ -242,7 +302,7 @@ int orte_ess_base_orted_setup(void)
         goto error;
     }
     
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     /*
      * Setup the SnapC
      */
@@ -252,7 +312,7 @@ int orte_ess_base_orted_setup(void)
         goto error;
     }
     
-    if (ORTE_SUCCESS != (ret = orte_snapc_base_select(orte_process_info.hnp, !orte_process_info.daemon))) {
+    if (ORTE_SUCCESS != (ret = orte_snapc_base_select(ORTE_PROC_IS_HNP, !ORTE_PROC_IS_DAEMON))) {
         ORTE_ERROR_LOG(ret);
         error = "orte_snapc_base_select";
         goto error;
@@ -294,6 +354,10 @@ error:
                    "orte_init:startup:internal-failure",
                    true, error, ORTE_ERROR_NAME(ret), ret);
     
+    /* cleanup the global list of local children and job data */
+    OBJ_DESTRUCT(&orte_local_children);
+    OBJ_DESTRUCT(&orte_local_jobdata);
+    
     return ret;
 }
 
@@ -301,11 +365,20 @@ int orte_ess_base_orted_finalize(void)
 {
     opal_list_item_t *item;
     
+    /* ensure all the orteds depart together */
+    if (!orte_abnormal_term_ordered) {
+        /* if we are abnormally terminating, don't attempt
+         * to do a barrier as nobody else will be entering
+         * that call
+         */
+        orte_grpcomm.onesided_barrier();
+    }
+    
     orte_notifier_base_close();
     
     orte_cr_finalize();
     
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     orte_snapc_base_close();
 #endif
     orte_filem_base_close();
@@ -319,7 +392,6 @@ int orte_ess_base_orted_finalize(void)
     if (plm_in_use) {
         orte_plm_base_close();
     }
-    orte_errmgr_base_close();
     
     /* now can close the rml and its friendly group comm */
     orte_grpcomm_base_close();
@@ -338,6 +410,10 @@ int orte_ess_base_orted_finalize(void)
     
     /* cleanup any lingering session directories */
     orte_session_dir_cleanup(ORTE_JOBID_WILDCARD);
+    
+    /* handle the orted-specific OPAL stuff */
+    opal_sysinfo_base_close();
+    opal_pstat_base_close();
     
     return ORTE_SUCCESS;    
 }

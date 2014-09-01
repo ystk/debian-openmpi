@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2010 University of Houston.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc. All rights reserved.
  * $COPYRIGHT$
@@ -23,6 +23,7 @@
 #ifndef OMPI_COMMUNICATOR_H
 #define OMPI_COMMUNICATOR_H
 
+#include "ompi_config.h"
 #include "opal/class/opal_object.h"
 #include "ompi/errhandler/errhandler.h"
 #include "opal/threads/mutex.h"
@@ -46,7 +47,7 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(ompi_communicator_t);
 #define OMPI_COMM_DYNAMIC    0x00000040
 #define OMPI_COMM_INVALID    0x00000080
 #define OMPI_COMM_PML_ADDED  0x00000100
-#define OMPI_COMM_EXTRA_RETAIN   0x00000200
+#define OMPI_COMM_EXTRA_RETAIN 0x00000200
 
 /* some utility #defines */
 #define OMPI_COMM_IS_INTER(comm) ((comm)->c_flags & OMPI_COMM_INTER)
@@ -62,6 +63,7 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(ompi_communicator_t);
 
 #define OMPI_COMM_SET_DYNAMIC(comm) ((comm)->c_flags |= OMPI_COMM_DYNAMIC)
 #define OMPI_COMM_SET_INVALID(comm) ((comm)->c_flags |= OMPI_COMM_INVALID)
+
 #define OMPI_COMM_SET_PML_ADDED(comm) ((comm)->c_flags |= OMPI_COMM_PML_ADDED)
 #define OMPI_COMM_SET_EXTRA_RETAIN(comm) ((comm)->c_flags |= OMPI_COMM_EXTRA_RETAIN)
 
@@ -94,6 +96,7 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(ompi_communicator_t);
 
 /* A macro comparing two CIDs */
 #define OMPI_COMM_CID_IS_LOWER(comm1,comm2) ( ((comm1)->c_contextid < (comm2)->c_contextid)? 1:0)
+
 
 OMPI_DECLSPEC extern opal_pointer_array_t ompi_mpi_communicators;
 
@@ -233,6 +236,8 @@ struct ompi_predefined_communicator_t {
 typedef struct ompi_predefined_communicator_t ompi_predefined_communicator_t;
 
 OMPI_DECLSPEC extern ompi_communicator_t *ompi_mpi_comm_parent;
+OMPI_DECLSPEC extern ompi_predefined_communicator_t ompi_mpi_comm_world;
+OMPI_DECLSPEC extern ompi_predefined_communicator_t ompi_mpi_comm_self;
 OMPI_DECLSPEC extern ompi_predefined_communicator_t ompi_mpi_comm_null;
 
 
@@ -313,9 +318,9 @@ static inline ompi_communicator_t *ompi_comm_lookup(uint32_t cid)
 
 static inline struct ompi_proc_t* ompi_comm_peer_lookup(ompi_communicator_t* comm, int peer_id)
 {
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(peer_id >= comm->c_remote_group->grp_proc_count) {
-        opal_output(0, "ompi_comm_lookup_peer: invalid peer index (%d)", peer_id);
+        opal_output(0, "ompi_comm_peer_lookup: invalid peer index (%d)", peer_id);
         return (struct ompi_proc_t *) NULL;
     }
 #endif
@@ -513,10 +518,12 @@ void ompi_comm_reg_finalize(void);
 extern int ompi_comm_num_dyncomm;
 
 
-/* check in the communicator destructor whether a block if cid's 
-   can be reused.
+/* check whether any of the processes has requested support for 
+   MPI_THREAD_MULTIPLE. Note, that this produces global
+   information across MPI_COMM_WORLD, in contrary to the local
+   flag ompi_mpi_thread_provided 
 */
-OMPI_DECLSPEC void  ompi_comm_checkfor_blockreset ( ompi_communicator_t *comm );
+OMPI_DECLSPEC int ompi_comm_cid_init ( void );
 
 
 END_C_DECLS

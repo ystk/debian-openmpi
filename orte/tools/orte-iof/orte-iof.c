@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -56,32 +56,21 @@
 #include <dirent.h>
 #endif  /* HAVE_DIRENT_H */
 
+#include "opal/event/event.h"
 #include "opal/util/cmd_line.h"
 #include "opal/util/argv.h"
 #include "opal/util/opal_environ.h"
-#include "opal/util/os_path.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/runtime/opal.h"
-#if OPAL_ENABLE_FT == 1
-#include "opal/runtime/opal_cr.h"
-#endif
-#include "opal/dss/dss.h"
 
 #include "orte/runtime/runtime.h"
-#include "orte/util/proc_info.h"
-#include "opal/util/os_path.h"
-#include "orte/util/session_dir.h"
 #include "orte/util/hnp_contact.h"
-#include "orte/util/name_fns.h"
 #include "orte/util/show_help.h"
 #include "orte/util/parse_options.h"
+#include "orte/util/proc_info.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/iof/iof.h"
-#if OPAL_ENABLE_FT == 1
-#include "orte/mca/snapc/base/base.h"
-#endif
-#include "orte/runtime/orte_globals.h"
 
 
 /*****************************************
@@ -177,7 +166,7 @@ main(int argc, char *argv[])
      * to ensure installdirs is setup properly
      * before calling mca_base_open();
      */
-    if( ORTE_SUCCESS != (ret = opal_init_util()) ) {
+    if( ORTE_SUCCESS != (ret = opal_init_util(&argc, &argv)) ) {
         return ret;
     }
     
@@ -218,7 +207,7 @@ main(int argc, char *argv[])
     /***************************
      * We need all of OPAL and the TOOL portion of ORTE
      ***************************/
-    if (ORTE_SUCCESS != orte_init(ORTE_TOOL)) {
+    if (ORTE_SUCCESS != orte_init(&argc, &argv, ORTE_PROC_TOOL)) {
         orte_finalize();
         return 1;
     }

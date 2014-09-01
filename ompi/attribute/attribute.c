@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2007 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -193,13 +193,13 @@
 #include "ompi_config.h"
 
 #include "ompi/attribute/attribute.h"
+#include "opal/class/opal_bitmap.h"
 #include "opal/threads/mutex.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
-#include "ompi/communicator/communicator.h"
-#include "ompi/win/win.h"
+#include "ompi/datatype/ompi_datatype.h"
+#include "ompi/communicator/communicator.h"  /* ompi_communicator_t generated in [COPY|DELETE]_ATTR_CALLBACKS */
+#include "ompi/win/win.h"                    /* ompi_win_t generated in [COPY|DELETE]_ATTR_CALLBACKS */
 #include "ompi/mpi/f77/fint_2_int.h"
-#include "ompi/class/ompi_bitmap.h"
 
 /*
  * Macros
@@ -215,9 +215,9 @@
 #define attr_datatype_f d_f_to_c_index
 #define attr_win_f w_f_to_c_index
 
-#define CREATE_KEY(key) ompi_bitmap_find_and_set_first_unset_bit(key_bitmap, (key))
+#define CREATE_KEY(key) opal_bitmap_find_and_set_first_unset_bit(key_bitmap, (key))
 
-#define FREE_KEY(key) ompi_bitmap_clear_bit(key_bitmap, (key))
+#define FREE_KEY(key) opal_bitmap_clear_bit(key_bitmap, (key))
 
 
 /* Not checking for NULL_DELETE_FN here, since according to the
@@ -318,7 +318,7 @@
                 return OMPI_FINT_2_INT(f_err); \
             } \
             out_attr->av_value = (void *) out; \
-            flag = OMPI_FINT_2_INT(f_flag); \
+            flag = OMPI_LOGICAL_2_INT(f_flag); \
         } \
     } \
     /* C style */ \
@@ -397,7 +397,7 @@ static OBJ_CLASS_INSTANCE(ompi_attribute_keyval_t,
  */
 
 static opal_hash_table_t *keyval_hash;
-static ompi_bitmap_t *key_bitmap;
+static opal_bitmap_t *key_bitmap;
 static unsigned int int_pos = 12345;
 
 /*
@@ -486,8 +486,12 @@ int ompi_attr_init(void)
     if (NULL == keyval_hash) {
         return MPI_ERR_SYSRESOURCE;
     }
-    key_bitmap = OBJ_NEW(ompi_bitmap_t);
-    if (0 != ompi_bitmap_init(key_bitmap, 32)) {
+    key_bitmap = OBJ_NEW(opal_bitmap_t);
+    /*
+     * Set the max size to OMPI_FORTRAN_HANDLE_MAX to enforce bound
+     */
+    opal_bitmap_set_max_size (key_bitmap, OMPI_FORTRAN_HANDLE_MAX);
+    if (0 != opal_bitmap_init(key_bitmap, 32)) {
         return MPI_ERR_SYSRESOURCE;
     }
 
@@ -936,10 +940,10 @@ int ompi_attr_copy_all(ompi_attribute_type_t type, void *old_object,
 
         /* Hang this off the object's hash */
             
-        /* The "predefined" parameter to ompi_attr_set() is set to 1,
-           so that no comparison is done for prdefined at all and it
-           just falls off the error checking loop in attr_set  */
-
+        /* The COPY_ATTR_CALLBACKS macro will have converted the
+           _flag_ callback output value from Fortran's .TRUE. value to
+           0/1 (if necessary).  So we only need to check for 0/1 here
+           -- not .TRUE. */
         if (1 == flag) {
             if (0 != (hash_value->attr_flag & OMPI_KEYVAL_F77)) {
                 if (0 != (hash_value->attr_flag & OMPI_KEYVAL_F77_MPI1)) {
@@ -952,7 +956,6 @@ int ompi_attr_copy_all(ompi_attribute_type_t type, void *old_object,
             }
             set_value(type, new_object, &newattr_hash, key, 
                       new_attr, true);
-
         } else {
             OBJ_RELEASE(new_attr);
         }

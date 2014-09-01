@@ -25,7 +25,6 @@
 #include <float.h>
 #include <assert.h>
 
-#include "opal/constants.h"
 
 /***************************************************
 ** This file tries to classify the most relevant
@@ -236,8 +235,6 @@ OPAL_DECLSPEC int32_t opal_arch_compute_local_id( uint32_t *var);
 
 OPAL_DECLSPEC int32_t opal_arch_checkmask ( uint32_t *var, uint32_t mask );
 
-END_C_DECLS
-
 static inline int32_t opal_arch_isbigendian ( void )
 {
     const uint32_t value = 0x12345678;
@@ -289,6 +286,8 @@ static inline void opal_arch_setmask ( uint32_t *var, uint32_t mask)
 {
     *var |= mask;
 }
+
+END_C_DECLS
 
 #endif  /* OPAL_ARCH_H_HAS_BEEN_INCLUDED */
 

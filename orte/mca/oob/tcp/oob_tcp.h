@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC. 
  *                         All rights reserved.
- * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -40,10 +40,9 @@
 #include "opal/mca/base/base.h"
 #include "opal/class/opal_free_list.h"
 #include "opal/class/opal_hash_table.h"
-#include "opal/runtime/opal_progress.h"
-#include "opal/runtime/opal_cr.h"
 #include "opal/threads/mutex.h"
 #include "opal/threads/condition.h"
+#include "opal/threads/threads.h"
 #include "opal/mca/timer/base/base.h"
 
 #include "orte/mca/oob/oob.h"
@@ -65,8 +64,6 @@ extern mca_oob_t mca_oob_tcp;
 /*
  * standard component functions
  */
-int        mca_oob_tcp_component_open(void);
-int        mca_oob_tcp_component_close(void);
 mca_oob_t* mca_oob_tcp_component_init(int* priority);
 
 /**
@@ -212,15 +209,15 @@ struct mca_oob_tcp_component_t {
     opal_event_t       tcp_recv_event;       /**< event structure for IPv4 recvs */
     int                tcp_listen_sd;        /**< listen socket for incoming IPv4 connection requests */
     unsigned short     tcp_listen_port;      /**< IPv4 listen port */
-    int                tcp_port_min;         /**< Minimum allowed port for the OOB listen socket */
-    int                tcp_port_range;       /**< Range of allowed TCP ports */
+    char**             tcp4_static_ports;    /**< Static ports - IPV4 */
+    char**             tcp4_dyn_ports;       /**< Dynamic ports - IPV4 */
     int                disable_family;       /**< disable AF: 0-nothing, 4-IPv4, 6-IPv6 */
 #if OPAL_WANT_IPV6
     opal_event_t       tcp6_recv_event;      /**< event structure for IPv6 recvs */
     int                tcp6_listen_sd;       /**< listen socket for incoming IPv6 connection requests */
     unsigned short     tcp6_listen_port;     /**< IPv6 listen port */
-    int                tcp6_port_min;        /**< Minimum allowed port for the OOB listen socket */
-    int                tcp6_port_range;      /**< Range of allowed TCP ports */
+    char**             tcp6_static_ports;    /**< Static ports - IPV6 */
+    char**             tcp6_dyn_ports;       /**< Dynamic ports - IPV6 */
 #endif  /* OPAL_WANT_IPV6 */
     opal_mutex_t       tcp_lock;             /**< lock for accessing module state */
     opal_list_t        tcp_events;           /**< list of pending events (accepts) */
@@ -264,7 +261,13 @@ extern int mca_oob_tcp_output_handle;
 #if defined(__WINDOWS__)
 #define CLOSE_THE_SOCKET(socket)    closesocket(socket)
 #else
-#define CLOSE_THE_SOCKET(socket)    close(socket)
+
+#define CLOSE_THE_SOCKET(socket)    \
+    do {                            \
+        shutdown(socket, 2);        \
+        close(socket);              \
+    } while(0)
+
 #endif  /* defined(__WINDOWS__) */
 
 

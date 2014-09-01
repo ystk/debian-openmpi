@@ -21,16 +21,14 @@
 #include <stdio.h>
 
 #include "ompi/constants.h"
-#include "orte/util/show_help.h"
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 
-#include "orte/util/show_help.h"
 
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/base.h"
-
 
 /*
  * The following file was created by configure.  It contains extern
@@ -40,12 +38,10 @@
 #include "ompi/mca/coll/base/static-components.h"
 
 
-
 /*
  * Global variables; most of which are loaded by back-ends of MCA
  * variables
  */
-int mca_coll_base_param = -1;
 int mca_coll_base_output = -1;
 
 int mca_coll_base_crossover = 4;
@@ -68,17 +64,13 @@ int mca_coll_base_open(void)
 
     /* Open up all available components */
 
-    if (OMPI_SUCCESS != 
+    if (OMPI_SUCCESS !=
         mca_base_components_open("coll", mca_coll_base_output,
-                                 mca_coll_base_static_components, 
+                                 mca_coll_base_static_components,
                                  &mca_coll_base_components_opened, true)) {
         return OMPI_ERROR;
     }
     mca_coll_base_components_opened_valid = true;
-
-    /* Find the index of the MCA "coll" param for selection */
-
-    mca_coll_base_param = mca_base_param_find("coll", "base", NULL);
 
     /* All done */
 

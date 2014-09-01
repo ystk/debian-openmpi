@@ -2,7 +2,7 @@
  * VampirTrace
  * http://www.tu-dresden.de/zih/vampirtrace
  *
- * Copyright (c) 2005-2008, ZIH, TU Dresden, Federal Republic of Germany
+ * Copyright (c) 2005-2013, ZIH, TU Dresden, Federal Republic of Germany
  *
  * Copyright (c) 1998-2005, Forschungszentrum Juelich, Juelich Supercomputing
  *                          Centre, Federal Republic of Germany
@@ -12,8 +12,9 @@
 
 #include "config.h"
 
-#include "vt_pform.h"
+#include "vt_defs.h"
 #include "vt_error.h"
+#include "vt_pform.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -42,41 +43,99 @@
 # include <sys/time.h>
   static uint64_t vt_time_base = 0;
 #elif TIMER == TIMER_CYCLE_COUNTER
-  static uint64_t vt_ticks_per_sec = 1;
+  static uint64_t vt_ticks_per_sec = 0;
 #elif TIMER == TIMER_PAPI_REAL_CYC
-# include <vt_metric.h>
+  extern uint64_t vt_metric_clckrt(void);
+  extern uint64_t vt_metric_real_cyc(void);
 #elif TIMER == TIMER_PAPI_REAL_USEC
-# include <vt_metric.h>
+  extern uint64_t vt_metric_real_usec(void);
   static uint64_t vt_time_base = 0;
 #endif
 
+static char* vt_exec = NULL;
+static long vt_node_id = 0;
 static uint32_t vt_cpu_count = 0;
 
 /* platform specific initialization */
 void vt_pform_init()
 {
-  int mib[2];
+  int    mib[4];
+  int    argmax;
+  char*  procargs;
   size_t len;
 
+  /* get timer resolution */
 #if TIMER == TIMER_GETTIMEOFDAY
   struct timeval tp;
   gettimeofday(&tp, 0);
   vt_time_base = tp.tv_sec - (tp.tv_sec & 0xFFFF);
 #elif TIMER == TIMER_CYCLE_COUNTER
-  mib[0] = CTL_HW;
-  mib[1] = HW_CPU_FREQ;
-  len = sizeof(vt_ticks_per_sec);
-  if (sysctl(mib, 2, &vt_ticks_per_sec, &len, NULL, 0) == -1)
-    vt_error_msg("sysctl[HW_CPU_FREQ] failed: %s\n", strerror(errno));
+# if defined(__powerpc64__) || defined(__powerpc__) || defined(__POWERPC__)
+    struct clockinfo clk_info;
+    mib[0] = CTL_KERN;
+    mib[1] = KERN_CLOCKRATE;
+    len = sizeof(clk_info);
+    if (sysctl(mib, 2, &clk_info, &len, NULL, 0) == -1)
+      vt_error_msg("sysctl[KERN_CLOCKRATE] failed: %s", strerror(errno));
+    vt_ticks_per_sec = clk_info.hz * 1000000;
+# else
+    mib[0] = CTL_HW;
+    mib[1] = HW_CPU_FREQ;
+    len = sizeof(vt_ticks_per_sec);
+    if (sysctl(mib, 2, &vt_ticks_per_sec, &len, NULL, 0) == -1)
+      vt_error_msg("sysctl[HW_CPU_FREQ] failed: %s", strerror(errno));
+# endif
 #elif TIMER == TIMER_PAPI_REAL_USEC
   vt_time_base = vt_metric_real_usec();
 #endif
 
+  /* get number of CPUs */
   mib[0] = CTL_HW;
   mib[1] = HW_NCPU;
   len = sizeof(vt_cpu_count);
   if (sysctl(mib, 2, &vt_cpu_count, &len, NULL, 0) == -1)
-    vt_error_msg("sysctl[HW_NCPU] failed: %s\n", strerror(errno));
+    vt_error_msg("sysctl[HW_NCPU] failed: %s", strerror(errno));
+
+  /* get maximum arguments of executable */
+  mib[0] = CTL_KERN;
+  mib[1] = KERN_ARGMAX;
+  len = sizeof(argmax);
+  if (sysctl(mib, 2, &argmax, &len, NULL, 0) == -1)
+    vt_error_msg("sysctl[KERN_ARGMAX] failed: %s", strerror(errno));
+
+  /* get full path of executable */
+  mib[0] = CTL_KERN;
+  mib[1] = KERN_PROCARGS;
+  mib[2] = (int)getpid();
+  len = (size_t)argmax;
+  procargs = (char*)malloc(argmax);
+  if (sysctl(mib, 3, procargs, &len, NULL, 0) == -1)
+    vt_error_msg("sysctl[KERN_PROCARGS] failed: %s", strerror(errno));
+
+  /* relative path? */
+  if (procargs[0] != '/')
+  {
+    /* prepend CWD to relative path */
+    char cwd[1024];
+    if (getcwd( cwd, sizeof(cwd)) == NULL)
+      vt_error_msg("getcwd failed: %s", strerror(errno));
+
+    vt_exec = (char*)malloc(strlen(cwd)+strlen(procargs)+1);
+    sprintf(vt_exec, "%s/%s", cwd, procargs);
+  }
+  else
+  {
+    vt_exec = strdup(procargs); 
+  }
+
+  free(procargs);
+
+  /* get unique numeric SMP-node identifier */
+  mib[0] = CTL_KERN;
+  mib[1] = KERN_HOSTID;
+  len = sizeof(vt_node_id);
+  if (sysctl(mib, 2, &vt_node_id, &len, NULL, 0) == -1)
+    vt_error_msg("sysctl[KERN_HOSTID] failed: %s", strerror(errno));
 }
 
 /* directory of global file system  */
@@ -88,24 +147,30 @@ char* vt_pform_gdir()
 /* directory of local file system  */
 char* vt_pform_ldir()
 {
-#  ifdef PFORM_LDIR
-    return PFORM_LDIR;
-#  else
-    return "/tmp";
-#  endif
+#ifdef DEFAULT_PFORM_LDIR
+  return DEFAULT_PFORM_LDIR;
+#else
+  return "/tmp";
+#endif
+}
+
+/* full path of executable  */
+char* vt_pform_exec()
+{
+  return vt_exec;
 }
 
 /* clock resolution */
 uint64_t vt_pform_clockres()
 {
 #if TIMER == TIMER_GETTIMEOFDAY
-  return 1e6;
+  return 1000000LL;
 #elif TIMER == TIMER_CYCLE_COUNTER
   return vt_ticks_per_sec;
 #elif TIMER == TIMER_PAPI_REAL_CYC
   return vt_metric_clckrt();
 #elif TIMER == TIMER_PAPI_REAL_USEC
-  return 1e6;
+  return 1000000LL;
 #endif
 }
 
@@ -115,7 +180,7 @@ uint64_t vt_pform_wtime()
 #if TIMER == TIMER_GETTIMEOFDAY
   struct timeval tp;
   gettimeofday(&tp, 0);
-  return ((tp.tv_sec - vt_time_base) * 1e6) + tp.tv_usec;
+  return ((tp.tv_sec - vt_time_base) * 1000000LL) + tp.tv_usec;
 #elif TIMER == TIMER_CYCLE_COUNTER
   uint64_t clock_value;
 
@@ -159,7 +224,7 @@ uint64_t vt_pform_wtime()
 /* unique numeric SMP-node identifier */
 long vt_pform_node_id()
 {
-  return gethostid(); 
+  return vt_node_id;
 }
 
 /* unique string SMP-node identifier */

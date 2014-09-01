@@ -29,7 +29,11 @@
 #include "orte/constants.h"
 #include "orte/types.h"
 
-#if HAVE_UNISTD_H
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 #include <signal.h>
@@ -52,12 +56,11 @@
 #include <tm.h>
 
 #include "opal/mca/installdirs/installdirs.h"
-#include "opal/threads/condition.h"
 #include "opal/event/event.h"
 #include "opal/util/argv.h"
+#include "opal/util/output.h"
 #include "orte/util/show_help.h"
 #include "opal/util/opal_environ.h"
-#include "opal/util/path.h"
 #include "opal/util/basename.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/runtime/opal_progress.h"
@@ -79,7 +82,6 @@
  */
 static int plm_tm_init(void);
 static int plm_tm_launch_job(orte_job_t *jdata);
-static int plm_tm_terminate_job(orte_jobid_t jobid);
 static int plm_tm_terminate_orteds(void);
 static int plm_tm_signal_job(orte_jobid_t jobid, int32_t signal);
 static int plm_tm_finalize(void);
@@ -92,6 +94,7 @@ static void failed_start(int fd, short event, void *arg);
  * Local "global" variables
  */
 static opal_event_t *ev=NULL;
+static bool local_launch_available = false;
 
 /*
  * Global variable
@@ -101,8 +104,9 @@ orte_plm_base_module_t orte_plm_tm_module = {
     orte_plm_base_set_hnp_name,
     plm_tm_launch_job,
     NULL,
-    plm_tm_terminate_job,
+    orte_plm_base_orted_terminate_job,
     plm_tm_terminate_orteds,
+    orte_plm_base_orted_kill_local_procs,
     plm_tm_signal_job,
     plm_tm_finalize
 };
@@ -117,6 +121,11 @@ static int plm_tm_init(void)
     if (ORTE_SUCCESS != (rc = orte_plm_base_comm_start())) {
         ORTE_ERROR_LOG(rc);
     }
+
+    if (ORTE_SUCCESS == orte_plm_base_rsh_launch_agent_setup(orte_rsh_agent, NULL)) {
+        local_launch_available = true;
+    }
+    
     return rc;
 }
 
@@ -135,6 +144,7 @@ static int plm_tm_launch_job(orte_job_t *jdata)
     char **env = NULL;
     char *var;
     char **argv = NULL;
+    char **nodeargv;
     int argc = 0;
     int rc;
     bool connected = false;
@@ -146,27 +156,50 @@ static int plm_tm_launch_job(orte_job_t *jdata)
     tm_event_t event;
     bool failed_launch = true;
     mode_t current_umask;
-    orte_jobid_t failed_job;
+    orte_jobid_t failed_job, active_job;
+    char *nodelist;
+
+    if (NULL == jdata) {
+	/* just launching debugger daemons */
+	active_job = ORTE_JOBID_INVALID;
+	goto launch_apps;
+    }
+    
+    if (jdata->controls & ORTE_JOB_CONTROL_LOCAL_SLAVE) {
+        /* if this is a request to launch a local slave,
+         * then we will not be launching an orted - we will
+         * directly ssh the slave process itself. No mapping
+         * is performed to support this - the caller must
+         * provide all the info required to launch the job,
+         * including the target hosts
+         */
+        if (!local_launch_available) {
+            /* if we can't support this, then abort */
+            orte_show_help("help-plm-tm.txt", "no-local-slave-support", true);
+            return ORTE_ERR_FAILED_TO_START;
+        }
+        return orte_plm_base_local_slave_launch(jdata);
+    }
+
+    /* if we are timing, record the start time */
+    if (orte_timing) {
+        gettimeofday(&orte_plm_globals.daemonlaunchstart, NULL);
+    }
     
     /* default to declaring the daemons as failed */
     failed_job = ORTE_PROC_MY_NAME->jobid;
-    
-    /* create a jobid for this job */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_create_jobid(&jdata->jobid))) {
-        ORTE_ERROR_LOG(rc);
-        goto cleanup;
-    }
-    
-    OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                         "%s plm:tm: launching job %s",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                         ORTE_JOBID_PRINT(jdata->jobid)));
     
     /* setup the job */
     if (ORTE_SUCCESS != (rc = orte_plm_base_setup_job(jdata))) {
         ORTE_ERROR_LOG(rc);
         goto cleanup;
     }
+    active_job = jdata->jobid;
+    
+    OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                         "%s plm:tm: launching job %s",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         ORTE_JOBID_PRINT(jdata->jobid)));
     
     /* Get the map for this job */
     if (NULL == (map = orte_rmaps.get_job_map(jdata->jobid))) {
@@ -199,11 +232,28 @@ static int plm_tm_launch_job(orte_job_t *jdata)
     /* add the daemon command (as specified by user) */
     orte_plm_base_setup_orted_cmd(&argc, &argv);
 
+    /* create a list of nodes in this launch */
+    nodeargv = NULL;
+    for (i = 0; i < map->num_nodes; i++) {
+        orte_node_t* node = nodes[i];
+        
+        /* if this daemon already exists, don't launch it! */
+        if (node->daemon_launched) {
+            continue;
+        }
+        
+        /* add to list */
+        opal_argv_append_nosize(&nodeargv, node->name);
+    }
+    nodelist = opal_argv_join(nodeargv, ',');
+    opal_argv_free(nodeargv);
+    
     /* Add basic orted command line options */
-    orte_plm_base_orted_append_basic_args(&argc, &argv, "env",
+    orte_plm_base_orted_append_basic_args(&argc, &argv, "tm",
                                           &proc_vpid_index,
-                                          true);
-
+                                          true, nodelist);
+    free(nodelist);
+    
     if (0 < opal_output_get_verbosity(orte_plm_globals.output)) {
         param = opal_argv_join(argv, ' ');
         OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
@@ -228,6 +278,11 @@ static int plm_tm_launch_job(orte_job_t *jdata)
     /* setup environment */
     env = opal_argv_copy(orte_launch_environ);
 
+    /* enable local launch by the orteds */
+    var = mca_base_param_environ_variable("plm", NULL, NULL);
+    opal_setenv(var, "rsh", true, &env);
+    free(var);
+    
     /* add our umask -- see big note in orted.c */
     current_umask = umask(0);
     umask(current_umask);
@@ -334,6 +389,11 @@ static int plm_tm_launch_job(orte_job_t *jdata)
             opal_output(0, "plm:tm: failed to poll for a spawned daemon, return status = %d", rc);
             goto cleanup;
         }
+        if (TM_SUCCESS != local_err) {
+            errno = local_err;
+            opal_output(0, "plm:tm: failed to spawn daemon, error code = %d", errno );
+            goto cleanup;
+        }
     }
     
     /* set a timer to tell us if one or more daemon's fails to start - use the
@@ -367,12 +427,12 @@ launch_apps:
     /* since the daemons have launched, any failures now will be for the
      * application job
      */
-    failed_job = jdata->jobid;
-    if (ORTE_SUCCESS != (rc = orte_plm_base_launch_apps(jdata->jobid))) {
+    failed_job = active_job;
+    if (ORTE_SUCCESS != (rc = orte_plm_base_launch_apps(active_job))) {
         OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
                              "%s plm:tm: launch of apps failed for job %s on error %s",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             ORTE_JOBID_PRINT(jdata->jobid), ORTE_ERROR_NAME(rc)));
+                             ORTE_JOBID_PRINT(active_job), ORTE_ERROR_NAME(rc)));
         goto cleanup;
     }
     
@@ -426,19 +486,6 @@ launch_apps:
 }
 
 
-static int plm_tm_terminate_job(orte_jobid_t jobid)
-{
-    int rc;
-    
-   /* order all of the daemons to kill their local procs for this job */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_kill_local_procs(jobid))) {
-        ORTE_ERROR_LOG(rc);
-    }
-
-    return rc;
-}
-
-
 /**
  * Terminate the orteds for a given job
  */
@@ -447,7 +494,7 @@ int plm_tm_terminate_orteds(void)
     int rc;
     
     /* now tell them to die! */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_EXIT_WITH_REPLY_CMD))) {
+    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_EXIT_CMD))) {
         ORTE_ERROR_LOG(rc);
     }
     

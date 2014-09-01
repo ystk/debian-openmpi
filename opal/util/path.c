@@ -5,11 +5,12 @@
  * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2010 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -50,7 +51,6 @@
 #include "opal/util/path.h"
 #include "opal/util/os_path.h"
 #include "opal/util/argv.h"
-#include "opal/util/output.h"
 
 static void path_env_load(char *path, int *pargc, char ***pargv);
 static char *list_env_get(char *var, char **list);
@@ -82,7 +82,7 @@ char *opal_path_find(char *fname, char **pathv, int mode, char **envv)
 
     /* If absolute path is given, return it without searching. */
     if( opal_path_is_absolute(fname) ) {
-        return opal_path_access(fname, "", mode);
+        return opal_path_access(fname, NULL, mode);
     }
 
     /* Initialize. */
@@ -344,12 +344,14 @@ static char *list_env_get(char *var, char **list)
 char* opal_find_absolute_path( char* app_name )
 {
     char* abs_app_name;
+    char cwd[OPAL_PATH_MAX], *pcwd;
 
     if( opal_path_is_absolute(app_name) ) { /* already absolute path */
         abs_app_name = app_name;
-    } else if( '.' == app_name[0] ) { /* the app is in the current directory */
-        char cwd[OMPI_PATH_MAX], *pcwd;
-        pcwd = getcwd( cwd, OMPI_PATH_MAX );
+    } else if ( '.' == app_name[0] ||
+               NULL != strchr(app_name, OPAL_PATH_SEP[0])) {
+        /* the app is in the current directory or below it */
+        pcwd = getcwd( cwd, OPAL_PATH_MAX );
         if( NULL == pcwd ) {
             /* too bad there is no way we can get the app absolute name */
             return NULL;
@@ -361,7 +363,7 @@ char* opal_find_absolute_path( char* app_name )
     }
     
     if( NULL != abs_app_name ) {
-        char* resolved_path = (char*)malloc(OMPI_PATH_MAX);
+        char* resolved_path = (char*)malloc(OPAL_PATH_MAX);
 #if !defined(__WINDOWS__)
         realpath( abs_app_name, resolved_path );
 #else
@@ -432,9 +434,7 @@ char* opal_find_absolute_path( char* app_name )
 #define GPFS_SUPER_MAGIC  0x47504653    /* Thats GPFS in ASCII */
 #endif
 
-#define MASK1          0xff
 #define MASK2        0xffff
-#define MASK3      0xffffff
 #define MASK4    0xffffffff
 
 bool opal_path_nfs(char *fname)

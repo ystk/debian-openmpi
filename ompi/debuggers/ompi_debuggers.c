@@ -10,7 +10,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights resereved.
+ * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c)      2012 Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -68,7 +70,8 @@
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/topo/topo.h"
 #include "ompi/group/group.h"
-#include "ompi/datatype/datatype.h"
+#include "opal/datatype/opal_datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/include/mpi.h"
 
 #include "orte/mca/errmgr/errmgr.h"
@@ -120,11 +123,12 @@ OMPI_DECLSPEC opal_pointer_array_t* opal_pointer_array_t_type_force_inclusion = 
 OMPI_DECLSPEC ompi_communicator_t* ompi_communicator_t_type_force_inclusion = NULL;
 OMPI_DECLSPEC ompi_group_t* ompi_group_t_type_force_inclusion = NULL;
 OMPI_DECLSPEC ompi_status_public_t* ompi_status_public_t_type_force_inclusion = NULL;
+OMPI_DECLSPEC opal_datatype_t* opal_datatype_t_type_force_inclusion = NULL;
 OMPI_DECLSPEC ompi_datatype_t* ompi_datatype_t_type_force_inclusion = NULL;
 
 OMPI_DECLSPEC volatile int MPIR_debug_gate = 0;
-OMPI_DECLSPEC volatile int MPIR_being_debugged = 0;
-OMPI_DECLSPEC volatile int MPIR_debug_state = 0;
+ORTE_DECLSPEC volatile int MPIR_being_debugged;
+ORTE_DECLSPEC volatile int MPIR_debug_state;
 OMPI_DECLSPEC char *MPIR_debug_abort_string = "";
 
 /* Check for a file in few direct ways for portability */
@@ -167,11 +171,10 @@ static void check(char *dir, char *file, char **locations)
 void ompi_wait_for_debugger(void)
 {
     int i, debugger, rc;
-    char *a, *b, **dirs;
+    char *a, *b, **dirs, **tmp1 = NULL, **tmp2 = NULL;
     opal_buffer_t buf;
 
-
-    /* See lengthy comment in orte/tools/orterun/debuggers.c about
+    /* See lengthy comment in orte/tools/orterun/orterun.c about
        orte_in_parallel_debugger */
 #if ORTE_DISABLE_FULL_SUPPORT
     debugger = 0;
@@ -209,12 +212,19 @@ void ompi_wait_for_debugger(void)
     if (NULL != b) {
         dirs = opal_argv_split(b, ':');
         for (i = 0; dirs[i] != NULL; ++i) {
-            check(dirs[i], OMPI_MPIHANDLES_DLL_PREFIX, mpidbg_dll_locations);
-            check(dirs[i], OMPI_MSGQ_DLL_PREFIX, mpimsgq_dll_locations);
+            check(dirs[i], OMPI_MPIHANDLES_DLL_PREFIX, tmp1);
+            check(dirs[i], OMPI_MSGQ_DLL_PREFIX, tmp2);
         }
     }
 
-    if (ORTE_DISABLE_FULL_SUPPORT) {
+    /* Now that we have a full list of directories, assign the argv
+       arrays to the global variables (since the debugger may read the
+       global variables at any time, we want to ensure that they have
+       non-NULL values only when the entire array is ready). */
+    mpimsgq_dll_locations = tmp1;
+    mpidbg_dll_locations = tmp2;
+
+    if (ORTE_DISABLE_FULL_SUPPORT || orte_standalone_operation) {
         /* spin until debugger attaches and releases us */
         while (MPIR_debug_gate == 0) {
 #if defined(__WINDOWS__)
@@ -252,16 +262,6 @@ void ompi_wait_for_debugger(void)
 }    
 
 /*
- * Breakpoint function for parallel debuggers.  This function is also
- * defined in orterun for the starter.  It should never conflict with
- * this one, but we'll make it static, just to be sure.
- */
-static void *MPIR_Breakpoint(void)
-{
-    return NULL;
-}
-
-/*
  * Tell the debugger that we are about to abort
  */
 void ompi_debugger_notify_abort(char *reason)
@@ -276,4 +276,14 @@ void ompi_debugger_notify_abort(char *reason)
 
     /* Now tell the debugger */
     MPIR_Breakpoint();
+}
+
+/* 
+ * Breakpoint function for parallel debuggers.  This function is also 
+ * defined in orterun for the starter.  It should never conflict with 
+ * this 
+ */
+void* MPIR_Breakpoint(void)
+{
+    return NULL;
 }

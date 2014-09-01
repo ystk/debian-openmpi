@@ -13,9 +13,7 @@
 #include "ompi_config.h"
 #include "btl_openib.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 struct mca_btl_openib_eager_rdma_local_t {
     ompi_ptr_t base; /**< buffer for RDMAing eager messages */
@@ -25,7 +23,7 @@ struct mca_btl_openib_eager_rdma_local_t {
     uint16_t tail; /**< Needed for credit managment */
     int32_t credits; /**< number of RDMA credits */
     int32_t rd_win;
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     uint32_t seq;
 #endif
     opal_mutex_t lock; /**< guard access to RDMA buffer */
@@ -38,7 +36,7 @@ struct mca_btl_openib_eager_rdma_remote_t {
 	uint32_t rkey; /**< RKey for accessing remote buffer */
 	int32_t head; /**< RDMA buffer to post to */
 	int32_t tokens; /**< number of rdam tokens */
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     uint32_t seq;
 #endif
 };
@@ -95,8 +93,6 @@ typedef struct mca_btl_openib_eager_rdma_remote_t mca_btl_openib_eager_rdma_remo
     } while(0)
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif
 

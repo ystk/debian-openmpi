@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2007 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2008      Institut National de Recherche en Informatique
@@ -57,16 +57,13 @@
 
 #include "opal/mca/installdirs/installdirs.h"
 #include "opal/util/argv.h"
+#include "opal/util/output.h"
 #include "opal/util/opal_environ.h"
-#include "opal/util/path.h"
-#include "opal/util/basename.h"
 #include "opal/mca/base/mca_base_param.h"
 
 #include "orte/util/show_help.h"
-#include "orte/util/name_fns.h"
-#include "orte/runtime/runtime.h"
+#include "orte/runtime/orte_globals.h"
 #include "orte/runtime/orte_wait.h"
-#include "orte/mca/rml/rml.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rmaps/rmaps.h"
 
@@ -81,7 +78,6 @@
  */
 static int plm_lsf_init(void);
 static int plm_lsf_launch_job(orte_job_t *jdata);
-static int plm_lsf_terminate_job(orte_jobid_t jobid);
 static int plm_lsf_terminate_orteds(void);
 static int plm_lsf_signal_job(orte_jobid_t jobid, int32_t signal);
 static int plm_lsf_finalize(void);
@@ -95,8 +91,9 @@ orte_plm_base_module_t orte_plm_lsf_module = {
     orte_plm_base_set_hnp_name,
     plm_lsf_launch_job,
     NULL,
-    plm_lsf_terminate_job,
+    orte_plm_base_orted_terminate_job,
     plm_lsf_terminate_orteds,
+    orte_plm_base_orted_kill_local_procs,
     plm_lsf_signal_job,
     plm_lsf_finalize
 };
@@ -133,6 +130,7 @@ static int plm_lsf_launch_job(orte_job_t *jdata)
     int rc;
     char** env = NULL;
     char **nodelist_argv;
+    char *nodelist;
     int nodelist_argc;
     char *vpid_string;
     int i;
@@ -144,7 +142,8 @@ static int plm_lsf_launch_job(orte_job_t *jdata)
     orte_node_t **nodes;
     orte_std_cntr_t nnode;
     orte_jobid_t failed_job;
-    
+    orte_job_state_t job_state = ORTE_JOB_NEVER_LAUNCHED;
+
     /* default to declaring the daemons failed*/
     failed_job = ORTE_PROC_MY_NAME->jobid;
 
@@ -154,8 +153,8 @@ static int plm_lsf_launch_job(orte_job_t *jdata)
         }        
     }
     
-    /* create a jobid for this job */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_create_jobid(&jdata->jobid))) {
+    /* setup the job */
+    if (ORTE_SUCCESS != (rc = orte_plm_base_setup_job(jdata))) {
         ORTE_ERROR_LOG(rc);
         goto cleanup;
     }
@@ -164,12 +163,6 @@ static int plm_lsf_launch_job(orte_job_t *jdata)
                          "%s plm:lsf: launching job %s",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          ORTE_JOBID_PRINT(jdata->jobid)));
-    
-    /* setup the job */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_setup_job(jdata))) {
-        ORTE_ERROR_LOG(rc);
-        goto cleanup;
-    }
     
     /* save the active jobid */
     active_job = jdata->jobid;
@@ -209,7 +202,7 @@ static int plm_lsf_launch_job(orte_job_t *jdata)
          */
         opal_argv_append(&nodelist_argc, &nodelist_argv, nodes[nnode]->name);
     }
-
+    nodelist = opal_argv_join(nodelist_argv, ',');
 
     /*
      * start building argv array
@@ -228,7 +221,8 @@ static int plm_lsf_launch_job(orte_job_t *jdata)
     orte_plm_base_orted_append_basic_args(&argc, &argv,
                                           "lsf",
                                           &proc_vpid_index,
-                                          false);
+                                          false, nodelist);
+    free(nodelist);
 
     /* tell the new daemons the base of the name list so they can compute
      * their own name on the other end
@@ -290,6 +284,9 @@ static int plm_lsf_launch_job(orte_job_t *jdata)
             opal_output(0, "plm_lsf: could not obtain start time");
         }        
     }
+    
+    /* set the job state to indicate we attempted to launch */
+    job_state = ORTE_JOB_STATE_FAILED_TO_START;
     
     /* lsb_launch tampers with SIGCHLD.
      * After the call to lsb_launch, the signal handler for SIGCHLD is NULL.
@@ -365,23 +362,9 @@ cleanup:
     
     /* check for failed launch - if so, force terminate */
     if (failed_launch) {
-        orte_plm_base_launch_failed(failed_job, -1, ORTE_ERROR_DEFAULT_EXIT_CODE, ORTE_JOB_STATE_FAILED_TO_START);
+        orte_plm_base_launch_failed(failed_job, -1, ORTE_ERROR_DEFAULT_EXIT_CODE, job_state);
     }
 
-    return rc;
-}
-
-
-static int plm_lsf_terminate_job(orte_jobid_t jobid)
-{
-    int rc;
-    
-    /* order them to kill their local procs for this job */
-    if (ORTE_SUCCESS !=
-        (rc = orte_plm_base_orted_kill_local_procs(jobid))) {
-        ORTE_ERROR_LOG(rc);
-    }
-    
     return rc;
 }
 
@@ -394,7 +377,7 @@ static int plm_lsf_terminate_orteds(void)
     int rc;
     
     /* tell them to die! */
-    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_EXIT_WITH_REPLY_CMD))) {
+    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_EXIT_CMD))) {
         ORTE_ERROR_LOG(rc);
     }
     

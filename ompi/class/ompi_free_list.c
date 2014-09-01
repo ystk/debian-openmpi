@@ -1,8 +1,9 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2006 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -10,6 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Mellanox Technologies. All rights reserved.
+ * Copyright (c) 2010      Cisco Systems, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,9 +22,8 @@
 #include "ompi_config.h"
 
 #include "ompi/class/ompi_free_list.h"
-#include "opal/include/opal/align.h"
-#include "opal/sys/cache.h"
-#include "orte/util/show_help.h"
+#include "opal/align.h"
+#include "opal/util/output.h"
 #include "ompi/mca/mpool/mpool.h"
 
 static void ompi_free_list_construct(ompi_free_list_t* fl);
@@ -60,7 +61,7 @@ static void ompi_free_list_destruct(ompi_free_list_t* fl)
     opal_list_item_t *item;
     ompi_free_list_memory_t *fl_mem;
 
-#if 0 && OMPI_ENABLE_DEBUG
+#if 0 && OPAL_ENABLE_DEBUG
     if(opal_list_get_size(&fl->super) != fl->fl_num_allocated) {
         opal_output(0, "ompi_free_list: %d allocated %d returned: %s:%d\n",
             fl->fl_num_allocated, opal_list_get_size(&fl->super),
@@ -68,24 +69,28 @@ static void ompi_free_list_destruct(ompi_free_list_t* fl)
     }
 #endif
 
-    while(NULL != (item = opal_list_remove_first(&(fl->fl_allocations)))) {
-        fl_mem = (ompi_free_list_memory_t*)item;
-        if(fl->fl_mpool != NULL) {
+    if( NULL != fl->fl_mpool ) {
+        while(NULL != (item = opal_list_remove_first(&(fl->fl_allocations)))) {
+            fl_mem = (ompi_free_list_memory_t*)item;
+
             fl->fl_mpool->mpool_free(fl->fl_mpool, fl_mem->ptr,
-                    fl_mem->registration);
+                                     fl_mem->registration);
+
+            /* destruct the item (we constructed it), then free the memory chunk */
+            OBJ_DESTRUCT(item);
+            free(item);
         }
-       /* destruct the item (we constructed it), then free the memory chunk */
-        OBJ_DESTRUCT(item);
-        free(item);
+    } else {
+        while(NULL != (item = opal_list_remove_first(&(fl->fl_allocations)))) {
+            /* destruct the item (we constructed it), then free the memory chunk */
+            OBJ_DESTRUCT(item);
+            free(item);
+        }
     }
 
     OBJ_DESTRUCT(&fl->fl_allocations);
     OBJ_DESTRUCT(&fl->fl_condition);
     OBJ_DESTRUCT(&fl->fl_lock);
-    if(fl->ctx) { 
-        free(fl->ctx);
-    }
-
 }
 
 int ompi_free_list_init_ex(

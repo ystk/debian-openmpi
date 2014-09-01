@@ -21,6 +21,7 @@
 #ifndef OMPI_FILE_H
 #define OMPI_FILE_H
 
+#include "ompi_config.h"
 #include "mpi.h"
 #include "opal/class/opal_list.h"
 #include "ompi/errhandler/errhandler.h"
@@ -85,12 +86,6 @@ struct ompi_file_t {
 
     /** Allow the selected module to cache data on the file */
     struct mca_io_base_file_t *f_io_selected_data;
-
-    /** Per-module io request freelist */
-    opal_list_t f_io_requests;
-
-    /** Lock for the per-module io request freelist */
-    opal_mutex_t f_io_requests_lock;
 };
 /**
  * Convenience typedef

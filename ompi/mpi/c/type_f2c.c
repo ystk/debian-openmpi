@@ -20,11 +20,14 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/mpi/f77/fint_2_int.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
+#include "ompi/datatype/ompi_datatype_internal.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Type_f2c = PMPI_Type_f2c
 #endif
 
@@ -52,7 +55,6 @@ MPI_Datatype MPI_Type_f2c(MPI_Fint datatype)
     /* Per MPI-2:4.12.4, do not invoke an error handler if we get an
        invalid fortran handle.  If we get an invalid fortran handle,
        return an invalid C handle. */
-    
     if (datatype_index < 0 || 
         datatype_index >= 
         opal_pointer_array_get_size(&ompi_datatype_f_to_c_table)) {

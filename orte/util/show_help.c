@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -26,17 +26,36 @@
 
 #include "opal/util/show_help.h"
 #include "opal/util/output.h"
-#include "opal/util/printf.h"
 #include "opal/dss/dss.h"
 
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rml/rml.h"
+#include "orte/mca/rml/rml_types.h"
+#include "orte/mca/routed/routed.h"
 #include "orte/util/name_fns.h"
+#include "orte/util/proc_info.h"
 #include "orte/runtime/orte_globals.h"
 
 #include "orte/util/show_help.h"
 
-bool orte_help_want_aggregate;
+bool orte_help_want_aggregate = false;
+
+/*
+ * Local variable to know whether aggregated show_help is available or
+ * not 
+ */
+static bool ready = false;
+
+/*
+ * Same for systems with or without full ORTE support
+ */
+bool orte_show_help_is_available(void)
+{
+    /* This is a function only to give us forward flexibility in case
+       we need a more complicated check someday. */
+
+    return ready;
+}
 
 /************************************************************************/
 
@@ -46,11 +65,13 @@ bool orte_help_want_aggregate;
 
 int orte_show_help_init(void)
 {
+    ready = true;
     return ORTE_SUCCESS;
 }
 
 void orte_show_help_finalize(void)
 {
+    ready = false;
     return;
 }
 
@@ -114,7 +135,8 @@ static struct timeval show_help_interval = { 5, 0 };
 static time_t show_help_time_last_displayed = 0;
 static bool show_help_timer_set = false;
 static opal_event_t show_help_timer_event;
-static bool ready;
+
+static opal_show_help_fn_t save_help = NULL;
 
 static void tuple_list_item_constructor(tuple_list_item_t *obj)
 {
@@ -178,7 +200,7 @@ static char* xml_format(unsigned char *input)
         if ('&' == input[i]) {
             if (k+5 >= outlen) {
                 ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
-                goto process;
+                goto error;
             }
             snprintf(qprint, 10, "&amp;");
             for (j=0; j < (int)strlen(qprint) && k < outlen; j++) {
@@ -187,7 +209,7 @@ static char* xml_format(unsigned char *input)
         } else if ('<' == input[i]) {
             if (k+4 >= outlen) {
                 ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
-                goto process;
+                goto error;
             }
             snprintf(qprint, 10, "&lt;");
             for (j=0; j < (int)strlen(qprint) && k < outlen; j++) {
@@ -196,7 +218,7 @@ static char* xml_format(unsigned char *input)
         } else if ('>' == input[i]) {
             if (k+4 >= outlen) {
                 ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
-                goto process;
+                goto error;
             }
             snprintf(qprint, 10, "&gt;");
             for (j=0; j < (int)strlen(qprint) && k < outlen; j++) {
@@ -206,7 +228,7 @@ static char* xml_format(unsigned char *input)
             /* this is a non-printable character, so escape it too */
             if (k+7 >= outlen) {
                 ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
-                goto process;
+                goto error;
             }
             snprintf(qprint, 10, "&#%03d;", (int)input[i]);
             for (j=0; j < (int)strlen(qprint) && k < outlen; j++) {
@@ -234,8 +256,7 @@ static char* xml_format(unsigned char *input)
             output[k++] = input[i];
         }    
     }
-    
-process:
+
     if (!endtagged) {
         /* need to add an endtag */
         for (j=0; j < endtaglen && k < outlen-1; j++) {
@@ -245,6 +266,14 @@ process:
     }
     
     return output;
+    
+error:
+    /* if we couldn't complete the processing for
+     * some reason, return the unprocessed input
+     * so at least the message gets out!
+     */
+    free(output);
+    return (char*)input;
 }
 
 
@@ -488,14 +517,17 @@ int orte_show_help_init(void)
 {
     OPAL_OUTPUT_VERBOSE((5, orte_debug_output, "orte_show_help init"));
 
+    /* Show help duplicate detection */
     if (ready) {
         return ORTE_SUCCESS;
     }
-    ready = true;
 
-    /* Show help duplicate detection */
     OBJ_CONSTRUCT(&abd_tuples, opal_list_t);
     
+    save_help = opal_show_help;
+    opal_show_help = orte_show_help;
+    ready = true;
+
     return ORTE_SUCCESS;
 }
 
@@ -505,9 +537,12 @@ void orte_show_help_finalize(void)
         return;
     }
     ready = false;
-    
+
+    opal_show_help = save_help;
+    save_help = NULL;
+
     /* Shutdown show_help, showing final messages */
-    if (orte_process_info.hnp) {
+    if (ORTE_PROC_IS_HNP) {
         show_accumulated_duplicates(0, 0, NULL);
         OBJ_DESTRUCT(&abd_tuples);
         if (show_help_timer_set) {
@@ -518,7 +553,6 @@ void orte_show_help_finalize(void)
         orte_rml.recv_cancel(ORTE_NAME_WILDCARD, ORTE_RML_TAG_SHOW_HELP);
         return;
     }
-
 }
 
 int orte_show_help(const char *filename, const char *topic, 
@@ -553,12 +587,14 @@ int orte_show_help(const char *filename, const char *topic,
     }
     
     /* if we are the HNP, or the RML has not yet been setup,
-     * or we don't yet know our HNP, then all we can do
+     * or ROUTED has not been setup,
+     * or we weren't given an HNP, then all we can do
      * is process this locally
      */
-    if (orte_process_info.hnp ||
+    if (ORTE_PROC_IS_HNP ||
         NULL == orte_rml.send_buffer ||
-        ORTE_PROC_MY_HNP->vpid == ORTE_VPID_INVALID) {
+        NULL == orte_routed.get_route ||
+        NULL == orte_process_info.my_hnp_uri) {
         rc = show_help(filename, topic, output, ORTE_PROC_MY_NAME);
     }
     

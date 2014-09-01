@@ -20,9 +20,9 @@
 #ifndef OPAL_DAEMON_INIT_H
 #define OPAL_DAEMON_INIT_H
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+#include "opal_config.h"
+
+BEGIN_C_DECLS
 
 /*
  * Turn a process into a daemon.
@@ -39,8 +39,6 @@ extern "C" {
  */
 OPAL_DECLSPEC int opal_daemon_init(char *working_dir);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OPAL_DAEMON_INIT_H */

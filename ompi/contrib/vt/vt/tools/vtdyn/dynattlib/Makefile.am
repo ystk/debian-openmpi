@@ -1,9 +1,9 @@
-bin_PROGRAMS = libvt.dynatt.so
+lib_LTLIBRARIES = libvt-dynatt.la
 
-bindir = $(libdir)
+AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_builddir)/include -I$(top_srcdir)/vtlib
 
-libvt_dynatt_so_SOURCES = \
+libvt_dynatt_la_CFLAGS = -shared
+libvt_dynatt_la_LDFLAGS = -shared -avoid-version
+libvt_dynatt_la_SOURCES = \
         vt_dynatt.c
-
-libvt_dynatt_so_LDFLAGS = $(LDFLAGS) $(LDSHFLAG)
 

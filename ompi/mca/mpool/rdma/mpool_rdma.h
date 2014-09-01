@@ -25,14 +25,13 @@
 #ifndef MCA_MPOOL_OPENIB_H
 #define MCA_MPOOL_OPENIB_H
 
+#include "ompi_config.h"
 #include "opal/class/opal_list.h"
 #include "ompi/class/ompi_free_list.h"
 #include "opal/event/event.h"
 #include "ompi/mca/mpool/mpool.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 struct mca_mpool_rdma_component_t {
     mca_mpool_base_component_t super;
@@ -132,7 +131,5 @@ void mca_mpool_rdma_finalize(struct mca_mpool_base_module_t *mpool);
  */
 int mca_mpool_rdma_ft_event(int state);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif

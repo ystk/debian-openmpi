@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,11 +21,13 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
-#include "ompi/mca/pml/pml.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/request/request.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Testany = PMPI_Testany
 #endif
 
@@ -35,7 +38,7 @@
 static const char FUNC_NAME[] = "MPI_Testany";
 
 
-int MPI_Testany(int count, MPI_Request requests[], int *index, int *completed, MPI_Status *status) 
+int MPI_Testany(int count, MPI_Request requests[], int *indx, int *completed, MPI_Status *status) 
 {
     MEMCHECKER(
         int j;
@@ -57,16 +60,24 @@ int MPI_Testany(int count, MPI_Request requests[], int *index, int *completed, M
                 }
             }
         }
-        if ((NULL == index) || (NULL == completed) || (0 > count)) {
+        if (((NULL == indx || NULL == completed) && count > 0) ||
+            count < 0) {
             rc = MPI_ERR_ARG;
         }
         OMPI_ERRHANDLER_CHECK(rc, MPI_COMM_WORLD, rc, FUNC_NAME);
     }
 
+    if (OPAL_UNLIKELY(0 == count)) {
+        *completed = true;
+        *indx = MPI_UNDEFINED;
+        *status = ompi_status_empty;
+        return MPI_SUCCESS;
+    }
+
     OPAL_CR_ENTER_LIBRARY();
 
     if (OMPI_SUCCESS == ompi_request_test_any(count, requests, 
-                                              index, completed, status)) {
+                                              indx, completed, status)) {
         OPAL_CR_EXIT_LIBRARY();
         return MPI_SUCCESS;
     }

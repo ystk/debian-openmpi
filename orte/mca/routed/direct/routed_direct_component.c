@@ -13,11 +13,14 @@
 #include "orte_config.h"
 #include "orte/constants.h"
 
+#include "opal/mca/base/base.h"
+#include "opal/mca/base/mca_base_param.h"
 
+
+#include "orte/mca/routed/base/base.h"
 #include "routed_direct.h"
 
 static int orte_routed_direct_component_query(mca_base_module_t **module, int *priority);
-
 
 /**
  * component definition
@@ -45,7 +48,8 @@ orte_routed_component_t mca_routed_direct_component = {
 
 static int orte_routed_direct_component_query(mca_base_module_t **module, int *priority)
 {
-    *priority = 10;
+    /* allow selection only when specifically requested */
+    *priority = 0;
     *module = (mca_base_module_t *) &orte_routed_direct_module;
     return ORTE_SUCCESS;
 }

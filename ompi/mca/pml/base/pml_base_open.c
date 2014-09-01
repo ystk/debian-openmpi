@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2007 The University of Tennessee and The University
@@ -10,6 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,14 +22,16 @@
 #include "ompi_config.h"
 #include <stdio.h>
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif  /* HAVE_UNIST_H */
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/base.h"
-#include "orte/util/show_help.h"
 
-#include "orte/util/show_help.h"
 
 #include "ompi/constants.h"
 #include "ompi/mca/pml/pml.h"
@@ -88,7 +91,7 @@ opal_pointer_array_t mca_pml_base_pml;
 int mca_pml_base_open(void)
 {
     int value;
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     char* wrapper_pml = NULL;
 #endif
 
@@ -104,6 +107,18 @@ int mca_pml_base_open(void)
  
      mca_pml_base_output = opal_output_open(NULL);
      opal_output_set_verbosity(mca_pml_base_output, value);
+
+    /**
+     * Construct the send and receive request queues. There are 2 reasons to do it
+     * here. First, as they are globals it's better to construct them in one common
+     * place. Second, in order to be able to allow the external debuggers to show
+     * their content, they should get constructed as soon as possible once the MPI
+     * process is started.
+     */
+    OBJ_CONSTRUCT(&mca_pml_base_send_requests, ompi_free_list_t);
+    OBJ_CONSTRUCT(&mca_pml_base_recv_requests, ompi_free_list_t);
+
+    OBJ_CONSTRUCT(&mca_pml_base_pml, opal_pointer_array_t);
 
     /* Open up all available components */
 
@@ -127,26 +142,27 @@ int mca_pml_base_open(void)
      * uses BTLs and any other PMLs that do not in the mca_pml_base_pml array.
      */
 
-    OBJ_CONSTRUCT(&mca_pml_base_pml, opal_pointer_array_t);
 #if MCA_pml_DIRECT_CALL
-    opal_pointer_array_add(&mca_pml_base_pml, 
+    opal_pointer_array_add(&mca_pml_base_pml,
                            stringify(MCA_pml_DIRECT_CALL_COMPONENT));
 #else
     {
         char* default_pml = NULL;
 
-        mca_base_param_reg_string_name("pml", NULL, 
-                                       "Specify a specific PML to use", 
+        mca_base_param_reg_string_name("pml", NULL,
+                                       "Specify a specific PML to use",
                                        false, false, "", &default_pml);
-        
-        if( (0 == strlen(default_pml)) || (default_pml[0] == '^') ) { 
+
+        if( (0 == strlen(default_pml)) || (default_pml[0] == '^') ) {
             opal_pointer_array_add(&mca_pml_base_pml, strdup("ob1")); 
             opal_pointer_array_add(&mca_pml_base_pml, strdup("cm"));
-        } else { 
+        } else {
             opal_pointer_array_add(&mca_pml_base_pml, strdup(default_pml));
         }
+
+        free (default_pml);
     }
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     /* 
      * Which PML Wrapper component to use, if any
      *  - NULL or "" = No wrapper
@@ -157,21 +173,11 @@ int mca_pml_base_open(void)
                                    false, false,
                                    NULL, &wrapper_pml);
     if( NULL != wrapper_pml ) {
-        opal_pointer_array_add(&mca_pml_base_pml, strdup(wrapper_pml));
+        opal_pointer_array_add(&mca_pml_base_pml, wrapper_pml);
     }
 #endif
 
 #endif
-
-    /**
-     * Construct the send and receive request queues. There are 2 reasons to do it
-     * here. First, as they are globals it's better to construct them in one common
-     * place. Second, in order to be able to allow the external debuggers to show
-     * their content, they should get constructed as soon as possible once the MPI
-     * process is started.
-     */
-    OBJ_CONSTRUCT(&mca_pml_base_send_requests, ompi_free_list_t);
-    OBJ_CONSTRUCT(&mca_pml_base_recv_requests, ompi_free_list_t);
 
     return OMPI_SUCCESS;
 

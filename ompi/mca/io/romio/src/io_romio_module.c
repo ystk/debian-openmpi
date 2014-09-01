@@ -20,8 +20,7 @@
 #include "ompi_config.h"
 
 #include "mpi.h"
-#include "opal/threads/mutex.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/mca/io/io.h"
 #include "io_romio.h"
 
@@ -39,17 +38,6 @@ void ADIOI_Datatype_iscontig(MPI_Datatype datatype, int *flag);
  * The ROMIO module operations
  */
 mca_io_base_module_2_0_0_t mca_io_romio_module = {
-
-    /* Once-per-process request init / finalize functions */
-
-    NULL,
-    NULL,
-
-    /* Finalize, free, cancel */
-
-    mca_io_romio_request_free,
-    mca_io_romio_request_cancel,
-
     /* Back end to MPI API calls (pretty much a 1-to-1 mapping) */
 
     mca_io_romio_file_open,
@@ -146,11 +134,11 @@ void ADIOI_Datatype_iscontig(MPI_Datatype datatype, int *flag)
      * In addition, if the data is contiguous but true_lb differes
      * from zero, ROMIO will ignore the displacement. Thus, lie!
      */
-    *flag = ompi_ddt_is_contiguous_memory_layout(datatype, 2);
+    *flag = ompi_datatype_is_contiguous_memory_layout(datatype, 2);
     if (*flag) {
         MPI_Aint true_extent, true_lb;
 
-        ompi_ddt_get_true_extent(datatype, &true_lb, &true_extent);
+        ompi_datatype_get_true_extent(datatype, &true_lb, &true_extent);
 
         if (true_lb > 0)
             *flag = 0;

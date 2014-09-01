@@ -38,11 +38,11 @@ dnl
 #  prefix_RELEASE_DATE
 m4_define([OMPI_GET_VERSION],[
     : ${ompi_ver_need_svn=1}
-    : ${srcdir=.}
     : ${svnversion_result=-1}
 
     dnl quote eval to suppress macro expansion with non-GNU m4
     if test -f "$1"; then
+        srcdir=`dirname $1`
         ompi_vers=`sed -n "
 	t clear
 	: clear
@@ -75,13 +75,32 @@ m4_define([OMPI_GET_VERSION],[
             if test "$$2_SVN_R" = "-1" ; then
                 m4_ifdef([AC_MSG_CHECKING],
                          [AC_MSG_CHECKING([for SVN version])])
+                d=`date '+%m-%d-%Y'`
                 if test -d "$srcdir/.svn" ; then
                     $2_SVN_R=r`svnversion "$srcdir"`
+                    if test $? != 0; then
+                        # The following is too long for Fortran
+                        # $2_SVN_R="unknown svn version (svnversion not found); $d"
+                        $2_SVN_R="? (no svnversion); $d"
+                    fi
                 elif test -d "$srcdir/.hg" ; then
-                    $2_SVN_R=hg`hg -v -R "$srcdir" tip | grep changeset | cut -d: -f3`
+                    # Check to see if we can find the hg command
+                    # remember that $? reflects the status of the
+                    # *last* command in a pipe change, so if "hg .. 
+                    # cut ..." runs and "hg" is not found, $? will
+                    # reflect the status of "cut", not hg not being
+                    # found.  So test for hg specifically first.
+                    hg --version > /dev/null 2>&1
+                    if test $? = 0; then
+                        $2_SVN_R=hg`hg -v -R "$srcdir" tip | grep ^changeset: | head -n 1 | cut -d: -f3`
+                    else
+                        # The following is too long for Fortran
+                        # $2_SVN_R="unknown hg version (hg not found); $d"
+                        $2_SVN_R="? (no hg); $d"
+                    fi
                 fi
                 if test "$2_SVN_R" = ""; then
-                    $2_SVN_R=svn`date '+%m%d%Y'`
+                    $2_SVN_R="svn$d"
                 fi
                 m4_ifdef([AC_MSG_RESULT],
                          [AC_MSG_RESULT([done])])

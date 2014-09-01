@@ -9,7 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2010      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -24,7 +23,7 @@
  * On powerpc ...
  */
 
-#if OMPI_WANT_SMP_LOCKS
+#if OPAL_WANT_SMP_LOCKS
 
 #define MB()  __asm__ __volatile__ ("sync" : : : "memory")
 #define RMB() __asm__ __volatile__ ("lwsync" : : : "memory")
@@ -57,7 +56,7 @@
 #define OPAL_HAVE_ATOMIC_SUB_32 1
 
 
-#if (OMPI_ASSEMBLY_ARCH == OMPI_POWERPC64) || OMPI_ASM_SUPPORT_64BIT
+#if (OPAL_ASSEMBLY_ARCH == OMPI_POWERPC64) || OPAL_ASM_SUPPORT_64BIT
 #define OPAL_HAVE_ATOMIC_CMPSET_64 1
 #endif
 
@@ -118,6 +117,14 @@ void opal_atomic_wmb(void)
  *********************************************************************/
 #if OMPI_GCC_INLINE_ASSEMBLY
 
+#ifdef __xlC__
+/* work-around bizzare xlc bug in which it sign-extends
+   a pointer to a 32-bit signed integer */
+#define OPAL_ASM_ADDR(a) ((uintptr_t)a)
+#else
+#define OPAL_ASM_ADDR(a) (a)
+#endif
+
 static inline int opal_atomic_cmpset_32(volatile int32_t *addr,
                                         int32_t oldval, int32_t newval)
 {
@@ -131,7 +138,7 @@ static inline int opal_atomic_cmpset_32(volatile int32_t *addr,
                          "   bne-    1b         \n\t"
                          "2:"
                          : "=&r" (ret), "=m" (*addr)
-                         : "r" (addr), "r" (oldval), "r" (newval), "m" (*addr)
+                         : "r" OPAL_ASM_ADDR(addr), "r" (oldval), "r" (newval), "m" (*addr)
                          : "cc", "memory");
 
    return (ret == oldval);
@@ -164,7 +171,7 @@ static inline int opal_atomic_cmpset_rel_32(volatile int32_t *addr,
 #endif /* OMPI_GCC_INLINE_ASSEMBLY */
 
 
-#if (OMPI_ASSEMBLY_ARCH == OMPI_POWERPC64)
+#if (OPAL_ASSEMBLY_ARCH == OMPI_POWERPC64)
 
 #if  OMPI_GCC_INLINE_ASSEMBLY
 static inline int opal_atomic_cmpset_64(volatile int64_t *addr,
@@ -212,7 +219,7 @@ static inline int opal_atomic_cmpset_rel_64(volatile int64_t *addr,
 
 #endif /* OMPI_GCC_INLINE_ASSEMBLY */
 
-#elif (OMPI_ASSEMBLY_ARCH == OMPI_POWERPC32) && OMPI_ASM_SUPPORT_64BIT
+#elif (OPAL_ASSEMBLY_ARCH == OMPI_POWERPC32) && OPAL_ASM_SUPPORT_64BIT
 
 #ifndef ll_low /* GLIBC provides these somewhere, so protect */
 #define ll_low(x)       *(((unsigned int*)&(x))+0)
@@ -250,7 +257,7 @@ static inline int opal_atomic_cmpset_64(volatile int64_t *addr,
                          "subfic r9,r5,0        \n\t"
                          "adde %0,r9,r5         \n\t"
                          : "=&r" (ret)
-                         : "r"(addr), 
+                         : "r"OPAL_ASM_ADDR(addr), 
                            "m"(oldval), "m"(newval)
                          : "r4", "r5", "r9", "cc", "memory");
     
@@ -283,7 +290,7 @@ static inline int opal_atomic_cmpset_rel_64(volatile int64_t *addr,
 
 #endif /* OMPI_GCC_INLINE_ASSEMBLY */
 
-#endif /* OMPI_ASM_SUPPORT_64BIT */
+#endif /* OPAL_ASM_SUPPORT_64BIT */
 
 
 #if OMPI_GCC_INLINE_ASSEMBLY
@@ -298,7 +305,7 @@ static inline int32_t opal_atomic_add_32(volatile int32_t* v, int inc)
                         "     stwcx.  %0, 0, %3    \n\t"
                         "     bne-    1b           \n\t"
                         : "=&r" (t), "=m" (*v)
-                        : "r" (inc), "r" (v), "m" (*v)
+                        : "r" (inc), "r" OPAL_ASM_ADDR(v), "m" (*v)
                         : "cc");
 
    return t;
@@ -315,7 +322,7 @@ static inline int32_t opal_atomic_sub_32(volatile int32_t* v, int dec)
                         "     stwcx.  %0,0,%3      \n\t"
                         "     bne-    1b           \n\t"
                         : "=&r" (t), "=m" (*v)
-                        : "r" (dec), "r" (v), "m" (*v)
+                        : "r" (dec), "r" OPAL_ASM_ADDR(v), "m" (*v)
                         : "cc");
 
    return t;

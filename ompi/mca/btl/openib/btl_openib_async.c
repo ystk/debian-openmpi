@@ -1,7 +1,8 @@
 /*
- * Copyright (c) 2008 Mellanox Technologies. All rights reserved.
- * Copyright (c) 2007-2008 Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2008-2009 Mellanox Technologies. All rights reserved.
+ * Copyright (c) 2007-2009 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -12,7 +13,7 @@
 
 #include "ompi_config.h"
 
-#if OMPI_HAVE_THREADS
+#if OPAL_HAVE_THREADS
 #include <infiniband/verbs.h>
 #include <fcntl.h>
 #include <sys/poll.h>
@@ -20,7 +21,6 @@
 #include <errno.h>
 
 #include "orte/util/show_help.h"
-#include "ompi/mca/btl/btl.h"
 
 #include "ompi/mca/btl/base/base.h"
 #include "btl_openib.h"
@@ -227,6 +227,63 @@ static int btl_openib_async_commandh(struct mca_btl_openib_async_poll *devices_p
     return OMPI_SUCCESS;
 }
 
+/* The main idea of resizing SRQ algorithm - 
+   We create a SRQ with size = rd_num, but for efficient usage of resources
+   the number of WQEs that we post = rd_curr_num < rd_num and this value is
+   increased (by needs) in IBV_EVENT_SRQ_LIMIT_REACHED event handler (i.e. in this function),
+   the event will thrown by device if number of WQEs in SRQ will be less than srq_limit */
+static int btl_openib_async_srq_limit_event(struct ibv_srq* srq)
+{
+    int qp, rc = OMPI_SUCCESS;
+    mca_btl_openib_module_t *openib_btl = NULL;
+
+    opal_mutex_t *lock = &mca_btl_openib_component.srq_manager.lock;
+    opal_hash_table_t *srq_addr_table = &mca_btl_openib_component.srq_manager.srq_addr_table;
+
+    opal_mutex_lock(lock);
+
+    if (OPAL_SUCCESS != opal_hash_table_get_value_ptr(srq_addr_table,
+                            &srq, sizeof(struct ibv_srq*), (void*) &openib_btl)) {
+        /* If there isn't any element with the key in the table =>
+           we assume that SRQ was destroyed and don't serve the event */
+        goto srq_limit_event_exit;
+    }
+
+    for(qp = 0; qp < mca_btl_openib_component.num_qps; qp++) {
+        if (!BTL_OPENIB_QP_TYPE_PP(qp)) {
+            if(openib_btl->qps[qp].u.srq_qp.srq == srq) {
+                break;
+            }
+        }
+    }
+
+    if(qp >= mca_btl_openib_component.num_qps) {
+        BTL_ERROR(("Open MPI tried to access a shared receive queue (SRQ) on the device %s that was not found.  This should not happen, and is a fatal error.  Your MPI job will now abort.\n", ibv_get_device_name(openib_btl->device->ib_dev)));
+        rc = OMPI_ERROR;
+        goto srq_limit_event_exit;
+    }
+
+    /* dynamically re-size the SRQ to be larger */
+    openib_btl->qps[qp].u.srq_qp.rd_curr_num <<= 1;
+
+    if(openib_btl->qps[qp].u.srq_qp.rd_curr_num >=
+                         mca_btl_openib_component.qp_infos[qp].rd_num) {
+        openib_btl->qps[qp].u.srq_qp.rd_curr_num = mca_btl_openib_component.qp_infos[qp].rd_num;
+        openib_btl->qps[qp].u.srq_qp.rd_low_local = mca_btl_openib_component.qp_infos[qp].rd_low;
+
+        openib_btl->qps[qp].u.srq_qp.srq_limit_event_flag = false;
+
+        goto srq_limit_event_exit;
+    }
+
+    openib_btl->qps[qp].u.srq_qp.rd_low_local <<= 1;
+    openib_btl->qps[qp].u.srq_qp.srq_limit_event_flag = true;
+
+srq_limit_event_exit:
+    opal_mutex_unlock(lock);
+    return rc;
+}
+
 /* Function handle async device events */
 static int btl_openib_async_deviceh(struct mca_btl_openib_async_poll *devices_poll, int index)
 {
@@ -284,18 +341,28 @@ static int btl_openib_async_deviceh(struct mca_btl_openib_async_poll *devices_po
                 /* Set the flag to fatal */
                 device->got_fatal_event = true;
                 /* It is not critical to protect the counter */
-                OPAL_THREAD_ADD32(&mca_btl_openib_component.fatal_counter, 1);
+                OPAL_THREAD_ADD32(&mca_btl_openib_component.error_counter, 1);
             case IBV_EVENT_CQ_ERR:
             case IBV_EVENT_QP_FATAL:
             case IBV_EVENT_QP_REQ_ERR:
             case IBV_EVENT_QP_ACCESS_ERR:
             case IBV_EVENT_PATH_MIG_ERR:
             case IBV_EVENT_SRQ_ERR:
+                orte_show_help("help-mpi-btl-openib.txt", "of error event",
+                    true,orte_process_info.nodename, orte_process_info.pid,
+                    event_type,
+                    openib_event_to_str((enum ibv_event_type)event_type),
+                    xrc_event ? "true" : "false");
+                break;
             case IBV_EVENT_PORT_ERR:
                 orte_show_help("help-mpi-btl-openib.txt", "of error event",
                     true,orte_process_info.nodename, orte_process_info.pid,
-                    event.event_type, openib_event_to_str(event.event_type),
+                    event_type,
+                    openib_event_to_str((enum ibv_event_type)event_type),
                     xrc_event ? "true" : "false");
+                /* Set the flag to indicate port error */
+                device->got_port_event = true;
+                OPAL_THREAD_ADD32(&mca_btl_openib_component.error_counter, 1);
                 break;
             case IBV_EVENT_COMM_EST:
             case IBV_EVENT_PORT_ACTIVE:
@@ -307,12 +374,20 @@ static int btl_openib_async_deviceh(struct mca_btl_openib_async_poll *devices_po
 #if HAVE_DECL_IBV_EVENT_CLIENT_REREGISTER
             case IBV_EVENT_CLIENT_REREGISTER:
 #endif
+                break;
+            /* The event is signaled when number of prepost receive WQEs is going
+                                            under predefined threshold - srq_limit */
             case IBV_EVENT_SRQ_LIMIT_REACHED:
+                if(OMPI_SUCCESS !=
+                         btl_openib_async_srq_limit_event(event.element.srq)) {
+                    return OMPI_ERROR;
+                }
+
                 break;
             default:
                 orte_show_help("help-mpi-btl-openib.txt", "of unknown event",
                         true,orte_process_info.nodename, orte_process_info.pid,
-                        event.event_type, xrc_event ? "true" : "false");
+                        event_type, xrc_event ? "true" : "false");
         }
         ibv_ack_async_event(&event);
     } else {
@@ -505,8 +580,8 @@ void mca_btl_openib_load_apm(struct ibv_qp *qp, mca_btl_openib_endpoint_t *ep)
     }
 
     if (ibv_modify_qp(qp, &attr, mask))
-        BTL_ERROR(("Failed to ibv_query_qp, qp num: %p, errno says: %s (%d)"
-                    ,qp->qp_num ,strerror(errno), errno));
+        BTL_ERROR(("Failed to ibv_query_qp, qp num: %d, errno says: %s (%d)",
+                   qp->qp_num, strerror(errno), errno));
 }
 
 #if HAVE_XRC

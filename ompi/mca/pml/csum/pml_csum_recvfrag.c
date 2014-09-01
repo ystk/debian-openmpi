@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -12,7 +13,7 @@
  * Copyright (c) 2008      UT-Battelle, LLC. All rights reserved.
  * Copyright (c) 2006-2008 University of Houston.  All rights reserved.
  * Copyright (c) 2009      IBM Corporation.  All rights reserved.
- * Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2009-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * $COPYRIGHT$
  * 
@@ -76,7 +77,7 @@ static void dump_csum_error_data(mca_btl_base_segment_t* segments, size_t num_se
     
     printf("CHECKSUM ERROR DATA\n");
     for (i = 0; i < num_segments; ++i) {
-        printf("Segment %lu", i);
+        printf("Segment %lu", (unsigned long)i);
         data = (uint8_t*)segments[i].seg_addr.pval;
         for (j=0; j < segments[i].seg_len; j++) {
             if (0 == (j % 40)) {
@@ -152,7 +153,7 @@ void mca_pml_csum_recv_frag_callback_match(mca_btl_base_module_t* btl,
 
     csum_received = hdr->hdr_common.hdr_csum;
     hdr->hdr_common.hdr_csum = 0;
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     hdr->hdr_common.hdr_flags &= ~MCA_PML_CSUM_HDR_FLAGS_NBO;
 #endif
     csum = opal_csum16(hdr, OMPI_PML_CSUM_MATCH_HDR_LEN);
@@ -167,7 +168,7 @@ void mca_pml_csum_recv_frag_callback_match(mca_btl_base_module_t* btl,
     if (csum_received != csum) {
         opal_output(0, "%s:%s:%d: Invalid \'match header\' - received csum:0x%04x  != computed csum:0x%04x\n",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, csum_received, csum);
-        orte_notifier.log(ORTE_NOTIFIER_INFRA,
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
                           "Checksum header violation: job %s file %s line %d",
                           (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
                           __FILE__, __LINE__);
@@ -273,7 +274,7 @@ void mca_pml_csum_recv_frag_callback_match(mca_btl_base_module_t* btl,
                 iov[iov_count].iov_base = (IOVBASE_TYPE*)((unsigned char*)segments[iov_count].seg_addr.pval);
                 iov_count++;
             }
-            ompi_convertor_unpack( &match->req_recv.req_base.req_convertor,
+            opal_convertor_unpack( &match->req_recv.req_base.req_convertor,
                                    iov,
                                    &iov_count,
                                    &bytes_received );
@@ -298,7 +299,7 @@ void mca_pml_csum_recv_frag_callback_match(mca_btl_base_module_t* btl,
             if (csum_data != hdr->hdr_csum) {
                 opal_output(0, "%s:%s:%d: Invalid \'match data\' - received csum:0x%x  != computed csum:0x%x\n",
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, hdr->hdr_csum, csum_data);
-                orte_notifier.log(ORTE_NOTIFIER_INFRA,
+                orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
                                   "Checksum data violation: job %s file %s line %d",
                                   (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
                                   __FILE__, __LINE__);
@@ -339,7 +340,7 @@ void mca_pml_csum_recv_frag_callback_rndv(mca_btl_base_module_t* btl,
     
     csum_received = hdr->hdr_common.hdr_csum;
     hdr->hdr_common.hdr_csum = 0;
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     hdr->hdr_common.hdr_flags &= ~MCA_PML_CSUM_HDR_FLAGS_NBO;
 #endif
     csum = opal_csum16(hdr, sizeof(mca_pml_csum_rendezvous_hdr_t));
@@ -347,7 +348,7 @@ void mca_pml_csum_recv_frag_callback_rndv(mca_btl_base_module_t* btl,
     if (csum_received != csum) {
         opal_output(0, "%s:%s:%d: Invalid \'rndv header\' - received csum:0x%04x  != computed csum:0x%04x\n",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, csum_received, csum);
-        orte_notifier.log(ORTE_NOTIFIER_INFRA,
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
                           "Checksum header violation: job %s file %s line %d",
                           (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
                           __FILE__, __LINE__);
@@ -395,7 +396,7 @@ void mca_pml_csum_recv_frag_callback_ack(mca_btl_base_module_t* btl,
 
     csum_received = hdr->hdr_common.hdr_csum;
     hdr->hdr_common.hdr_csum = 0;
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     hdr->hdr_common.hdr_flags &= ~MCA_PML_CSUM_HDR_FLAGS_NBO;
 #endif
     csum = opal_csum16(hdr, sizeof(mca_pml_csum_ack_hdr_t)); 
@@ -405,7 +406,7 @@ void mca_pml_csum_recv_frag_callback_ack(mca_btl_base_module_t* btl,
     if (csum_received != csum) {
         opal_output(0, "%s:%s:%d: Invalid \'ACK header\' - received csum:0x%04x  != computed csum:0x%04x\n",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, csum_received, csum);
-        orte_notifier.log(ORTE_NOTIFIER_INFRA,
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
                           "Checksum header violation: job %s file %s line %d",
                           (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
                           __FILE__, __LINE__);
@@ -426,7 +427,18 @@ void mca_pml_csum_recv_frag_callback_ack(mca_btl_base_module_t* btl,
                                          sendreq->req_send.req_bytes_packed -
                                          hdr->hdr_ack.hdr_send_offset);
     
-    OPAL_THREAD_ADD32(&sendreq->req_state, -1);
+    if (sendreq->req_state != 0) {
+        /* Typical receipt of an ACK message causes req_state to be
+         * decremented. However, a send request that started as an
+         * RGET request can become a RNDV. For example, when the
+         * receiver determines that its receive buffer is not
+         * contiguous and therefore cannot support the RGET
+         * protocol. A send request that started with the RGET
+         * protocol has req_state == 0 and as such should not be
+         * decremented.
+         */
+        OPAL_THREAD_ADD32(&sendreq->req_state, -1);
+    }
      
     if(send_request_pml_complete_check(sendreq) == false)
         mca_pml_csum_send_request_schedule(sendreq);
@@ -450,7 +462,7 @@ void mca_pml_csum_recv_frag_callback_frag(mca_btl_base_module_t* btl,
 
     csum_received = hdr->hdr_common.hdr_csum;
     hdr->hdr_common.hdr_csum = 0;
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     hdr->hdr_common.hdr_flags &= ~MCA_PML_CSUM_HDR_FLAGS_NBO;
 #endif
     csum = opal_csum16(hdr, sizeof(mca_pml_csum_frag_hdr_t)); 
@@ -458,7 +470,7 @@ void mca_pml_csum_recv_frag_callback_frag(mca_btl_base_module_t* btl,
     if(csum_received != csum) {
         opal_output(0, "%s:%s:%d: Invalid \'frag header\' - received csum:0x%04x  != computed csum:0x%04x\n",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, csum_received, csum);
-        orte_notifier.log(ORTE_NOTIFIER_INFRA,
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
                           "Checksum header violation: job %s file %s line %d",
                           (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
                           __FILE__, __LINE__);
@@ -490,7 +502,7 @@ void mca_pml_csum_recv_frag_callback_put(mca_btl_base_module_t* btl,
     
     csum_received = hdr->hdr_common.hdr_csum;
     hdr->hdr_common.hdr_csum = 0;
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     hdr->hdr_common.hdr_flags &= ~MCA_PML_CSUM_HDR_FLAGS_NBO;
 #endif
     csum = opal_csum16(hdr, sizeof(mca_pml_csum_rdma_hdr_t)); 
@@ -500,7 +512,7 @@ void mca_pml_csum_recv_frag_callback_put(mca_btl_base_module_t* btl,
     if(csum_received != csum) {
         opal_output(0, "%s:%s:%d: Invalid \'PUT header\' - received csum:0x%04x  != computed csum:0x%04x\n",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, csum_received, csum);
-        orte_notifier.log(ORTE_NOTIFIER_INFRA,
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
                           "Checksum header violation: job %s file %s line %d",
                           (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
                           __FILE__, __LINE__);
@@ -532,7 +544,7 @@ void mca_pml_csum_recv_frag_callback_fin(mca_btl_base_module_t* btl,
 
     csum_received = hdr->hdr_common.hdr_csum;
     hdr->hdr_common.hdr_csum = 0;
-#if OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     hdr->hdr_common.hdr_flags &= ~MCA_PML_CSUM_HDR_FLAGS_NBO;
 #endif
     csum = opal_csum16(hdr, sizeof(mca_pml_csum_fin_hdr_t)); 
@@ -542,7 +554,7 @@ void mca_pml_csum_recv_frag_callback_fin(mca_btl_base_module_t* btl,
     if(csum_received != csum) {
         opal_output(0, "%s:%s:%d: Invalid \'FIN header\' - received csum:0x%04x  != computed csum:0x%04x\n",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, csum_received, csum);
-        orte_notifier.log(ORTE_NOTIFIER_INFRA,
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
                           "Checksum header violation: job %s file %s line %d",
                           (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
                           __FILE__, __LINE__);

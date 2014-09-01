@@ -2,6 +2,7 @@
  * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
+ * Copyright (c) 2013 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -18,11 +19,9 @@
 #include <sys/types.h>
 #endif
 
+#include "opal/runtime/opal.h"
 #include "opal/class/opal_list.h"
-#include "opal/util/strncpy.h"
-#include "opal/util/argv.h"
 #include "opal/util/output.h"
-#include "opal/util/show_help.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_component_repository.h"
@@ -111,23 +110,26 @@ int mca_base_select(const char *type_name, int output_id,
         /*
          * Still close the non-selected components
          */
-        mca_base_components_close(0, /* Pass 0 to keep this from closing the output handle */
+        mca_base_components_close(output_id,
                                   components_available,
-                                  NULL);
+                                  NULL, false);
         return OPAL_ERR_NOT_FOUND;
     }
 
     opal_output_verbose(5, output_id,
                         "mca:base:select:(%5s) Selected component [%s]",
                         type_name, (*best_component)->mca_component_name);
-
+    if (opal_profile) {
+        opal_output(0, "%s:%s", type_name, (*best_component)->mca_component_name);
+    }
+    
     /*
      * Close the non-selected components
      */
     mca_base_components_close(output_id,
                               components_available,
-                              (mca_base_component_t *) (*best_component));
-
+                              (mca_base_component_t *) (*best_component), 
+                              false);
 
     return OPAL_SUCCESS;
 }

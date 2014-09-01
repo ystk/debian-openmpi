@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2009 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2008 The Trustees of Indiana University.
  *                         All rights reserved.
@@ -14,16 +14,12 @@
  *
  */
 
-
 #include "orte_config.h"
 
 #include "opal/mca/base/mca_base_param.h"
-#include "orte/util/show_help.h"
-#include "opal/util/argv.h"
 #include "orte/constants.h"
 
 #include "orte/util/proc_info.h"
-#include "orte/mca/errmgr/errmgr.h"
 
 #include "orte/mca/plm/plm.h"
 #include "orte/mca/plm/base/base.h"
@@ -99,19 +95,35 @@ static int plm_ccp_open(void)
                            false, false, 75, &mca_plm_ccp_component.priority);
 
     mca_base_param_reg_int(comp, "want_path_check",
-                           "Whether the launching process should check for the plm_ccp_orted executable in the PATH before launching (the CCP API does not give an indication of failure; this is a somewhat-lame workaround; non-zero values enable this check)",
+                           "Whether the launching process should check for "
+                           "the plm_ccp_orted executable in the PATH before "
+                           "launching (the CCP API does not give an indication "
+                           "of failure; this is a somewhat-lame workaround; "
+                           "non-zero values enable this check)",
                            false, false, (int) true, &tmp);
     mca_plm_ccp_component.want_path_check = OPAL_INT_TO_BOOL(tmp);
 
     mca_base_param_reg_string(comp, "stdout_file",
-                              "Path and file name for stdout on cluster nodes. By default, stdout will be sent to Job Scheduler. If no path specified, the user home path will be used. UNC path will not work for this param. ",
-                              false, false, "",
+                              "Path and file name for stdout on cluster nodes. "
+                              "By default, stdout will be sent to Job Scheduler. "
+                              "If no path specified, the user home path will be used. "
+                              "UNC path will not work for this param. ",
+                              false, false, NULL,
                               &mca_plm_ccp_component.stdout_file);
     
     mca_base_param_reg_string(comp, "stderr_file",
-                              "Path and file name for stderr on cluster nodes. By default, stderr will be sent to Job Scheduler. If no path specified, the user home path will be used. UNC path will not work for this param. ",
-                              false, false, "",
+                              "Path and file name for stderr on cluster nodes. "
+                              "By default, stderr will be sent to Job Scheduler. "
+                              "If no path specified, the user home path will be used. "
+                              "UNC path will not work for this param. ",
+                              false, false, NULL,
                               &mca_plm_ccp_component.stderr_file);
+
+    mca_base_param_reg_string(comp, "job_name",
+                              "The job name for displaying in the scheduler. "
+                              "It is set to the application name by default.",
+                              false, false, NULL,
+                              &mca_plm_ccp_component.job_name);
 
     tmp = mca_base_param_reg_int_name("orte", "timing",
                                       "Request that critical timing loops be measured",
@@ -155,7 +167,7 @@ static int orte_plm_ccp_component_query(mca_base_module_t **module, int *priorit
     }
 
     /* if we are NOT an HNP, then don't select us */
-    if (!orte_process_info.hnp) {
+    if (!ORTE_PROC_IS_HNP) {
         pCluster->Release();
         *module = NULL;
         return ORTE_ERROR;

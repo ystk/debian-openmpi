@@ -10,7 +10,7 @@ dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
-dnl Copyright (c) 2007-2008 Cisco, Inc.  All rights reserved.
+dnl Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl 
@@ -38,12 +38,12 @@ AC_DEFUN([OMPI_CONTRIB],[
     # May someday be expanded to have autogen find the packages
     # instead of this hard-coded list
     # (https://svn.open-mpi.org/trac/ompi/ticket/1162).
-    m4_define([contrib_software_list], [vt])
+    m4_define([contrib_software_list], [libompitrace, vt])
 
     # Option to not build some of the contributed software packages
     AC_ARG_ENABLE([contrib-no-build],
         AC_HELP_STRING([--enable-contrib-no-build=LIST],
-                        [Comma-separated list of contributed package NAMEs that will not be built.  Possible values: contrib_software_list. Example: "--enable-contrib-no-build=libtrace,vt" will disable building both the "libtrace" and "vt" contributed software packages.]))
+                        [Comma-separated list of contributed package NAMEs that will not be built.  Possible values: contrib_software_list. Example: "--enable-contrib-no-build=libompitrace,vt" will disable building both the "libompitrace" and "vt" contributed software packages.]))
 
     # Parse the list to see what we should not build
     ompi_show_subtitle "Configuring contributed software packages"
@@ -100,6 +100,15 @@ AC_DEFUN([_OMPI_CONTRIB_CONFIGURE],[
 
     ompi_show_subsubsubtitle "$1 (m4 configuration macro)"
 
+    # Put in a convenient enable/disable switch (it's a little more
+    # user friendly than
+    # --enable-contrib-no-build=<comma_delimited_list>, although each
+    # works just as well as the other).
+    AC_ARG_ENABLE([$1],
+            [AS_HELP_STRING([--disable-$1],
+                            [disable support for contributed package $1 (default: enabled)])])
+    AS_IF([test "x$enable_$1" = xno], [DISABLE_contrib_$1=yes])
+
     OMPI_CONTRIB_HAPPY=0
     if test "$DISABLE_contrib_$1" = "" -a "$DISABLE_contrib_all" = ""; then
         OMPI_contrib_$1_CONFIG([OMPI_CONTRIB_HAPPY=1], [])
@@ -110,6 +119,13 @@ AC_DEFUN([_OMPI_CONTRIB_CONFIGURE],[
             AC_MSG_RESULT([yes])
         else
             AC_MSG_RESULT([no])
+
+            # If this component was requested via command line switch, then abort.
+            if test "x$enable_$1" = xyes ; then
+                AC_MSG_WARN([Contributed component "$1" failed to configure properly])
+                AC_MSG_WARN([This component was requested via command line switch])
+                AC_MSG_ERROR([Cannot continue])
+            fi
         fi
     else
         AC_MSG_NOTICE([disabled via command line switch])

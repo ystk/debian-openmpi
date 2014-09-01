@@ -11,6 +11,7 @@
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2006-2008 University of Houston.  All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -32,6 +33,7 @@
 #include "opal/threads/condition.h"
 #include "opal/threads/mutex.h"
 #include "opal/util/arch.h"
+#include "opal/align.h"
 
 #include "ompi/info/info.h"
 #include "ompi/communicator/communicator.h"
@@ -40,7 +42,6 @@
 #include "ompi/mca/osc/base/osc_base_obj_convert.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/bml/bml.h"
-#include "ompi/mca/pml/pml.h"
 #include "ompi/mca/bml/base/base.h"
 
 static int component_open(void);
@@ -48,7 +49,7 @@ static void component_fragment_cb(struct mca_btl_base_module_t *btl,
                                   mca_btl_base_tag_t tag,
                                   mca_btl_base_descriptor_t *descriptor,
                                   void *cbdata);
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
 static void* component_thread_fn(opal_object_t *obj);
 #endif
 static int setup_rdma(ompi_osc_rdma_module_t *module);
@@ -113,7 +114,7 @@ check_config_value_bool(char *key, ompi_info_t *info)
     if (flag == 0) goto info_not_found;
     value_len++;
 
-    value_string = (char*)malloc(sizeof(char) * value_len);
+    value_string = (char*)malloc(sizeof(char) * value_len + 1); /* Should malloc 1 char for NUL-termination */
     if (NULL == value_string) goto info_not_found;
 
     ret = ompi_info_get(info, key, value_len, value_string, &flag);
@@ -153,7 +154,7 @@ component_open(void)
                             "Coalesce messages during an epoch to reduce "
                             "network utilization.  Info key of same name "
                             "overrides this value.",
-                            false, false, 0, NULL);
+                            false, false, 1, NULL);
 
     mca_base_param_reg_int(&mca_osc_rdma_component.super.osc_version,
                            "use_rdma",
@@ -222,7 +223,7 @@ ompi_osc_rdma_component_init(bool enable_progress_threads,
     OBJ_CONSTRUCT(&mca_osc_rdma_component.c_pending_requests,
                   opal_list_t);
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     OBJ_CONSTRUCT(&mca_osc_rdma_component.c_thread, opal_thread_t);
     mca_osc_rdma_component.c_thread_run = false;
 #endif
@@ -245,7 +246,7 @@ ompi_osc_rdma_component_finalize(void)
         opal_output(ompi_osc_base_output,
                     "WARNING: There were %d Windows created but not freed.",
                     (int) num_modules);
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
         mca_osc_rdma_component.c_thread_run = false;
         opal_condition_broadcast(&ompi_request_cond);
         {
@@ -259,7 +260,7 @@ ompi_osc_rdma_component_finalize(void)
 
     mca_bml.bml_register(MCA_BTL_TAG_OSC_RDMA, NULL, NULL);
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     OBJ_DESTRUCT(&mca_osc_rdma_component.c_thread);
 #endif
     OBJ_DESTRUCT(&mca_osc_rdma_component.c_pending_requests);
@@ -283,10 +284,7 @@ ompi_osc_rdma_component_query(ompi_win_t *win,
     /* if we inited, then the BMLs are available and we have a path to
        each peer.  Return slightly higher priority than the
        point-to-point code */
-    
-    /* lower priority below that of the pt2pt component until the btl
-       redesign */
-    return 0;
+    return 10;
 }
 
 
@@ -297,6 +295,7 @@ ompi_osc_rdma_component_select(ompi_win_t *win,
 {
     ompi_osc_rdma_module_t *module = NULL;
     int ret, i;
+    char *tmp;
 
     /* create module structure */
     module = (ompi_osc_rdma_module_t*)
@@ -329,6 +328,10 @@ ompi_osc_rdma_component_select(ompi_win_t *win,
     opal_output_verbose(1, ompi_osc_base_output,
                         "rdma component creating window with id %d",
                         ompi_comm_get_cid(module->m_comm));
+
+    asprintf(&tmp, "%d", ompi_comm_get_cid(module->m_comm));
+    ompi_win_set_name(win, tmp);
+    free(tmp);
 
     module->m_num_pending_sendreqs = (unsigned int*)
         malloc(sizeof(unsigned int) * ompi_comm_size(module->m_comm));
@@ -412,7 +415,7 @@ ompi_osc_rdma_component_select(ompi_win_t *win,
                                      module);
     ret = opal_hash_table_get_size(&mca_osc_rdma_component.c_modules);
     if (ret == 1) {
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
         mca_osc_rdma_component.c_thread_run = true;
         mca_osc_rdma_component.c_thread.t_run = component_thread_fn;
         mca_osc_rdma_component.c_thread.t_arg = NULL;
@@ -528,7 +531,7 @@ component_fragment_cb(struct mca_btl_base_module_t *btl,
                 header = (ompi_osc_rdma_send_header_t*) base_header;
                 payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 if (header->hdr_base.hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_NBO) {
                     OMPI_OSC_RDMA_SEND_HDR_NTOH(*header);
                 }
@@ -560,7 +563,7 @@ component_fragment_cb(struct mca_btl_base_module_t *btl,
                 header = (ompi_osc_rdma_send_header_t*) base_header;
                 payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 if (header->hdr_base.hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_NBO) {
                     OMPI_OSC_RDMA_SEND_HDR_NTOH(*header);
                 }
@@ -596,7 +599,7 @@ component_fragment_cb(struct mca_btl_base_module_t *btl,
                 header = (ompi_osc_rdma_send_header_t*) base_header;
                 payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 if (header->hdr_base.hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_NBO) {
                     OMPI_OSC_RDMA_SEND_HDR_NTOH(*header);
                 }
@@ -652,7 +655,7 @@ component_fragment_cb(struct mca_btl_base_module_t *btl,
                 header = (ompi_osc_rdma_reply_header_t*) base_header;
                 payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 if (header->hdr_base.hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_NBO) {
                     OMPI_OSC_RDMA_REPLY_HDR_NTOH(*header);
                 }
@@ -673,7 +676,7 @@ component_fragment_cb(struct mca_btl_base_module_t *btl,
                 int32_t count;
                 payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 if (header->hdr_base.hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_NBO) {
                     OMPI_OSC_RDMA_CONTROL_HDR_NTOH(*header);
                 }
@@ -729,7 +732,7 @@ component_fragment_cb(struct mca_btl_base_module_t *btl,
                 int32_t count;
                 payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 if (header->hdr_base.hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_NBO) {
                     OMPI_OSC_RDMA_CONTROL_HDR_NTOH(*header);
                 }
@@ -757,7 +760,7 @@ component_fragment_cb(struct mca_btl_base_module_t *btl,
                 int32_t count;
                 payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 if (header->hdr_base.hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_NBO) {
                     OMPI_OSC_RDMA_CONTROL_HDR_NTOH(*header);
                 }
@@ -786,7 +789,7 @@ component_fragment_cb(struct mca_btl_base_module_t *btl,
                     (ompi_osc_rdma_control_header_t*) base_header;
                 payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 if (header->hdr_base.hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_NBO) {
                     OMPI_OSC_RDMA_CONTROL_HDR_NTOH(*header);
                 }
@@ -808,7 +811,7 @@ component_fragment_cb(struct mca_btl_base_module_t *btl,
                 int32_t count;
                 payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 if (header->hdr_base.hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_NBO) {
                     OMPI_OSC_RDMA_CONTROL_HDR_NTOH(*header);
                 }
@@ -832,7 +835,7 @@ component_fragment_cb(struct mca_btl_base_module_t *btl,
                 int32_t count;
                 payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 if (header->hdr_base.hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_NBO) {
                     OMPI_OSC_RDMA_CONTROL_HDR_NTOH(*header);
                 }
@@ -860,7 +863,7 @@ component_fragment_cb(struct mca_btl_base_module_t *btl,
                 int origin, index;
                 payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
                 if (header->hdr_base.hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_NBO) {
                     OMPI_OSC_RDMA_RDMA_INFO_HDR_NTOH(*header);
                 }
@@ -918,6 +921,13 @@ component_fragment_cb(struct mca_btl_base_module_t *btl,
         }
 
         if ((base_header->hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_MULTI) != 0) {
+            /* The next header starts at the next aligned address in
+             * the buffer.  Therefore, check the hdr_flags to see if
+             * any extra alignment is necessary, and if so, pull value
+             * from the flags. */
+            if (base_header->hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_ALIGN_MASK) {
+                payload = (char *)payload + (base_header->hdr_flags & OMPI_OSC_RDMA_HDR_FLAG_ALIGN_MASK);
+            }
             base_header = (ompi_osc_rdma_base_header_t*) payload;
         } else {
             done = true;
@@ -931,7 +941,7 @@ ompi_osc_rdma_component_progress(void)
     opal_list_item_t *item;
     int ret, done = 0;
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     OPAL_THREAD_LOCK(&mca_osc_rdma_component.c_lock);
 #else
     ret = OPAL_THREAD_TRYLOCK(&mca_osc_rdma_component.c_lock);
@@ -945,7 +955,7 @@ ompi_osc_rdma_component_progress(void)
             (ompi_osc_rdma_longreq_t*) item;
 
         /* BWB - FIX ME */
-#if OMPI_ENABLE_PROGRESS_THREADS == 0
+#if OPAL_ENABLE_PROGRESS_THREADS == 0
         if (longreq->request->req_state == OMPI_REQUEST_INACTIVE ||
             longreq->request->req_complete) {
             ret = ompi_request_test(&longreq->request,
@@ -976,7 +986,7 @@ ompi_osc_rdma_component_progress(void)
 }
 
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
 static void*
 component_thread_fn(opal_object_t *obj)
 {
@@ -1076,7 +1086,7 @@ rdma_send_info_send(ompi_osc_rdma_module_t *module,
 
 #ifdef WORDS_BIGENDIAN
     header->hdr_base.hdr_flags |= OMPI_OSC_RDMA_HDR_FLAG_NBO;
-#elif OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#elif OPAL_ENABLE_HETEROGENEOUS_SUPPORT
     if (peer_send_info->proc->proc_arch & OPAL_ARCH_ISBIGENDIAN) {
         header->hdr_base.hdr_flags |= OMPI_OSC_RDMA_HDR_FLAG_NBO;
         OMPI_OSC_RDMA_RDMA_INFO_HDR_HTON(*header);
@@ -1168,7 +1178,7 @@ setup_rdma(ompi_osc_rdma_module_t *module)
         int num_avail =
             mca_bml_base_btl_array_get_size(&endpoint->btl_rdma);
         size_t j, size;
-        ompi_convertor_t convertor;
+        opal_convertor_t convertor;
         
         /* skip peer if heterogeneous */
         if (ompi_proc_local()->proc_arch != proc->proc_arch) {
@@ -1213,7 +1223,7 @@ setup_rdma(ompi_osc_rdma_module_t *module)
         memset(peer_info->local_descriptors, 0,
                sizeof(mca_btl_base_descriptor_t*) * num_avail);
 
-        OBJ_CONSTRUCT(&convertor, ompi_convertor_t);
+        OBJ_CONSTRUCT(&convertor, opal_convertor_t);
 
         /* Find all useable btls, try to do the descriptor thing for
            them, and store all that information */
@@ -1238,8 +1248,8 @@ setup_rdma(ompi_osc_rdma_module_t *module)
 
             size = module->m_win->w_size;
 
-            ompi_convertor_copy_and_prepare_for_send(proc->proc_convertor,
-                                                     MPI_BYTE,
+            opal_convertor_copy_and_prepare_for_send(proc->proc_convertor,
+                                                     &(ompi_mpi_byte.dt.super),
                                                      module->m_win->w_size,
                                                      module->m_win->w_baseptr,
                                                      0,
@@ -1255,13 +1265,13 @@ setup_rdma(ompi_osc_rdma_module_t *module)
                     btl_mpool->mpool_deregister(btl_mpool,
                                                 peer_info->local_registrations[index]);
                 }
-                ompi_convertor_cleanup(&convertor);
+                opal_convertor_cleanup(&convertor);
                 continue;
             }
 
             peer_info->local_btls[index] = bml_btl;
 
-            ompi_convertor_cleanup(&convertor);
+            opal_convertor_cleanup(&convertor);
 
             peer_info->local_num_btls++;
             module->m_setup_info->num_btls_outgoing++;

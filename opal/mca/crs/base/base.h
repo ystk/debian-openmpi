@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2009 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -28,9 +28,7 @@
  * Global functions for MCA overall CRS
  */
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /* Some local strings to use genericly with the local metadata file */
 #define CRS_METADATA_BASE       ("# ")
@@ -114,8 +112,16 @@ extern "C" {
      */
     OPAL_DECLSPEC int opal_crs_base_cleanup_flush(void);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+    /*
+     * Copy the options structure
+     */
+    OPAL_DECLSPEC int opal_crs_base_copy_options(opal_crs_base_ckpt_options_t *from,
+                                                 opal_crs_base_ckpt_options_t *to);
+    /*
+     * Clear the options structure
+     */
+    OPAL_DECLSPEC int opal_crs_base_clear_options(opal_crs_base_ckpt_options_t *target);
+
+END_C_DECLS
 
 #endif /* OPAL_CRS_BASE_H */

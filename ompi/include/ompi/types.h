@@ -19,7 +19,6 @@
 #ifndef OMPI_TYPES_H
 #define OMPI_TYPES_H
 
-#include "opal/types.h"
 
 /*
  * handle to describe a parallel job
@@ -32,8 +31,6 @@ typedef char* ompi_job_handle_t;
  */
 struct ompi_communicator_t;
 struct ompi_datatype_t;
-struct ompi_convertor_t;
-struct ompi_bitmap_t;
 struct ompi_op_t;
 
 #endif

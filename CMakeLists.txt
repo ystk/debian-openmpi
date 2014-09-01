@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2007-2009 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2007-2011 High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 # $COPYRIGHT$
 # 
@@ -21,6 +21,16 @@ ENDIF(WIN32)
 # create top-level target(solution file)
 PROJECT("OpenMPI" C CXX)
 
+IF(MSVC)
+  SET(WINDOWS_VS TRUE CACHE INTERNAL "Windows Visual Studio env")
+  IF(CMAKE_CL_64)
+    SET(COMPILER_TYPE "x64")
+  ELSE(CMAKE_CL_64)
+    SET(COMPILER_TYPE "win32")
+  ENDIF(CMAKE_CL_64)
+ELSEIF("${CMAKE_GENERATOR}" STREQUAL "MSYS Makefiles")
+  SET(WINDOWS_MINGW TRUE CACHE INTERNAL "Windows MSYS env")
+ENDIF(MSVC)
 
 SET (OpenMPI_VERSION $(OpenMPI_MAJOR_VERSION).$(OpenMPI_MINOR_VERSION).$(OpenMPI_PATCH_VERSION))
 SET (CMAKE_MODULE_PATH "${OpenMPI_SOURCE_DIR}/contrib/platform/win32/CMakeModules;${CMAKE_MODULE_PATH}") 
@@ -34,17 +44,20 @@ ENDIF (NOT CMAKE_BUILD_TYPE)
 STRING(TOLOWER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE)
 IF(${CMAKE_BUILD_TYPE} STREQUAL "debug")
   SET(OMPI_DEBUG_BUILD 1)
+  # add debug-suffix to distinguish between debug and release version libraries.
+  SET(CMAKE_DEBUG_POSTFIX  "d")
+
+  OPTION(WANT_EXE_DEBUG_POSTFIX "Whether we want postfix for executables" OFF)
+  IF(WANT_EXE_DEBUG_POSTFIX)
+    SET(OMPI_EXE_DEBUG_POSTFIX "d")
+  ENDIF(WANT_EXE_DEBUG_POSTFIX)
 ENDIF(${CMAKE_BUILD_TYPE} STREQUAL "debug")
 
-# add debug-suffix to distinguish between debug and release version libraries.
-SET(CMAKE_DEBUG_POSTFIX  "d") 
 
 # preset install dir
 IF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   SET(CMAKE_INSTALL_PREFIX "${PROJECT_SOURCE_DIR}/installed" CACHE PATH "CMAKE_INSTALL_PREFIX" FORCE)
 ENDIF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-
-INCLUDE(ompi_get_version)
 
 # Make the include path visible to all targets
 INCLUDE_DIRECTORIES (
@@ -75,22 +88,39 @@ SET (CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OpenMPI_BINARY_DIR})
 SET (CMAKE_SUPPRESS_REGENERATION true) 
 
 # Dynamic/shared build, the default is set to static(OFF)
-OPTION(BUILD_SHARED_LIBS "Wether we want to build shared libraries." ON)
+OPTION(BUILD_SHARED_LIBS "Whether we want to build shared libraries." ON)
 
-IF(CMAKE_CL_64)
-  SET(COMPILER_TYPE "x64")
-ELSE(CMAKE_CL_64)
-  SET(COMPILER_TYPE "win32")
-ENDIF(CMAKE_CL_64)
-
+#store current environment variables
+SET(PATH_OLD "$ENV{PATH}")
+SET(LIB_OLD "$ENV{LIB}")
+SET(INCLUDE_OLD "$ENV{INCLUDE}")
 
 INCLUDE(ompi_configure)
+BEGIN_CONFIGURE()
+
+# find flex command
+INCLUDE (find_flex)
+FIND_FLEX()
 
 ADD_SUBDIRECTORY(opal)
+# set up the libevent include dirs
+INCLUDE_DIRECTORIES (${LIBEVENT_INCLUDE_DIRS})
 ADD_SUBDIRECTORY(ompi)
 ADD_SUBDIRECTORY(orte)
 
-INCLUDE(InstallRequiredSystemLibraries) 
+END_CONFIGURE()
+
+#restore environment variables
+SET(ENV{PATH} "${PATH_OLD}")
+SET(ENV{LIB} "${LIB_OLD}")
+SET(ENV{INCLUDE} "${INCLUDE_OLD}")
+
+# By default, do not warn when built on machines using only VS Express
+IF(NOT DEFINED CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_NO_WARNINGS)
+  SET(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_NO_WARNINGS ON)
+ENDIF(NOT DEFINED CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_NO_WARNINGS)
+
+INCLUDE(InstallRequiredSystemLibraries)
 
 # CPACK settings
 #SET(CPACK_PACKAGE_NAME "Open MPI")
@@ -133,22 +163,7 @@ SET(CPACK_BINARY_ZIP ON)
 
 # setup the register entries when install
 SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS ${CPACK_NSIS_EXTRA_INSTALL_COMMANDS} "
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_PREFIX\\\" \\\"$INSTDIR\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_EXEC_PREFIX\\\" \\\"$INSTDIR\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_BINDIR\\\" \\\"$INSTDIR\\\\bin\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_SBINDIR\\\" \\\"$INSTDIR\\\\sbin\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_LIBEXECDIR\\\" \\\"$INSTDIR\\\\libexec\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_DATAROOTDIR\\\" \\\"$INSTDIR\\\\share\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_DATADIR\\\" \\\"$INSTDIR\\\\share\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_SYSCONFDIR\\\" \\\"$INSTDIR\\\\etc\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_LOCALSTATEDIR\\\" \\\"$INSTDIR\\\\etc\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_LIBDIR\\\" \\\"$INSTDIR\\\\lib\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_INCLUDEDIR\\\" \\\"$INSTDIR\\\\include\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_INFODIR\\\" \\\"$INSTDIR\\\\share\\\\info\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_MANDIR\\\" \\\"$INSTDIR\\\\share\\\\man\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_PKGDATADIR\\\" \\\"$INSTDIR\\\\share\\\\openmpi\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_PKGLIBDIR\\\" \\\"$INSTDIR\\\\lib\\\\openmpi\\\"
-    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPAL_PKGINCLUDEDIR\\\" \\\"$INSTDIR\\\\include\\\\openmpi\\\"
+    WriteRegStr HKLM \\\"SOFTWARE\\\\${CPACK_PACKAGE_VENDOR}\\\" \\\"OPENMPI_HOME\\\" \\\"$INSTDIR\\\"
 ")
 
 

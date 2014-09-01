@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011      Oracle and/or its affiliates. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -58,16 +59,18 @@ typedef struct {
     opal_condition_t cond;
     /* byte object to store daemon map for later xmit to procs */
     opal_byte_object_t *dmap;
+    /* any co-spawned debugger daemon */
+    orte_odls_job_t *debugger;
+    /* debugger launched */
+    bool debugger_launched;
     /* list of ranks to be displayed on separate xterms */
     opal_list_t xterm_ranks;
     /* the xterm cmd to be used */
     char **xtermcmd;
-    /* whether or not to report bindings */
-    bool report_bindings;
     /* any externally provided bindings */
     opal_paffinity_base_cpu_set_t my_cores;
     /* flag whether or not we are bound */
-    bool bound;
+    bool bound; 
     /* local number of processors */
     int num_processors;
     /* map of locally available sockets
@@ -76,6 +79,10 @@ typedef struct {
     opal_bitmap_t sockets;
     /* number of sockets available to us */
     int num_sockets;
+    /* number of cores/socket - assumes homogeneity */
+    int num_cores_per_socket;
+    /* system capabilities */
+    opal_list_t sysinfo;
 } orte_odls_globals_t;
 
 ORTE_DECLSPEC extern orte_odls_globals_t orte_odls_globals;
@@ -126,7 +133,7 @@ typedef int (*orte_odls_base_kill_local_fn_t)(pid_t pid, int signum);
 typedef bool (*orte_odls_base_child_died_fn_t)(pid_t pid, unsigned int timeout, int *exit_status);
 
 ORTE_DECLSPEC int
-orte_odls_base_default_kill_local_procs(orte_jobid_t job, bool set_state,
+orte_odls_base_default_kill_local_procs(opal_pointer_array_t *procs, bool set_state,
                                         orte_odls_base_kill_local_fn_t kill_local,
                                         orte_odls_base_child_died_fn_t child_died);
 
@@ -140,14 +147,9 @@ ORTE_DECLSPEC int orte_odls_base_default_require_sync(orte_process_name_t *proc,
 ORTE_DECLSPEC int orte_odls_base_preload_files_app_context(orte_app_context_t* context);
 
 /*
- * Collect data to support collective operations across the procs
+ * Obtain process stats on a child proc
  */
-ORTE_DECLSPEC int orte_odls_base_default_collect_data(orte_process_name_t *proc, opal_buffer_t *buf);
-
-/*
- * Retrive the daemon map
- */
-ORTE_DECLSPEC opal_pointer_array_t* orte_odls_base_get_daemon_map(void);
+ORTE_DECLSPEC int orte_odls_base_get_proc_stats(opal_buffer_t *answer, orte_process_name_t *proc);
 
 END_C_DECLS
 

@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2009 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -51,9 +52,9 @@
 #include "opal/runtime/opal.h"
 #include "opal/runtime/opal_cr.h"
 #include "opal/util/cmd_line.h"
+#include "opal/util/output.h"
 #include "opal/util/argv.h"
 #include "opal/util/opal_environ.h"
-#include "opal/util/os_path.h"
 #include "opal/util/basename.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
@@ -64,9 +65,9 @@
 #include "orte/runtime/orte_cr.h"
 #include "orte/mca/snapc/snapc.h"
 #include "orte/mca/snapc/base/base.h"
-#include "orte/mca/filem/filem.h"
 #include "orte/mca/filem/base/base.h"
-#include "orte/util/show_help.h"
+#include "opal/util/show_help.h"
+#include "orte/util/proc_info.h"
 
 /******************
  * Local Functions
@@ -77,6 +78,7 @@ static int parse_args(int argc, char *argv[]);
 static int check_file(orte_snapc_base_global_snapshot_t *snapshot);
 static int create_appfile(orte_snapc_base_global_snapshot_t *snapshot);
 static int spawn_children(orte_snapc_base_global_snapshot_t *snapshot, pid_t *child_pid);
+static int snapshot_info(orte_snapc_base_global_snapshot_t *snapshot);
 static int snapshot_sort_compare_fn(opal_list_item_t **a,
                                     opal_list_item_t **b);
 
@@ -93,6 +95,10 @@ typedef struct {
     int  seq_number;
     char *hostfile;
     int  output;
+    bool info_only;
+    bool app_only;
+    bool showme;
+    char *mpirun_opts;
 } orte_restart_globals_t;
 
 orte_restart_globals_t orte_restart_globals;
@@ -142,6 +148,30 @@ opal_cmd_line_init_t cmd_line_opts[] = {
       &orte_restart_globals.hostfile, OPAL_CMD_LINE_TYPE_STRING,
       "Provide a hostfile to use for launch" },
 
+    { NULL, NULL, NULL, 
+      'i', NULL, "info", 
+      0,
+      &orte_restart_globals.info_only, OPAL_CMD_LINE_TYPE_BOOL,
+      "Display information about the checkpoint" },
+
+    { NULL, NULL, NULL, 
+      'a', NULL, "apponly", 
+      0,
+      &orte_restart_globals.app_only, OPAL_CMD_LINE_TYPE_BOOL,
+      "Only create the app context file, do not restart from it" },
+
+    { NULL, NULL, NULL, 
+      '\0', NULL, "showme", 
+      0,
+      &orte_restart_globals.showme, OPAL_CMD_LINE_TYPE_BOOL,
+      "Display the full command line that would have been exec'ed." },
+
+    { NULL, NULL, NULL, 
+      '\0', "mpirun_opts", "mpirun_opts", 
+      1,
+      &orte_restart_globals.mpirun_opts, OPAL_CMD_LINE_TYPE_STRING,
+      "Command line options to pass directly to mpirun (be sure to quote long strings, and escape internal quotes)" },
+
     /* End of list */
     { NULL, NULL, NULL, 
       '\0', NULL, NULL, 
@@ -154,9 +184,10 @@ int
 main(int argc, char *argv[])
 {
     int ret, exit_status = ORTE_SUCCESS;
-    pid_t child_pid;
+    pid_t child_pid = 0;
     orte_snapc_base_global_snapshot_t *snapshot = NULL;
-    
+    char *tmp_str = NULL;
+
     /***************
      * Initialize
      ***************/
@@ -167,15 +198,27 @@ main(int argc, char *argv[])
 
     snapshot = OBJ_NEW(orte_snapc_base_global_snapshot_t);
     snapshot->reference_name  = strdup(orte_restart_globals.filename);
-    snapshot->local_location  = opal_dirname(orte_snapc_base_get_global_snapshot_directory(snapshot->reference_name));
+    orte_snapc_base_get_global_snapshot_directory(&tmp_str, snapshot->reference_name);
+    snapshot->local_location  = opal_dirname(tmp_str);
+    free(tmp_str);
+    tmp_str = NULL;
 
     /* 
      * Check for existence of the file
      */
     if( ORTE_SUCCESS != (ret = check_file(snapshot)) ) {
-        orte_show_help("help-orte-restart.txt", "invalid_filename", true,
+        opal_show_help("help-orte-restart.txt", "invalid_filename", true,
                        orte_restart_globals.filename);
         exit_status = ret;
+        goto cleanup;
+    }
+
+    if(orte_restart_globals.info_only ) {
+        if (ORTE_SUCCESS != (ret = snapshot_info(snapshot))) {
+            exit_status = ret;
+            goto cleanup;
+        }
+        exit_status = ORTE_SUCCESS;
         goto cleanup;
     }
 
@@ -184,6 +227,12 @@ main(int argc, char *argv[])
      ******************************/
     if( ORTE_SUCCESS != (ret = create_appfile(snapshot) ) ) {
         exit_status = ret;
+        goto cleanup;
+    }
+
+    if( orte_restart_globals.app_only ) {
+        printf("Created Appfile:\n\t%s\n", orte_restart_globals.appfile);
+        exit_status = ORTE_SUCCESS;
         goto cleanup;
     }
 
@@ -205,7 +254,7 @@ main(int argc, char *argv[])
     }
 
     if( ORTE_SUCCESS != (ret = spawn_children(snapshot, &child_pid)) ) {
-        orte_show_help("help-orte-restart.txt", "restart_cmd_failure", true,
+        opal_show_help("help-orte-restart.txt", "restart_cmd_failure", true,
                        orte_restart_globals.filename, ret);
         exit_status = ret;
         goto cleanup;
@@ -218,8 +267,10 @@ main(int argc, char *argv[])
      * Cleanup
      ***************/
  cleanup:
-    if(NULL != snapshot )
+    if(NULL != snapshot ) {
         OBJ_RELEASE(snapshot);
+        snapshot = NULL;
+    }
 
     if (OPAL_SUCCESS != (ret = finalize())) {
         return ret;
@@ -237,7 +288,7 @@ static int initialize(int argc, char *argv[]) {
      * to ensure installdirs is setup properly
      * before calling mca_base_open();
      */
-    if( ORTE_SUCCESS != (ret = opal_init_util()) ) {
+    if( ORTE_SUCCESS != (ret = opal_init_util(&argc, &argv)) ) {
         return ret;
     }
 
@@ -276,7 +327,7 @@ static int initialize(int argc, char *argv[]) {
     /*
      * Setup any ORTE stuff we might need
      */
-    if (OPAL_SUCCESS != (ret = orte_init(ORTE_TOOL))) {
+    if (OPAL_SUCCESS != (ret = orte_init(&argc, &argv, ORTE_PROC_TOOL))) {
         exit_status = ret;
         goto cleanup;
     }
@@ -321,7 +372,11 @@ static int parse_args(int argc, char *argv[])
                                    false, /* preload */
                                    -1,    /* seq_number */
                                    NULL,  /* hostfile */
-                                   -1 };  /* output*/
+                                   -1,    /* output*/
+                                   false, /* info only */
+                                   false, /* app only */
+                                   false, /* showme */
+                                   NULL}; /* mpirun_opts */
 
     orte_restart_globals = tmp;
 
@@ -358,12 +413,12 @@ static int parse_args(int argc, char *argv[])
      * Now start parsing our specific arguments
      */
 
-#if OPAL_ENABLE_FT == 0
+#if OPAL_ENABLE_FT_CR == 0
     /* Warn and exit if not configured with Checkpoint/Restart */
     {
         char *args = NULL;
         args = opal_cmd_line_get_usage_msg(&cmd_line);
-        orte_show_help("help-orte-restart.txt", "usage-no-cr",
+        opal_show_help("help-orte-restart.txt", "usage-no-cr",
                        true, args);
         free(args);
         return ORTE_ERROR;
@@ -375,7 +430,7 @@ static int parse_args(int argc, char *argv[])
         1 >= argc) {
         char *args = NULL;
         args = opal_cmd_line_get_usage_msg(&cmd_line);
-        orte_show_help("help-orte-restart.txt", "usage", true,
+        opal_show_help("help-orte-restart.txt", "usage", true,
                        args);
         free(args);
         return ORTE_ERROR;
@@ -386,7 +441,7 @@ static int parse_args(int argc, char *argv[])
     if ( 1 > argc ) {
         char *args = NULL;
         args = opal_cmd_line_get_usage_msg(&cmd_line);
-        orte_show_help("help-orte-restart.txt", "usage", true,
+        opal_show_help("help-orte-restart.txt", "usage", true,
                        args);
         free(args);
         return ORTE_ERROR;
@@ -395,7 +450,7 @@ static int parse_args(int argc, char *argv[])
     orte_restart_globals.filename = strdup(argv[0]);
     if ( NULL == orte_restart_globals.filename || 
          0 >= strlen(orte_restart_globals.filename) ) {
-        orte_show_help("help-orte-restart.txt", "invalid_filename", true,
+        opal_show_help("help-orte-restart.txt", "invalid_filename", true,
                        orte_restart_globals.filename);
         return ORTE_ERROR;
     }
@@ -440,6 +495,9 @@ static int create_appfile(orte_snapc_base_global_snapshot_t *snapshot)
      */
     snapshot->seq_num = orte_restart_globals.seq_number;
     if( ORTE_SUCCESS != (ret = orte_snapc_base_extract_metadata( snapshot ) ) ) {
+        opal_show_help("help-orte-restart.txt", "invalid_seq_num", true,
+                       orte_restart_globals.filename,
+                       (int)orte_restart_globals.seq_number);
         exit_status = ret;
         goto cleanup;
     }
@@ -459,16 +517,16 @@ static int create_appfile(orte_snapc_base_global_snapshot_t *snapshot)
     /*
      * Sort the snapshots so that they are in order
      */
-    opal_list_sort(&snapshot->snapshots, snapshot_sort_compare_fn);
+    opal_list_sort(&snapshot->local_snapshots, snapshot_sort_compare_fn);
 
     /*
      * Construct the appfile
      */
-    for(item  = opal_list_get_first(&snapshot->snapshots);
-        item != opal_list_get_end(&snapshot->snapshots);
+    for(item  = opal_list_get_first(&snapshot->local_snapshots);
+        item != opal_list_get_end(&snapshot->local_snapshots);
         item  = opal_list_get_next(item) ) {
-        orte_snapc_base_snapshot_t *vpid_snapshot;
-        vpid_snapshot = (orte_snapc_base_snapshot_t*)item;
+        orte_snapc_base_local_snapshot_t *vpid_snapshot;
+        vpid_snapshot = (orte_snapc_base_local_snapshot_t*)item;
         
         fprintf(appfile, "#\n");
         fprintf(appfile, "# Old Process Name: %u.%u\n", 
@@ -478,13 +536,15 @@ static int create_appfile(orte_snapc_base_global_snapshot_t *snapshot)
         fprintf(appfile, "-np 1 ");
         if(orte_restart_globals.preload) {
             fprintf(appfile, "--preload-files %s/%s ", 
-                    vpid_snapshot->crs_snapshot_super.local_location, 
-                    vpid_snapshot->crs_snapshot_super.reference_name);
+                    vpid_snapshot->local_location, 
+                    vpid_snapshot->reference_name);
             fprintf(appfile, "--preload-files-dest-dir . ");
         }
         /* JJH: Make this match what the user originally specified on the command line */
         fprintf(appfile, "-am ft-enable-cr ");
+
         fprintf(appfile, " opal-restart ");
+
         /* JJH: Make sure this changes if ever the default location of the local file is changed,
          * currently it is safe to assume that it is in the current working directory.
          *
@@ -497,9 +557,9 @@ static int create_appfile(orte_snapc_base_global_snapshot_t *snapshot)
         else {
             /* If we are *not* preloading the files, the point to the original checkpoint
              * directory to access the checkpoint files. */
-            fprintf(appfile, "-mca crs_base_snapshot_dir %s ", vpid_snapshot->crs_snapshot_super.local_location);
+            fprintf(appfile, "-mca crs_base_snapshot_dir %s ", vpid_snapshot->local_location);
         }
-        fprintf(appfile, "%s\n", vpid_snapshot->crs_snapshot_super.reference_name);
+        fprintf(appfile, "%s\n", vpid_snapshot->reference_name);
     }
 
  cleanup:
@@ -515,6 +575,7 @@ static int spawn_children(orte_snapc_base_global_snapshot_t *snapshot, pid_t *ch
     char **argv = NULL;
     int argc = 0;
     int status;
+    int i;
 
     if( ORTE_SUCCESS != (ret = opal_argv_append(&argc, &argv, "mpirun")) ) {
         exit_status = ret;
@@ -538,6 +599,12 @@ static int spawn_children(orte_snapc_base_global_snapshot_t *snapshot, pid_t *ch
             goto cleanup;
         }
     }
+    if( orte_restart_globals.mpirun_opts ) {
+        if( ORTE_SUCCESS != (ret = opal_argv_append(&argc, &argv, orte_restart_globals.mpirun_opts)) ) {
+            exit_status = ret;
+            goto cleanup;
+        }
+    }
     if( ORTE_SUCCESS != (ret = opal_argv_append(&argc, &argv, "--app")) ) {
         exit_status = ret;
         goto cleanup;
@@ -545,6 +612,15 @@ static int spawn_children(orte_snapc_base_global_snapshot_t *snapshot, pid_t *ch
     if( ORTE_SUCCESS != (ret = opal_argv_append(&argc, &argv, orte_restart_globals.appfile)) ) {
         exit_status = ret;
         goto cleanup;
+    }
+
+    if( orte_restart_globals.showme ) {
+        for(i = 0; i < argc; ++i ) {
+            /*printf("%2d: (%s)\n", i, argv[i]);*/
+            printf("%s ", argv[i]);
+        }
+        printf("\n");
+        return ORTE_SUCCESS;
     }
 
     /* To fork off a child */
@@ -594,13 +670,119 @@ static int spawn_children(orte_snapc_base_global_snapshot_t *snapshot, pid_t *ch
     return exit_status;
 }
 
+int snapshot_info(orte_snapc_base_global_snapshot_t *snapshot)
+{
+    int ret, exit_status = ORTE_SUCCESS;
+    int num_seqs, processes, i;
+    int *snapshot_ref_seqs;
+    opal_list_item_t* item = NULL;
+    orte_snapc_base_local_snapshot_t *vpid_snapshot;
+    
+    if (orte_restart_globals.seq_number == -1) {
+        if( ORTE_SUCCESS != (ret = orte_snapc_base_get_all_snapshot_ref_seqs(NULL, orte_restart_globals.filename, &num_seqs, &snapshot_ref_seqs) ) ) {
+            exit_status = ret;
+            goto cleanup;
+        }
+        opal_output(orte_restart_globals.output,
+                    "Sequences: %d\n",
+                    num_seqs);
+    } else {
+        num_seqs = 1;
+        snapshot_ref_seqs = &orte_restart_globals.seq_number;
+    }
+
+    for (i=0; i<num_seqs; i++) {
+        snapshot->seq_num = snapshot_ref_seqs[i];
+
+        while (NULL != (item = opal_list_remove_first(&snapshot->local_snapshots))) {
+            OBJ_RELEASE(item);
+        }
+
+        if( NULL != snapshot->start_time ) {
+            free( snapshot->start_time );
+            snapshot->start_time = NULL;
+        }
+
+        if( NULL != snapshot->end_time ) {
+            free( snapshot->end_time );
+            snapshot->end_time = NULL;
+        }
+
+        opal_output(orte_restart_globals.output,
+                    "Seq: %d\n",
+                    snapshot->seq_num);
+
+        if( ORTE_SUCCESS != (ret = orte_snapc_base_extract_metadata( snapshot ) ) ) {
+            exit_status = ret;
+            goto cleanup;
+        }
+
+        item  = opal_list_get_first(&snapshot->local_snapshots);
+        vpid_snapshot = (orte_snapc_base_local_snapshot_t*)item;
+
+        if (NULL != snapshot->start_time ) {
+            opal_output(orte_restart_globals.output,
+                        "Begin Timestamp: %s\n",
+                        snapshot->start_time);
+        }
+
+        if (NULL != vpid_snapshot->opal_crs ) {
+            opal_output(orte_restart_globals.output,
+                        "OPAL CRS Component: %s\n",
+                        vpid_snapshot->opal_crs);
+        }
+
+        if (NULL != snapshot->reference_name) {
+            opal_output(orte_restart_globals.output,
+                        "Snapshot Reference: %s\n",
+                        snapshot->reference_name);
+        }
+
+        if (NULL != snapshot->local_location) {
+            opal_output(orte_restart_globals.output,
+                        "Snapshot Location: %s\n",
+                        snapshot->local_location);
+        }
+
+        if (NULL != snapshot->end_time ) {
+            opal_output(orte_restart_globals.output,
+                        "End Timestamp: %s\n",
+                        snapshot->end_time);
+        }
+
+        processes = 0;
+        for(item  = opal_list_get_first(&snapshot->local_snapshots);
+            item != opal_list_get_end(&snapshot->local_snapshots);
+            item  = opal_list_get_next(item) ) {
+            processes++;
+        }
+        opal_output(orte_restart_globals.output,
+                    "Processes: %d\n",
+                    processes);
+
+        for(item  = opal_list_get_first(&snapshot->local_snapshots);
+            item != opal_list_get_end(&snapshot->local_snapshots);
+            item  = opal_list_get_next(item) ) {
+            vpid_snapshot = (orte_snapc_base_local_snapshot_t*)item;
+
+            opal_output_verbose(10, orte_restart_globals.output,
+                                "Process: %u.%u",
+                                vpid_snapshot->process_name.jobid,
+                                vpid_snapshot->process_name.vpid);
+        }
+    }
+
+ cleanup:
+    return exit_status;
+}
+
 static int snapshot_sort_compare_fn(opal_list_item_t **a,
                                     opal_list_item_t **b)
 {
-    orte_snapc_base_snapshot_t *snap_a, *snap_b;
+    orte_snapc_base_local_snapshot_t *snap_a, *snap_b;
 
-    snap_a = (orte_snapc_base_snapshot_t*)(*a);
-    snap_b = (orte_snapc_base_snapshot_t*)(*b);
+    snap_a = (orte_snapc_base_local_snapshot_t*)(*a);
+    snap_b = (orte_snapc_base_local_snapshot_t*)(*b);
 
     if( snap_a->process_name.vpid > snap_b->process_name.vpid ) {
         return 1;

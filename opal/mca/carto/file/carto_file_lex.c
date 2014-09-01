@@ -528,7 +528,7 @@ char *carto_file_text;
 #include "opal_config.h"
 
 #include <stdio.h>
-#if HAVE_UNISTD_H
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
@@ -537,15 +537,11 @@ char *carto_file_text;
 /*
  * local functions
  */
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif  /* defined(c_plusplus) || defined(__cplusplus) */
+BEGIN_C_DECLS
 
 int carto_file_wrap(void);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif  /* defined(c_plusplus) || defined(__cplusplus) */
+END_C_DECLS
 
 int carto_file_wrap(void)
 {
@@ -561,7 +557,7 @@ orte_rds_value_t carto_file_value;
 bool carto_file_done = false;
 
 
-#line 565 "carto_file_lex.c"
+#line 561 "carto_file_lex.c"
 
 #define INITIAL 0
 #define comment 1
@@ -744,10 +740,10 @@ YY_DECL
 	register char *yy_cp, *yy_bp;
 	register int yy_act;
     
-#line 60 "carto_file_lex.l"
+#line 56 "carto_file_lex.l"
 
 
-#line 751 "carto_file_lex.c"
+#line 747 "carto_file_lex.c"
 
 	if ( !(yy_init) )
 		{
@@ -833,100 +829,100 @@ do_action:	/* This label is used only to access EOF actions. */
 case 1:
 /* rule 1 can match eol */
 YY_RULE_SETUP
-#line 62 "carto_file_lex.l"
+#line 58 "carto_file_lex.l"
 { carto_file_line++; 
                      return OPAL_CARTO_FILE_NEWLINE; }
 	YY_BREAK
 case 2:
 /* rule 2 can match eol */
 YY_RULE_SETUP
-#line 64 "carto_file_lex.l"
+#line 60 "carto_file_lex.l"
 { carto_file_line++; 
                      return OPAL_CARTO_FILE_NEWLINE; }
 	YY_BREAK
 case 3:
 /* rule 3 can match eol */
 YY_RULE_SETUP
-#line 66 "carto_file_lex.l"
+#line 62 "carto_file_lex.l"
 { carto_file_line++; 
                      return OPAL_CARTO_FILE_NEWLINE; }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 69 "carto_file_lex.l"
+#line 65 "carto_file_lex.l"
 { BEGIN(comment);
                      return OPAL_CARTO_FILE_NEWLINE; }
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 71 "carto_file_lex.l"
+#line 67 "carto_file_lex.l"
 ; /* Eat up non '*'s */
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 72 "carto_file_lex.l"
+#line 68 "carto_file_lex.l"
 ; /* Eat '*'s not followed by a '/' */
 	YY_BREAK
 case 7:
 /* rule 7 can match eol */
 YY_RULE_SETUP
-#line 73 "carto_file_lex.l"
+#line 69 "carto_file_lex.l"
 { carto_file_line++;
                      return OPAL_CARTO_FILE_NEWLINE; } 
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 75 "carto_file_lex.l"
+#line 71 "carto_file_lex.l"
 { BEGIN(INITIAL); /* Done with Block Comment */
                      return OPAL_CARTO_FILE_NEWLINE; }
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 78 "carto_file_lex.l"
+#line 74 "carto_file_lex.l"
 ;			/* whitespace */
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 83 "carto_file_lex.l"
+#line 79 "carto_file_lex.l"
 { carto_file_value.sval = carto_file_text;
                      return OPAL_CARTO_FILE_NODE_DECELERATION; }
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 86 "carto_file_lex.l"
+#line 82 "carto_file_lex.l"
 { carto_file_value.sval = carto_file_text;
                      return OPAL_CARTO_FILE_CONNECTION_DECELERATION; }
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 89 "carto_file_lex.l"
+#line 85 "carto_file_lex.l"
 { carto_file_value.sval = carto_file_text;
                      return OPAL_CARTO_FILE_BIDIRECTION_CONNECTION; }
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 92 "carto_file_lex.l"
+#line 88 "carto_file_lex.l"
 { carto_file_value.ival = atol(carto_file_text); 
                      return OPAL_CARTO_FILE_INT; }
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 95 "carto_file_lex.l"
+#line 91 "carto_file_lex.l"
 { carto_file_value.sval = carto_file_text;
                      return OPAL_CARTO_FILE_NAME; }
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 99 "carto_file_lex.l"
+#line 95 "carto_file_lex.l"
 { carto_file_value.sval = carto_file_text;
                      return OPAL_CARTO_FILE_NODE_CONNECTION; }
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 103 "carto_file_lex.l"
+#line 99 "carto_file_lex.l"
 ECHO;
 	YY_BREAK
-#line 930 "carto_file_lex.c"
+#line 926 "carto_file_lex.c"
 case YY_STATE_EOF(INITIAL):
 case YY_STATE_EOF(comment):
 	yyterminate();
@@ -1925,7 +1921,7 @@ void carto_file_free (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 103 "carto_file_lex.l"
+#line 99 "carto_file_lex.l"
 
 
 

@@ -18,11 +18,10 @@
  */
 
 #include "ompi_config.h"
+#include "ompi/constants.h"
+
 #include "ompi/mca/topo/base/base.h"
-#include "ompi/communicator/communicator.h"
-#include "ompi/group/group.h"
 #include "ompi/mca/topo/topo.h"
-#include "mpi.h"
 
 /*
  * function - makes a new communicator to which topology information
@@ -39,7 +38,7 @@
  *
  * Open MPI currently ignores the 'reorder' flag.
  *
- * @retval MPI_SUCCESS
+ * @retval OMPI_SUCCESS
  */                       
 
 int mca_topo_base_cart_create (mca_topo_base_comm_t *topo_data,
@@ -83,7 +82,7 @@ int mca_topo_base_cart_create (mca_topo_base_comm_t *topo_data,
    if (*new_rank > (nprocs-1)) {
        /* sorry, but in our scheme this process is cut off */
        *new_rank = MPI_UNDEFINED;
-       return MPI_SUCCESS;
+       return OMPI_SUCCESS;
    }
 
    /* Have to replace this with the actual function body itself */
@@ -101,5 +100,5 @@ int mca_topo_base_cart_create (mca_topo_base_comm_t *topo_data,
     }
 
    /* end here */
-   return MPI_SUCCESS;
+   return OMPI_SUCCESS;
 }

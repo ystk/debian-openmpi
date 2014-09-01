@@ -19,6 +19,8 @@
 #ifndef OMPI_TIME_H
 #define OMPI_TIME_H
 
+#include "opal_config.h"
+
 #ifndef OMPI_WIN_COMPAT_H
 #error This file is supposed to be included only from win_compat.h
 #endif  /* OMPI_WIN_COMPAT_H */
@@ -153,12 +155,14 @@ struct clockinfo {
 #define TIMER_RELTIME   0x0 /* relative timer */
 #define TIMER_ABSTIME   0x1 /* absolute timer */
 
-
+#ifndef OMPI_TIMESPEC
+#define OMPI_TIMESPEC
 struct timespec
 {
   long tv_sec;
   long tv_nsec;
 };
+#endif
 
 
 /*
@@ -171,15 +175,10 @@ struct timezone
   int tz_dsttime;
 };
 
-#if defined(c_plusplus) || defined (__cplusplus)
-extern "C"
-{
-#endif
+BEGIN_C_DECLS
 
 OPAL_DECLSPEC int gettimeofday (struct timeval *tv, struct timezone *tz);
 
-#if defined(c_plusplus) || defined (__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif				/* OMPI_TIME_H */

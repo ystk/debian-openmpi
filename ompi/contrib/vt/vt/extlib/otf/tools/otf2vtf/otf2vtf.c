@@ -1,9 +1,11 @@
 /*
- This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2008.
+ This is part of the OTF library. Copyright by ZIH, TU Dresden 2005-2013.
  Authors: Andreas Knuepfer, Holger Brunst, Ronny Brendel, Thomas Kriebitzsch
 */
 
+#ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -28,19 +30,20 @@
 	int l = 0; while( Helptext[l] ) { printf( "%s", Helptext[l++] ); } }
 
 static const char* Helptext[] = {
-"                                                                          \n",
-" otf2vtf - Convert OTF trace files to VTF format.                         \n",
-"                                                                          \n",
-" otf2vtf [Options] <input file name>                                      \n",
-"                                                                          \n",
-" Options:                                                                 \n",
-"     -h, --help     show this help message                                \n",
-"     -V             show OTF version                                      \n",
-"     -o <file>      output file                                           \n",
-"     -b <n>         size of the reader buffer                             \n",
-"     -A             write VTF3 ASCII sub-format (default)                 \n",
-"     -B             write VTF3 binary sub-format                          \n",
-"                                                                          \n", NULL };
+"                                                                           \n",
+" otf2vtf - Convert OTF trace files to VTF3 format.                          \n",
+"                                                                           \n",
+" Syntax: otf2vtf [Options] <input file name>                               \n",
+"                                                                           \n",
+"   options:                                                                \n",
+"      -h, --help    show this help message                                 \n",
+"      -V            show OTF version                                       \n",
+"      -o <file>     output file                                            \n",
+"      -b <n>        size of the reader buffer                              \n",
+"      -A            write VTF3 ASCII sub-format (default)                  \n",
+"      -B            write VTF3 binary sub-format                           \n",
+"                                                                           \n",
+NULL };
 
 void writenames_recursive ( void* firsthandlerarg, nodeT *p_node );
 
@@ -57,6 +60,7 @@ int main (int argc, char **argv) {
 	char* inputFile = NULL;
 	char* outputFile = NULL;
 	int buffersize= 1024;
+	uint64_t ret_read;
 
 	OTF_FileManager* manager;
 	OTF_Reader* reader;
@@ -114,7 +118,7 @@ int main (int argc, char **argv) {
 
 		} else if ( 0 == strcmp( "-V", argv[i] ) ) {
 		
-			printf( "%u.%u.%u \"%s\"\n", OTF_VERSION_MAYOR, OTF_VERSION_MINOR,
+			printf( "%u.%u.%u \"%s\"\n", OTF_VERSION_MAJOR, OTF_VERSION_MINOR,
 				OTF_VERSION_SUB, OTF_VERSION_STRING);
 			exit( 0 );
 
@@ -275,8 +279,12 @@ int main (int argc, char **argv) {
 	VTF3_WriteDefversion( fha.fcb, OTF2VTF3VERSION);
 	VTF3_WriteDefcreator( fha.fcb, OTF2VTF3CREATOR );
 	
-	OTF_Reader_readDefinitions( reader, handlers );
-	
+	ret_read = OTF_Reader_readDefinitions( reader, handlers );
+	if( ret_read == OTF_READ_ERROR ) {
+		fprintf(stderr,"An error occurred while reading the tracefile. It seems to be damaged. Abort.\n");
+		return 1;
+	}
+
 	/***************/
 	numcpus = 0;
 	/* indicate the processes */
@@ -302,7 +310,11 @@ int main (int argc, char **argv) {
 	}
 	/***************/
 
-	OTF_Reader_readEvents( reader, handlers );
+	ret_read = OTF_Reader_readEvents( reader, handlers );
+	if( ret_read == OTF_READ_ERROR ) {
+		fprintf(stderr,"An error occurred while reading the tracefile. It seems to be damaged. Abort.\n");
+		return 1;
+	}
 
 	/***************/
 	FileIOEndQueue_finish( &fha.FileIOQueue );

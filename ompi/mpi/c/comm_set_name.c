@@ -22,11 +22,13 @@
 #include <string.h>
 
 #include "ompi/mpi/c/bindings.h"
-#include "opal/util/strncpy.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/totalview.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES 
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES 
 #pragma weak MPI_Comm_set_name = PMPI_Comm_set_name
 #endif
 

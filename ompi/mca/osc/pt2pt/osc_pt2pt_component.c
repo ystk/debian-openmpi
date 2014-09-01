@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University.
  *                         All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -31,7 +31,6 @@
 #include "osc_pt2pt_buffer.h"
 
 #include "opal/threads/mutex.h"
-#include "opal/util/arch.h"
 
 #include "ompi/info/info.h"
 #include "ompi/communicator/communicator.h"
@@ -42,7 +41,7 @@
 
 static int component_open(void);
 static void component_fragment_cb(ompi_osc_pt2pt_mpireq_t *mpireq);
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
 static void* component_thread_fn(opal_object_t *obj);
 #endif
 
@@ -106,7 +105,7 @@ check_config_value_bool(char *key, ompi_info_t *info)
     if (flag == 0) goto info_not_found;
     value_len++;
 
-    value_string = (char*)malloc(sizeof(char) * value_len);
+    value_string = (char*)malloc(sizeof(char) * value_len + 1); /* Should malloc 1 char for NUL-termination */
     if (NULL == value_string) goto info_not_found;
 
     ret = ompi_info_get(info, key, value_len, value_string, &flag);
@@ -206,7 +205,7 @@ ompi_osc_pt2pt_component_init(bool enable_progress_threads,
     OBJ_CONSTRUCT(&mca_osc_pt2pt_component.p2p_c_pending_requests,
                   opal_list_t);
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     OBJ_CONSTRUCT(&mca_osc_pt2pt_component.p2p_c_thread, opal_thread_t);
     mca_osc_pt2pt_component.p2p_c_thread_run = false;
 #endif
@@ -219,7 +218,7 @@ int
 ompi_osc_pt2pt_component_finalize(void)
 {
     size_t num_modules;
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     void* ret;
 #endif
 
@@ -228,7 +227,7 @@ ompi_osc_pt2pt_component_finalize(void)
         opal_output(ompi_osc_base_output,
                     "WARNING: There were %d Windows created but not freed.",
                     (int) num_modules); 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
         mca_osc_pt2pt_component.p2p_c_thread_run = false;
         opal_condition_broadcast(&ompi_request_cond);
         opal_thread_join(&mca_osc_pt2pt_component.p2p_c_thread, &ret);
@@ -271,6 +270,7 @@ ompi_osc_pt2pt_component_select(ompi_win_t *win,
     int ret, i;
     ompi_osc_pt2pt_buffer_t *buffer = NULL;
     opal_free_list_item_t *item = NULL;
+    char *tmp = NULL;
 
     /* create module structure */
     module = (ompi_osc_pt2pt_module_t*)
@@ -298,6 +298,10 @@ ompi_osc_pt2pt_component_select(ompi_win_t *win,
     opal_output_verbose(1, ompi_osc_base_output,
                         "pt2pt component creating window with id %d",
                         ompi_comm_get_cid(module->p2p_comm));
+
+    asprintf(&tmp, "%d", ompi_comm_get_cid(module->p2p_comm));
+    ompi_win_set_name(win, tmp);
+    free(tmp);
 
     module->p2p_num_pending_sendreqs = (unsigned int*)
         malloc(sizeof(unsigned int) * ompi_comm_size(module->p2p_comm));
@@ -363,7 +367,7 @@ ompi_osc_pt2pt_component_select(ompi_win_t *win,
                                      module);
     ret = opal_hash_table_get_size(&mca_osc_pt2pt_component.p2p_c_modules);
     if (ret == 1) {
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
         mca_osc_pt2pt_component.p2p_c_thread_run = true;
         mca_osc_pt2pt_component.p2p_c_thread.t_run = component_thread_fn;
         mca_osc_pt2pt_component.p2p_c_thread.t_arg = NULL;
@@ -440,7 +444,7 @@ ompi_osc_pt2pt_component_select(ompi_win_t *win,
     }
     if (NULL != module->p2p_comm) ompi_comm_free(&module->p2p_comm);
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     memset(module, 0, sizeof(ompi_osc_base_module_t));
 #endif
     if (NULL != module) free(module);
@@ -460,7 +464,7 @@ component_fragment_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
         (ompi_osc_pt2pt_module_t*) mpireq->cbdata;
 
 
-    assert(mpireq->status._count >= (int) sizeof(ompi_osc_pt2pt_base_header_t));
+    assert(mpireq->status._ucount >= sizeof(ompi_osc_pt2pt_base_header_t));
 
     /* handle message */
     switch (((ompi_osc_pt2pt_base_header_t*) buffer->payload)->hdr_type) {
@@ -471,7 +475,7 @@ component_fragment_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
                 (ompi_osc_pt2pt_send_header_t*) buffer->payload;
             void *payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
             if (header->hdr_base.hdr_flags & OMPI_OSC_PT2PT_HDR_FLAG_NBO) {
                 OMPI_OSC_PT2PT_SEND_HDR_NTOH(*header);
             }
@@ -497,7 +501,7 @@ component_fragment_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
                 (ompi_osc_pt2pt_send_header_t*) buffer->payload;
             void *payload = (void*) (header + 1);
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
             if (header->hdr_base.hdr_flags & OMPI_OSC_PT2PT_HDR_FLAG_NBO) {
                 OMPI_OSC_PT2PT_SEND_HDR_NTOH(*header);
             }
@@ -527,7 +531,7 @@ component_fragment_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
             ompi_osc_pt2pt_replyreq_t *replyreq;
             ompi_proc_t *proc;
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
             if (header->hdr_base.hdr_flags & OMPI_OSC_PT2PT_HDR_FLAG_NBO) {
                 OMPI_OSC_PT2PT_SEND_HDR_NTOH(*header);
             }
@@ -576,7 +580,7 @@ component_fragment_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
             void *payload = (void*) (header + 1);
             ompi_osc_pt2pt_sendreq_t *sendreq;
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
             if (header->hdr_base.hdr_flags & OMPI_OSC_PT2PT_HDR_FLAG_NBO) {
                 OMPI_OSC_PT2PT_REPLY_HDR_NTOH(*header);
             }
@@ -607,7 +611,7 @@ component_fragment_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
                 (ompi_osc_pt2pt_control_header_t*) buffer->payload;
             int32_t count;
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
             if (header->hdr_base.hdr_flags & OMPI_OSC_PT2PT_HDR_FLAG_NBO) {
                 OMPI_OSC_PT2PT_CONTROL_HDR_NTOH(*header);
             }
@@ -630,7 +634,7 @@ component_fragment_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
                 (ompi_osc_pt2pt_control_header_t*) buffer->payload;
             int32_t count;
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
             if (header->hdr_base.hdr_flags & OMPI_OSC_PT2PT_HDR_FLAG_NBO) {
                 OMPI_OSC_PT2PT_CONTROL_HDR_NTOH(*header);
             }
@@ -654,7 +658,7 @@ component_fragment_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
             ompi_osc_pt2pt_control_header_t *header = 
                 (ompi_osc_pt2pt_control_header_t*) buffer->payload;
 
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
             if (header->hdr_base.hdr_flags & OMPI_OSC_PT2PT_HDR_FLAG_NBO) {
                 OMPI_OSC_PT2PT_CONTROL_HDR_NTOH(*header);
             }
@@ -702,7 +706,7 @@ ompi_osc_pt2pt_component_progress(void)
     opal_list_item_t *item;
     int ret, done = 0;
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
     OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
 #else
     ret = OPAL_THREAD_TRYLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
@@ -716,7 +720,7 @@ ompi_osc_pt2pt_component_progress(void)
             (ompi_osc_pt2pt_mpireq_t*) item;
 
         /* BWB - FIX ME */
-#if OMPI_ENABLE_PROGRESS_THREADS == 0
+#if OPAL_ENABLE_PROGRESS_THREADS == 0
         if (buffer->request->req_state == OMPI_REQUEST_INACTIVE ||
             buffer->request->req_complete) {
             ret = ompi_request_test(&buffer->request,
@@ -746,7 +750,7 @@ ompi_osc_pt2pt_component_progress(void)
     return done;
 }
 
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
 static void*
 component_thread_fn(opal_object_t *obj)
 {

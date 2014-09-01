@@ -23,14 +23,12 @@
 #ifndef ALLOCATOR_BUCKET_ALLOC_H 
 #define ALLOCATOR_BUCKET_ALLOC_H 
 
+#include "ompi_config.h"
 #include <stdlib.h>
 #include <string.h>
 #include "opal/threads/mutex.h"
-#include "opal/class/opal_object.h"
 #include "ompi/mca/allocator/allocator.h"
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /**
   * Structure for the header of each memory chunk
@@ -215,8 +213,6 @@ typedef struct mca_allocator_bucket_t mca_allocator_bucket_t;
 
 OMPI_DECLSPEC extern mca_allocator_base_component_t mca_allocator_bucket_component;
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* ALLOCATOR_BUCKET_ALLOC_H */

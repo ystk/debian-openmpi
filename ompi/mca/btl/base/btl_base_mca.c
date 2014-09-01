@@ -10,7 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -24,8 +25,8 @@
 #include <stdio.h>
 
 #include "opal/mca/base/mca_base_param.h"
+#include "opal/util/output.h"
 
-#include "orte/util/show_help.h"
 
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
@@ -47,7 +48,7 @@ int mca_btl_base_param_register(mca_base_component_t *version,
     REG_INT("exclusivity", "BTL exclusivity (must be >= 0)",
             module->btl_exclusivity, 0, uint32_t);
 
-    asprintf(&msg, "BTL bit flags (general flags: SEND=%d, PUT=%d, GET=%d, SEND_INPLACE=%d, RDMA_MATCHED=%d, HETEROGENEOUS_RDMA=%d; flags only used by the \"dr\" PML (ignored by others): ACK=%d, CHECKSUM=%d, RDMA_COMPLETION=%d)",
+    asprintf(&msg, "BTL bit flags (general flags: SEND=%d, PUT=%d, GET=%d, SEND_INPLACE=%d, RDMA_MATCHED=%d, HETEROGENEOUS_RDMA=%d; flags only used by the \"dr\" PML (ignored by others): ACK=%d, CHECKSUM=%d, RDMA_COMPLETION=%d; flags only used by the \"bfo\" PML (ignored by others): FAILOVER_SUPPORT=%d)",
              MCA_BTL_FLAGS_SEND,
              MCA_BTL_FLAGS_PUT,
              MCA_BTL_FLAGS_GET,
@@ -56,7 +57,8 @@ int mca_btl_base_param_register(mca_base_component_t *version,
              MCA_BTL_FLAGS_HETEROGENEOUS_RDMA,
              MCA_BTL_FLAGS_NEED_ACK,
              MCA_BTL_FLAGS_NEED_CSUM,
-             MCA_BTL_FLAGS_RDMA_COMPLETION);
+             MCA_BTL_FLAGS_RDMA_COMPLETION,
+             MCA_BTL_FLAGS_FAILOVER_SUPPORT);
     REG_INT("flags", msg,
             module->btl_flags,
             0, uint32_t);
@@ -107,7 +109,7 @@ int mca_btl_base_param_register(mca_base_component_t *version,
     }
 
     REG_INT("bandwidth", "Approximate maximum bandwidth of interconnect"
-            "(must be >= 1)", module->btl_bandwidth, 1, uint32_t);
+            "(0 = auto-detect value at run-time [not supported in all BTL modules], >= 1 = bandwidth in Mbps)", module->btl_bandwidth, 0, uint32_t);
 
     REG_INT("latency", "Approximate latency of interconnect (must be >= 0)",
             module->btl_latency, 0, uint32_t);

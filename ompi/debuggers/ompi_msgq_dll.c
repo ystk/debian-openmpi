@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2007-2008 Cisco, Inc.  All rights resereved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2008-2009 Sun Microsystems, Inc.  All rights reserved.
@@ -161,6 +161,7 @@
 #define VERBOSE_REQ_DUMP 0x00000020
 
 #define VERBOSE 0x00000000
+
 #if VERBOSE
 #define DEBUG(LEVEL, WHAT) if(LEVEL & VERBOSE) { printf WHAT; }
 #else
@@ -370,7 +371,7 @@ int mqs_image_has_queues (mqs_image *image, char **message)
     i_info->extra = NULL;
 
     /* Default failure message ! */
-    *message = "The symbols and types in the Open MPI library used by TotalView\n"
+    *message = "The symbols and types in the Open MPI library used by the debugger\n"
         "to extract the message queues are not as expected in\n"
         "the image '%s'\n"
         "No message queue display is possible.\n"
@@ -1211,8 +1212,8 @@ static int fetch_request( mqs_process *proc, mpi_process_info *p_info,
         
         if( (mqs_st_pending < res->status) && (MCA_PML_REQUEST_SEND != req_type) ) {  /* The real data from the status */
             res->actual_length       =
-                ompi_fetch_int( proc, current_item + i_info->ompi_request_t.offset.req_status +
-                                i_info->ompi_status_public_t.offset._count, p_info );
+                ompi_fetch_size_t( proc, current_item + i_info->ompi_request_t.offset.req_status +
+                                   i_info->ompi_status_public_t.offset._ucount, p_info );
             res->actual_tag          =
                 ompi_fetch_int( proc, current_item + i_info->ompi_request_t.offset.req_status +
                                 i_info->ompi_status_public_t.offset.MPI_TAG, p_info );

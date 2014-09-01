@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -35,6 +36,7 @@
 #include "opal/mca/mca.h"
 #include "opal/util/error.h"
 
+#include "orte/runtime/orte_globals.h"
 #include "orte/mca/plm/plm_types.h"
 
 BEGIN_C_DECLS
@@ -50,6 +52,17 @@ BEGIN_C_DECLS
 #define ORTE_ERROR_NAME(n)  opal_strerror(n)
 #define ORTE_ERROR_LOG(n) \
     orte_errmgr_base_log(n, __FILE__, __LINE__)
+
+#if WANT_PMI_SUPPORT
+#define ORTE_PMI_ERROR(pmi_err, pmi_func)                               \
+    do {                                                                \
+        opal_output(0, "%s[%s:%d:%s] %s: %s\n",                         \
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),                 \
+                    __FILE__, __LINE__, __func__,                       \
+                    pmi_func, orte_errmgr_base_pmi_error(pmi_err));     \
+    } while(0);
+OPAL_DECLSPEC char* orte_errmgr_base_pmi_error(int pmi_err);
+#endif
 
 /**
  * This is not part of any
@@ -101,9 +114,6 @@ typedef void (*orte_errmgr_base_module_proc_aborted_fn_t)(orte_process_name_t *n
  */
 typedef void (*orte_errmgr_base_module_incomplete_start_fn_t)(orte_jobid_t job, int exit_code);
 
-/* error manager callback function */
-typedef void (*orte_errmgr_cb_fn_t)(orte_jobid_t job, orte_job_state_t state, void *cbdata);
-
 /*
  * Register a job with the error manager
  * When a job is launched, this function is called so the error manager can register
@@ -121,8 +131,8 @@ typedef void (*orte_errmgr_cb_fn_t)(orte_jobid_t job, orte_job_state_t state, vo
  * MUST do nothing but return ORTE_SUCCESS.
  */
 typedef int (*orte_errmgr_base_module_register_cb_fn_t)(orte_jobid_t job,
-                                                        orte_job_state_t state,
-                                                        orte_errmgr_cb_fn_t cbfunc,
+                                                        orte_proc_state_t state,
+                                                        orte_err_cb_fn_t cbfunc,
                                                         void *cbdata);
 
 /**
@@ -132,7 +142,8 @@ typedef int (*orte_errmgr_base_module_register_cb_fn_t)(orte_jobid_t job,
  * itself, and then exit - it takes no other actions. The intent here is to provide
  * a last-ditch exit procedure that attempts to clean up a little.
  */
-typedef void (*orte_errmgr_base_module_abort_fn_t)(int error_code, char *fmt, ...);
+typedef void (*orte_errmgr_base_module_abort_fn_t)(int error_code, char *fmt, ...) __opal_attribute_noreturn__
+    __opal_attribute_format_funcptr__(__printf__, 2, 3);
 
 /*
  * 

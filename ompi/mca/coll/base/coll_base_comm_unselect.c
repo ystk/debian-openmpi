@@ -24,10 +24,8 @@
 
 #include "mpi.h"
 #include "ompi/communicator/communicator.h"
-#include "orte/util/show_help.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
-#include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/base.h"
 
 #define CLOSE(comm, func)                                       \
@@ -39,26 +37,25 @@
         }                                                       \
     } while (0)
 
-int mca_coll_base_comm_unselect(ompi_communicator_t *comm)
+int mca_coll_base_comm_unselect(ompi_communicator_t * comm)
 {
-    CLOSE(comm, allgather); 
-    CLOSE(comm, allgatherv); 
-    CLOSE(comm, allreduce); 
-    CLOSE(comm, alltoall); 
-    CLOSE(comm, alltoallv); 
-    CLOSE(comm, alltoallw); 
-    CLOSE(comm, barrier); 
-    CLOSE(comm, bcast); 
-    CLOSE(comm, exscan); 
-    CLOSE(comm, gather); 
-    CLOSE(comm, gatherv); 
-    CLOSE(comm, reduce); 
-    CLOSE(comm, reduce_scatter); 
-    CLOSE(comm, scan); 
-    CLOSE(comm, scatter); 
-    CLOSE(comm, scatterv); 
+    CLOSE(comm, allgather);
+    CLOSE(comm, allgatherv);
+    CLOSE(comm, allreduce);
+    CLOSE(comm, alltoall);
+    CLOSE(comm, alltoallv);
+    CLOSE(comm, alltoallw);
+    CLOSE(comm, barrier);
+    CLOSE(comm, bcast);
+    CLOSE(comm, exscan);
+    CLOSE(comm, gather);
+    CLOSE(comm, gatherv);
+    CLOSE(comm, reduce);
+    CLOSE(comm, reduce_scatter);
+    CLOSE(comm, scan);
+    CLOSE(comm, scatter);
+    CLOSE(comm, scatterv);
 
     /* All done */
     return OMPI_SUCCESS;
 }
-

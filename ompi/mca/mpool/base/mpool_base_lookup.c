@@ -19,7 +19,7 @@
  * $HEADER$
  */
 
-#define OMPI_DISABLE_ENABLE_MEM_DEBUG 1
+#define OPAL_DISABLE_ENABLE_MEM_DEBUG 1
 #include "ompi_config.h"
 
 #include <stdio.h>
@@ -30,7 +30,6 @@
 
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
-#include "opal/util/output.h"
 #include "orte/util/show_help.h"
 #include "orte/util/name_fns.h"
 #include "orte/util/proc_info.h"
@@ -40,8 +39,6 @@
 #include "ompi/mca/mpool/base/base.h"
 #include "mpool_base_mem_cb.h"
 
-
-extern opal_pointer_array_t mca_mpool_base_mem_cb_array; 
 
 mca_mpool_base_component_t* mca_mpool_base_component_lookup(const char* name)
 {
@@ -117,7 +114,6 @@ mca_mpool_base_module_t* mca_mpool_base_module_create(
                 ((OPAL_MEMORY_FREE_SUPPORT | OPAL_MEMORY_MUNMAP_SUPPORT) & 
                  opal_mem_hooks_support_level())) {
                 opal_mem_hooks_register_release(mca_mpool_base_mem_cb, NULL);
-                OBJ_CONSTRUCT(&mca_mpool_base_mem_cb_array, opal_pointer_array_t);
             } else {
                 orte_show_help("help-mpool-base.txt", "leave pinned failed",
                                true, name, ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),

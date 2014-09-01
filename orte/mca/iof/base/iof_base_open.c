@@ -20,7 +20,7 @@
 #include "orte_config.h"
 #include "orte/constants.h"
 
-#if HAVE_STRING_H
+#ifdef HAVE_STRING_H
 #include <string.h>
 #endif
 #include <stdio.h>
@@ -47,7 +47,7 @@
 
 #include "orte/mca/iof/base/static-components.h"
 
-orte_iof_base_module_t orte_iof;
+orte_iof_base_module_t orte_iof = {0};
 
 
 #if ORTE_DISABLE_FULL_SUPPORT
@@ -140,7 +140,7 @@ static void orte_iof_base_write_event_destruct(orte_iof_write_event_t* wev)
     if (wev->pending) {
         opal_event_del(&wev->ev);
     }
-    if (orte_process_info.hnp) {
+    if (ORTE_PROC_IS_HNP) {
         int xmlfd = fileno(orte_xml_fp);
         if (xmlfd == wev->fd) {
             /* don't close this one - will get it later */
@@ -204,7 +204,7 @@ int orte_iof_base_open(void)
     }
     
     /* daemons do not need to do this as they do not write out stdout/err */
-    if (!orte_process_info.daemon) {
+    if (!ORTE_PROC_IS_DAEMON) {
         if (orte_xml_output) {
             if (NULL != orte_xml_fp) {
                 /* user wants all xml-formatted output sent to file */

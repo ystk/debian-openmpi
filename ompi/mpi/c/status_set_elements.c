@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -20,10 +20,13 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Status_set_elements = PMPI_Status_set_elements
 #endif
 
@@ -70,12 +73,12 @@ int MPI_Status_set_elements(MPI_Status *status, MPI_Datatype datatype,
         return MPI_SUCCESS;
     }
 
-    if( ompi_ddt_is_predefined(datatype) ) {
-        ompi_ddt_type_size( datatype, &size );
-        status->_count = (int)(count * size);
+    if( ompi_datatype_is_predefined(datatype) ) {
+        ompi_datatype_type_size( datatype, &size );
+        status->_ucount = count * size;
     } else {
-        ompi_ddt_set_element_count( datatype, count, &size );
-        status->_count = (int)size;
+        ompi_datatype_set_element_count( datatype, count, &size );
+        status->_ucount = size;
     }
     return MPI_SUCCESS;
 }

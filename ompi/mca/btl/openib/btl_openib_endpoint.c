@@ -10,12 +10,13 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
  * Copyright (c) 2006-2009 Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2010-2011 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2009      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2010-2011 Oracle and/or its affiliates.  All rights reserved
  *
  * $COPYRIGHT$
  *
@@ -32,13 +33,11 @@
 #include <string.h>
 
 #include "opal_stdint.h"
+#include "opal/util/output.h"
 
-#include "orte/mca/oob/base/base.h"
-#include "orte/mca/rml/rml.h"
-#include "orte/mca/errmgr/errmgr.h"
+#include "orte/util/show_help.h"
 
 #include "ompi/types.h"
-#include "ompi/mca/pml/base/pml_base_sendreq.h"
 #include "ompi/class/ompi_free_list.h"
 
 #include "btl_openib_endpoint.h"
@@ -151,7 +150,8 @@ int mca_btl_openib_endpoint_post_send(mca_btl_openib_endpoint_t *endpoint,
         hdr->cm_seen = cm_return;
     }
 
-    ib_rc = post_send(endpoint, frag, do_rdma);
+    qp_reset_signal_count(endpoint, qp);
+    ib_rc = post_send(endpoint, frag, do_rdma, 1);
 
     if(!ib_rc)
         return OMPI_SUCCESS;
@@ -286,8 +286,11 @@ static void endpoint_init_qp(mca_btl_base_endpoint_t *ep, const int qp)
             break;
         default:
             BTL_ERROR(("Wrong QP type"));
-            break;
+            return;
     }
+
+    ep_qp->qp->sd_wqe_inflight = 0;
+    ep_qp->qp->wqe_count = QP_TX_BATCH_COUNT;
 }
 
 void mca_btl_openib_endpoint_init(mca_btl_openib_module_t *btl,
@@ -639,7 +642,7 @@ void mca_btl_openib_endpoint_connected(mca_btl_openib_endpoint_t *endpoint)
     }
 
     /* Run over all qps and load alternative path */
-#if OMPI_HAVE_THREADS
+#if OPAL_HAVE_THREADS
     if (APM_ENABLED) {
         int i;
         if (MCA_BTL_XRC_ENABLED) {
@@ -782,7 +785,7 @@ void mca_btl_openib_endpoint_send_credits(mca_btl_openib_endpoint_t* endpoint,
     assert(frag->qp_idx == qp);
     credits_hdr = (mca_btl_openib_rdma_credits_header_t*)
         to_base_frag(frag)->segment.seg_addr.pval;
-    if(acquire_eager_rdma_send_credit(endpoint) == MPI_SUCCESS) {
+    if(OMPI_SUCCESS == acquire_eager_rdma_send_credit(endpoint)) {
         do_rdma = true;
     } else {
         if(OPAL_THREAD_ADD32(&endpoint->qps[qp].u.pp_qp.cm_sent, 1) >
@@ -812,7 +815,8 @@ void mca_btl_openib_endpoint_send_credits(mca_btl_openib_endpoint_t* endpoint,
     if(endpoint->nbo)
          BTL_OPENIB_RDMA_CREDITS_HEADER_HTON(*credits_hdr);
 
-    if((rc = post_send(endpoint, frag, do_rdma)) == 0)
+    qp_reset_signal_count(endpoint, qp);
+    if((rc = post_send(endpoint, frag, do_rdma, 1)) == 0)
         return;
 
     if(endpoint->nbo) {
@@ -874,31 +878,32 @@ static int mca_btl_openib_endpoint_send_eager_rdma(
     rdma_hdr->control.type = MCA_BTL_OPENIB_CONTROL_RDMA;
     rdma_hdr->rkey = endpoint->eager_rdma_local.reg->mr->rkey;
     rdma_hdr->rdma_start.lval = ompi_ptr_ptol(endpoint->eager_rdma_local.base.pval);
-    BTL_VERBOSE(("sending rkey %lu, rdma_start.lval %llu, pval %p, ival %u type %d and sizeof(rdma_hdr) %d\n",
-               rdma_hdr->rkey,
-               rdma_hdr->rdma_start.lval,
-               rdma_hdr->rdma_start.pval,
-               rdma_hdr->rdma_start.ival,
-               rdma_hdr->control.type,
-               sizeof(mca_btl_openib_eager_rdma_header_t)
-               ));
+    BTL_VERBOSE(("sending rkey %" PRIu32 ", rdma_start.lval %" PRIx64 
+                 ", pval %p, ival %" PRIu32 " type %d and sizeof(rdma_hdr) %d\n",
+                 rdma_hdr->rkey,
+                 rdma_hdr->rdma_start.lval,
+                 rdma_hdr->rdma_start.pval,
+                 rdma_hdr->rdma_start.ival,
+                 rdma_hdr->control.type,
+                 (int) sizeof(mca_btl_openib_eager_rdma_header_t)
+                 ));
 
     if(endpoint->nbo) {
         BTL_OPENIB_EAGER_RDMA_CONTROL_HEADER_HTON((*rdma_hdr));
 
-        BTL_VERBOSE(("after HTON: sending rkey %lu, rdma_start.lval %llu, pval %p, ival %u\n",
-                   rdma_hdr->rkey,
-                   rdma_hdr->rdma_start.lval,
-                   rdma_hdr->rdma_start.pval,
-                   rdma_hdr->rdma_start.ival
-                   ));
+        BTL_VERBOSE(("after HTON: sending rkey %" PRIu32 ", rdma_start.lval %" PRIx64 ", pval %p, ival %" PRIu32 "\n",
+                     rdma_hdr->rkey,
+                     rdma_hdr->rdma_start.lval,
+                     rdma_hdr->rdma_start.pval,
+                     rdma_hdr->rdma_start.ival
+                     ));
     }
     rc = mca_btl_openib_endpoint_send(endpoint, frag);
     if (OMPI_SUCCESS == rc ||OMPI_ERR_RESOURCE_BUSY == rc)
         return OMPI_SUCCESS;
 
     MCA_BTL_IB_FRAG_RETURN(frag);
-    BTL_ERROR(("Error sending RDMA buffer", strerror(errno)));
+    BTL_ERROR(("Error sending RDMA buffer: %s", strerror(errno)));
     return rc;
 }
 
@@ -910,6 +915,7 @@ void mca_btl_openib_endpoint_connect_eager_rdma(
     char *buf;
     mca_btl_openib_recv_frag_t *headers_buf;
     int i;
+    uint32_t flag = MCA_MPOOL_FLAGS_CACHE_BYPASS;
 
     /* Set local rdma pointer to 1 temporarily so other threads will not try
      * to enter the function */
@@ -924,11 +930,25 @@ void mca_btl_openib_endpoint_connect_eager_rdma(
     if(NULL == headers_buf)
        goto unlock_rdma_local;
 
-    buf = openib_btl->super.btl_mpool->mpool_alloc(openib_btl->super.btl_mpool,
+#if HAVE_DECL_IBV_ACCESS_SO
+    /* Solaris implements the Relaxed Ordering feature defined in the
+       PCI Specification. With this in mind any memory region which
+       relies on a buffer being written in a specific order, for
+       example the eager rdma connections created in this routinue,
+       must set a strong order flag when registering the memory for
+       rdma operations.
+
+       The following flag will be interpreted and the appropriate
+       steps will be taken when the memory is registered in
+       openib_reg_mr(). */
+    flag |= MCA_MPOOL_FLAGS_SO_MEM;
+#endif
+
+     buf = openib_btl->super.btl_mpool->mpool_alloc(openib_btl->super.btl_mpool,
             openib_btl->eager_rdma_frag_size *
             mca_btl_openib_component.eager_rdma_num,
             mca_btl_openib_component.buffer_alignment,
-            MCA_MPOOL_FLAGS_CACHE_BYPASS,
+            flag,
             (mca_mpool_base_registration_t**)&endpoint->eager_rdma_local.reg);
 
     if(!buf)
@@ -1032,7 +1052,7 @@ void *mca_btl_openib_endpoint_invoke_error(void *context)
     }
 
     /* Invoke the callback to the upper layer */
-    btl->error_cb(&(btl->super), MCA_BTL_ERROR_FLAGS_FATAL);
+    btl->error_cb(&(btl->super), MCA_BTL_ERROR_FLAGS_FATAL, NULL, NULL);
 
     /* Will likely never get here */
     return NULL;

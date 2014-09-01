@@ -34,16 +34,14 @@
 
 #include "ompi_config.h"
 #include "mpi.h" /* needed for MPI_ANY_TAG */
-#include "opal/class/opal_list.h"
 #include "opal/mca/mca.h"
 #include "ompi/mca/pml/pml.h" /* for send_mode enum */
+#include "ompi/request/request.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 struct ompi_request_t;
-struct ompi_convertor_t;
+struct opal_convertor_t;
 
 struct mca_mtl_base_module_t;
     
@@ -212,7 +210,7 @@ typedef int (*mca_mtl_base_module_send_fn_t)(
                           struct ompi_communicator_t *comm,
                           int dest,
                           int tag,
-                          struct ompi_convertor_t *convertor,
+                          struct opal_convertor_t *convertor,
                           mca_pml_base_send_mode_t mode);
 
 
@@ -261,7 +259,7 @@ typedef int (*mca_mtl_base_module_isend_fn_t)(
                           struct ompi_communicator_t *comm,
                           int dest,
                           int tag,
-                          struct ompi_convertor_t *convertor,
+                          struct opal_convertor_t *convertor,
                           mca_pml_base_send_mode_t mode,
                           bool blocking,
                           mca_mtl_request_t *mtl_request);
@@ -303,7 +301,7 @@ typedef int (*mca_mtl_base_module_irecv_fn_t)(
                           struct ompi_communicator_t *comm,
                           int src,
                           int tag,
-                          struct ompi_convertor_t *convertor,
+                          struct opal_convertor_t *convertor,
                           struct mca_mtl_request_t *mtl_request);
 
 
@@ -357,6 +355,34 @@ typedef int (*mca_mtl_base_module_cancel_fn_t)(
 
 
 /**
+ * Downcall from PML layer when a new communicator is created.
+ *
+ * @param comm  Communicator
+ * @return      OMPI_SUCCESS or failure status.
+ *
+ * Provides the MTL the opportunity to initialize/cache a data structure
+ * on the communicator.
+ */
+typedef int (*mca_mtl_base_module_add_comm_fn_t)(
+                          struct mca_mtl_base_module_t* mtl,
+                          struct ompi_communicator_t* comm);
+
+
+/**
+ * Downcall from PML layer when a communicator is destroyed.
+ *
+ * @param comm  Communicator
+ * @return      OMPI_SUCCESS or failure status.
+ *
+ * Provides the MTL the opportunity to cleanup any datastructures
+ * associated with the communicator.
+ */
+typedef int (*mca_mtl_base_module_del_comm_fn_t)(
+                          struct mca_mtl_base_module_t* mtl,
+                          struct ompi_communicator_t* comm);
+
+
+/**
  * MTL module interface functions and attributes.
  */
 struct mca_mtl_base_module_t {
@@ -378,6 +404,8 @@ struct mca_mtl_base_module_t {
 
     /* Optional MTL functions */
     mca_mtl_base_module_cancel_fn_t      mtl_cancel;
+    mca_mtl_base_module_add_comm_fn_t    mtl_add_comm;
+    mca_mtl_base_module_del_comm_fn_t    mtl_del_comm;
 };
 typedef struct mca_mtl_base_module_t mca_mtl_base_module_t;
 
@@ -405,7 +433,5 @@ typedef struct mca_mtl_base_module_t mca_mtl_base_module_t;
 
 OMPI_DECLSPEC extern mca_mtl_base_module_t *ompi_mtl;
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif

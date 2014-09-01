@@ -21,9 +21,12 @@
 
 #include "orte/util/show_help.h"
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/constants.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Init_thread = PMPI_Init_thread
 #endif
 
@@ -50,7 +53,7 @@ int MPI_Init_thread(int *argc, char ***argv, int required,
      *   = MPI_THREAD_MULTIPLE. Such an implementation may always return provided
      *   = MPI_THREAD_MULTIPLE, irrespective of the value of required.
      */
-#if OMPI_ENABLE_MPI_THREADS
+#if OMPI_ENABLE_THREAD_MULTIPLE
     *provided = MPI_THREAD_MULTIPLE;
 #else
     *provided = MPI_THREAD_SINGLE;
@@ -83,6 +86,8 @@ int MPI_Init_thread(int *argc, char ***argv, int required,
         err = ompi_mpi_init(0, NULL, required, provided);
     }
 
+    OPAL_CR_INIT_LIBRARY();
+
     /* Since we don't have a communicator to invoke an errorhandler on
        here, don't use the fancy-schmancy ERRHANDLER macros; they're
        really designed for real communicator objects.  Just use the
@@ -93,8 +98,5 @@ int MPI_Init_thread(int *argc, char ***argv, int required,
                                       err < 0 ? ompi_errcode_get_mpi_code(err) :
                                       err, FUNC_NAME);
     }
-
-    OPAL_CR_INIT_LIBRARY();
-
     return MPI_SUCCESS;
 }
