@@ -2,15 +2,16 @@ Source: openmpi
 Section: net
 Priority: extra
 Maintainer: Debian Open MPI Maintainers <pkg-openmpi-maintainers@lists.alioth.debian.org>
-Uploaders: Manuel Prinz <manuel@debian.org>, Sylvestre Ledru <sylvestre@debian.org>
+Uploaders: Manuel Prinz <manuel@debian.org>, Sylvestre Ledru <sylvestre@debian.org>,
+  Alastair McKinstry <mckinstry@debian.org>
 Build-Depends: dpkg-dev (>= 1.16.1~), debhelper (>= 8.0.0~),
  libibverbs-dev (>= 1.1.1) [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386],
- gfortran, gcc (>= 4:4.1.2), chrpath, libhwloc-dev, libtorque2-dev,
+ gfortran, gcc (>= 4:4.1.2), chrpath, libhwloc-dev,
  libcr-dev [amd64 armel armhf i386 powerpc], libtool, libltdl-dev,
  libnuma-dev [amd64 i386 ia64 mips mipsel mipsn32 mipsn32el mips64 mips64el powerpc ppc64el], autoconf (>= 2.59),
  automake
 Build-Conflicts: libopenmpi1.3
-Standards-Version: 3.9.5
+Standards-Version: 3.9.6
 Homepage: http://www.open-mpi.org/
 Vcs-Svn: svn://svn.debian.org/svn/pkg-openmpi/openmpi/trunk/
 Vcs-Browser: http://svn.debian.org/wsvn/pkg-openmpi/openmpi/trunk/

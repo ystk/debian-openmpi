@@ -21,6 +21,8 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(NUMA_ARCH)))
         NUMA = --with-libnuma=/usr --with-libnuma-libdir=/usr/lib
 endif
 
+TORQUE = --without-tm
+
 # Flags for the static build: see bug #502232
 #STATIC_CONFIG_PARAMS = --enable-static
 

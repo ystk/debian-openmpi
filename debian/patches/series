@@ -16,3 +16,5 @@ mips-support-upstream-1.7.3.diff
 mips-support-fix.diff
 basic-arm64-support.diff
 ppc64el-support.patch
+alpha_badatomic.patch
+pkgconfig-vars.patch

@@ -1,3 +1,21 @@
+openmpi (1.6.5-9.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Disable torque support (see #767411).
+
+ -- Julien Cristau <jcristau@debian.org>  Fri, 14 Nov 2014 17:57:11 +0100
+
+openmpi (1.6.5-9) unstable; urgency=medium
+
+  * Add myself as uploader.
+  * Standards-Version: 3.9.6; no changes required.
+  * Rebuild against lastest gfortran. Closes: #647908, #675115.
+  * Patch for mpi.pc support. Closes: #752785.
+  * Patch from Michael Cree to fix bad atomic ops on Alpha that
+    causes mpi4py to segfault. Closes: #754524.
+
+ -- Alastair McKinstry <mckinstry@debian.org>  Tue, 28 Oct 2014 11:07:44 +0000
+
 openmpi (1.6.5-8) unstable; urgency=low
 
   [ Dimitri John Ledkov ]
