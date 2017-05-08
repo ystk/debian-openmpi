@@ -63,7 +63,7 @@ Package: libopenmpi1.6
 Section: libs
 Architecture: alpha amd64 armel armhf arm64 i386 ia64 powerpc powerpcspe ppc64 ppc64el sparc sparc64 kfreebsd-i386 kfreebsd-amd64 hurd-i386 mips64 mips64el mips mipsel
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Conflicts: openmpi-libs0, libopenmpi1, libopenmpi1.3, libopenmpi2
+Conflicts: openmpi-libs0, libopenmpi1, libopenmpi1.3, libopenmpi2 (<< 1.6)
 Replaces: openmpi-checkpoint (<< 1.6.5-1)
 Breaks: openmpi-checkpoint (<< 1.6.5-1)
 Description: high performance message passing library -- shared library

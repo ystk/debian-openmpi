@@ -1,3 +1,12 @@
+openmpi (1.6.5-9.1+deb8u1) jessie; urgency=medium
+
+  * Non-maintainer upload.
+  * libopenmpi1.6: Fix two incorrect soname links.  (Closes: #736675)
+  * libopenmpi1.6: Use versioned Conflicts: libopenmpi2 (<< 1.6) to not
+    interfere with upgrades to stretch.  (Closes: #859986)
+
+ -- Andreas Beckmann <anbe@debian.org>  Thu, 27 Apr 2017 22:47:22 +0200
+
 openmpi (1.6.5-9.1) unstable; urgency=medium
 
   * Non-maintainer upload.
